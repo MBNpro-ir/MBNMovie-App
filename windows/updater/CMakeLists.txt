@@ -1,0 +1,7 @@
+add_executable(updater WIN32 updater.cpp)
+target_compile_features(updater PRIVATE cxx_std_17)
+target_compile_definitions(updater PRIVATE UNICODE _UNICODE NOMINMAX)
+target_compile_options(updater PRIVATE /W4 /EHsc /utf-8)
+target_link_libraries(updater PRIVATE shell32)
+set_property(TARGET updater PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+install(TARGETS updater RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}" COMPONENT Runtime)

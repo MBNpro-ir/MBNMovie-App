@@ -1,0 +1,305 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../core/library_store.dart';
+import '../core/playlist_store.dart';
+import '../models/movie_content.dart';
+import 'mbn_auth.dart';
+
+/// Server sync for favorites / playlists / history / watch progress.
+///
+/// Last-write-wins per category using timestamps: the side with the newer
+/// timestamp wins, so an admin-side clear propagates on the next sync and
+/// two devices converge without resurrecting deleted rows.
+class MbnSync {
+  MbnSync._();
+  static final instance = MbnSync._();
+
+  static const _app = 'movie';
+  static const _tsPrefix = 'mbn_sync_ts_';
+  static const _categories = ['favorites', 'playlists', 'history', 'progress'];
+
+  MbnAuth? _auth;
+  DateTime? _lastHistoryPush;
+
+  void configure({required MbnAuth auth}) => _auth = auth;
+  void clear() => _auth = null;
+
+  static String _tsKey(String category) => '$_tsPrefix$category';
+
+  Future<int> _localTs(String category) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getInt(_tsKey(category)) ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  Future<void> _touchLocal(String category) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(
+        _tsKey(category),
+        DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _setLocalTs(String category, int value) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_tsKey(category), value);
+    } catch (_) {}
+  }
+
+  /// Full sync: pull newer server rows, push newer local rows.
+  Future<void> syncAll() async {
+    final auth = _auth;
+    if (auth?.token == null) return;
+    try {
+      final server = await auth!.getJson('/api/sync', query: {'app': _app});
+      final lib = LibraryStore();
+      final lists = PlaylistStore();
+      for (final category in _categories) {
+        final row = (server[category] as Map?)?.cast<String, dynamic>();
+        final serverTs = (row?['updated_at'] as num?)?.toInt() ?? 0;
+        final localTs = await _localTs(category);
+        if (serverTs > localTs) {
+          await _applyServer(category, row?['payload'], lib, lists);
+          await _setLocalTs(category, serverTs);
+        } else {
+          await _pushCategories([category]);
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _applyServer(
+    String category,
+    Object? payload,
+    LibraryStore lib,
+    PlaylistStore lists,
+  ) async {
+    try {
+      switch (category) {
+        case 'favorites':
+          await lib.saveFavorites(_decodeContents(payload));
+        case 'history':
+          await lib.saveHistory(_decodeContents(payload));
+        case 'playlists':
+          await _restorePlaylists(lists, payload);
+        case 'progress':
+          await _restoreProgress(payload);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _pushCategories(List<String> targets) async {
+    final auth = _auth;
+    if (auth?.token == null) return;
+    final lib = LibraryStore();
+    final lists = PlaylistStore();
+    final data = <String, dynamic>{};
+    for (final category in targets) {
+      data[category] = await _localBundle(category, lib, lists);
+    }
+    try {
+      final updated = await auth!.putJson('/api/sync', {
+        'app': _app,
+        'data': data,
+      });
+      for (final category in targets) {
+        final row = (updated[category] as Map?)?.cast<String, dynamic>();
+        final ts = (row?['updated_at'] as num?)?.toInt() ?? 0;
+        await _setLocalTs(category, ts);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> pushFavorites() async {
+    await _touchLocal('favorites');
+    await _pushCategories(['favorites']);
+  }
+
+  Future<void> pushPlaylists() async {
+    await _touchLocal('playlists');
+    await _pushCategories(['playlists']);
+  }
+
+  /// History/progress change often during playback; throttle pushes.
+  Future<void> pushHistoryThrottled() async {
+    final now = DateTime.now();
+    if (_lastHistoryPush != null &&
+        now.difference(_lastHistoryPush!) < const Duration(seconds: 60)) {
+      await _touchLocal('history');
+      await _touchLocal('progress');
+      return;
+    }
+    _lastHistoryPush = now;
+    await _touchLocal('history');
+    await _touchLocal('progress');
+    await _pushCategories(['history']);
+    await _pushCategories(['progress']);
+  }
+
+  Future<void> pushAll() => _pushCategories(_categories);
+
+  Future<void> touchAndPush(String category) async {
+    await _touchLocal(category);
+    await _pushCategories([category]);
+  }
+
+  // ---------------------------------------------------------- local I/O ---
+  Future<Object?> _localBundle(
+    String category,
+    LibraryStore lib,
+    PlaylistStore lists,
+  ) async {
+    switch (category) {
+      case 'favorites':
+        return (await lib.favorites()).map(_encodeContent).toList();
+      case 'history':
+        return (await lib.history()).map(_encodeContent).toList();
+      case 'playlists':
+        return (await lists.playlists()).map((list) => list.toJson()).toList();
+      case 'progress':
+        return _readProgressKeys();
+    }
+    return null;
+  }
+
+  Future<Map<String, dynamic>> _readProgressKeys() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final out = <String, dynamic>{};
+      var count = 0;
+      for (final key in prefs.getKeys()) {
+        if (count >= 400) break;
+        if (key.startsWith('watch_pos_') ||
+            key.startsWith('watch_dur_') ||
+            key.startsWith('watch_done_') ||
+            key.startsWith('watch_time_') ||
+            key == 'watch_last_v1') {
+          final value = prefs.get(key);
+          if (value is num || value is bool || value is String) {
+            out[key] = value;
+            count++;
+          }
+        }
+      }
+      return out;
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<void> _restorePlaylists(PlaylistStore lists, Object? payload) async {
+    final rows = payload is List ? payload : const [];
+    final current = await lists.playlists();
+    final seen = {for (final list in current) list.id};
+    for (final row in rows.whereType<Map>()) {
+      final parsed = MoviePlaylist.fromJson(
+        row.map((key, value) => MapEntry('$key', value)),
+      );
+      if (parsed == null || !seen.add(parsed.id)) continue;
+      await lists.importPlaylist(parsed);
+    }
+    for (final list in current) {
+      if (!rows.any((row) => row is Map && '${row['id']}' == list.id)) {
+        await lists.delete(list.id);
+      }
+    }
+  }
+
+  Future<void> _restoreProgress(Object? payload) async {
+    if (payload is! Map) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      var count = 0;
+      for (final entry in payload.entries) {
+        if (count >= 400) break;
+        final key = '${entry.key}';
+        final value = entry.value;
+        final isWatchKey =
+            key.startsWith('watch_pos_') ||
+            key.startsWith('watch_dur_') ||
+            key.startsWith('watch_done_') ||
+            key.startsWith('watch_time_') ||
+            key == 'watch_last_v1';
+        if (!isWatchKey) continue;
+        if (value is int) {
+          await prefs.setInt(key, value);
+        } else if (value is double) {
+          await prefs.setDouble(key, value);
+        } else if (value is bool) {
+          await prefs.setBool(key, value);
+        } else if (value is String) {
+          await prefs.setString(key, value);
+        } else {
+          continue;
+        }
+        count++;
+      }
+    } catch (_) {}
+  }
+
+  // ---------------------------------------------------------------- codecs -
+  static Map<String, Object?> _encodeContent(MovieContent item) => {
+    'id': item.id,
+    'title': item.title,
+    'subtitle': item.subtitle,
+    'description': item.description,
+    'year': item.year,
+    'rating': item.rating,
+    'kind': item.kind.name,
+    'colors': item.colors.map((color) => color.toARGB32()).toList(),
+    'genres': item.genres,
+    'imageUrl': item.imageUrl,
+    'backdropUrl': item.backdropUrl,
+    'detailUrl': item.detailUrl,
+    'tags': item.tags,
+  };
+
+  static List<MovieContent> _decodeContents(Object? payload) {
+    final rows = payload is List ? payload : const [];
+    return [
+      for (final row in rows.whereType<Map>())
+        _decodeContent(row.map((key, value) => MapEntry('$key', value))),
+    ].where((item) => item.id.isNotEmpty).toList();
+  }
+
+  static MovieContent _decodeContent(Map<String, dynamic> row) {
+    final kindName = row['kind']?.toString();
+    final kind = ContentKind.values.where((value) => value.name == kindName);
+    var kindValue = kind.isEmpty ? ContentKind.movie : kind.first;
+    if (kindName == 'anime') kindValue = ContentKind.movie;
+    final colors = (row['colors'] as List<dynamic>? ?? const [])
+        .whereType<num>()
+        .map((value) => Color(value.toInt()))
+        .toList();
+    return MovieContent(
+      id: row['id']?.toString() ?? '',
+      title: row['title']?.toString() ?? 'بدون عنوان',
+      subtitle: row['subtitle']?.toString() ?? '',
+      description: row['description']?.toString() ?? '',
+      year: (row['year'] as num?)?.toInt() ?? 0,
+      rating: (row['rating'] as num?)?.toDouble() ?? 0,
+      kind: kindValue,
+      colors: colors.length >= 2
+          ? colors
+          : const [Color(0xFF4665B3), Color(0xFF10182B)],
+      genres: (row['genres'] as List<dynamic>? ?? const [])
+          .map((value) => value.toString())
+          .toList(),
+      imageUrl: row['imageUrl']?.toString(),
+      backdropUrl: row['backdropUrl']?.toString(),
+      detailUrl: row['detailUrl']?.toString(),
+      tags: (row['tags'] as List<dynamic>? ?? const [])
+          .map((value) => value.toString())
+          .toList(),
+    );
+  }
+}

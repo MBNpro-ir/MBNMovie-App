@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.14)
+project(mbnmovie_debug_cache_test LANGUAGES CXX)
+add_executable(debug_cache_test debug_cache_test.cpp)
+target_compile_features(debug_cache_test PRIVATE cxx_std_17)
+target_compile_options(debug_cache_test PRIVATE /W4 /WX)
+enable_testing()
+add_test(NAME debug_cache_test COMMAND debug_cache_test)

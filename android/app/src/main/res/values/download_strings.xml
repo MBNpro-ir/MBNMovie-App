@@ -1,0 +1,7 @@
+<resources>
+    <string name="bg_downloader_cancel">لغو</string>
+    <string name="bg_downloader_pause">توقف</string>
+    <string name="bg_downloader_resume">ادامه</string>
+    <string name="bg_downloader_notification_channel_name">دانلودهای MBNMovie</string>
+    <string name="bg_downloader_notification_channel_description">پیشرفت دانلودها، بدون صدا</string>
+</resources>
