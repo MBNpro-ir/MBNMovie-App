@@ -5,6 +5,7 @@ import 'package:background_downloader/background_downloader.dart';
 import 'package:flutter/material.dart';
 import '../core/download_bundles.dart';
 import '../core/watch_progress.dart';
+import '../core/search_direction.dart';
 import '../services/download_manager.dart';
 import '../services/device_bridge.dart';
 import '../services/external_apps.dart';
@@ -171,9 +172,7 @@ class _DownloadManagerScreenState extends State<DownloadManagerScreen> {
                       ) &&
                       (_filter == 'همه' ||
                           _filter ==
-                              downloadStatusLabel(
-                                manager.effectiveStatus(r),
-                              )),
+                              downloadStatusLabel(manager.effectiveStatus(r))),
                 )
                 .toList()
               ..sort(
@@ -254,10 +253,7 @@ class _DownloadManagerScreenState extends State<DownloadManagerScreen> {
                                 desktop: desktop,
                               );
                             }
-                            return _bundleCard(
-                              bundle,
-                              desktop: desktop,
-                            );
+                            return _bundleCard(bundle, desktop: desktop);
                           },
                         ),
                       ),
@@ -372,9 +368,8 @@ class _DownloadManagerScreenState extends State<DownloadManagerScreen> {
                       ? 'فقط Wi-Fi (موبایل)'
                       : 'فقط Wi-Fi',
                 ),
-                tooltip: Platform.isWindows ||
-                        Platform.isLinux ||
-                        Platform.isMacOS
+                tooltip:
+                    Platform.isWindows || Platform.isLinux || Platform.isMacOS
                     ? 'روی دسکتاپ، دانلودر Dart محدودیت شبکه اعمال نمی‌کند؛ این گزینه فقط روی موبایل اثر دارد.'
                     : null,
                 selected: manager.wifiOnly,
@@ -426,6 +421,7 @@ class _DownloadManagerScreenState extends State<DownloadManagerScreen> {
   );
 
   Widget _searchField() => TextField(
+    textDirection: searchTextDirection(_search),
     decoration: const InputDecoration(
       labelText: 'جست‌وجو در دانلودها',
       prefixIcon: Icon(Icons.search_rounded),
@@ -553,10 +549,7 @@ class _DownloadManagerScreenState extends State<DownloadManagerScreen> {
                   Text(
                     '${(bundle.totalBytes / 1048576).toStringAsFixed(1)} MB',
                     textDirection: TextDirection.ltr,
-                    style: const TextStyle(
-                      color: Colors.white60,
-                      fontSize: 12,
-                    ),
+                    style: const TextStyle(color: Colors.white60, fontSize: 12),
                   ),
               ],
             ),
@@ -608,17 +601,15 @@ class _DownloadManagerScreenState extends State<DownloadManagerScreen> {
     children: [
       if (bundleCanResume(bundle, manager.heldForPause))
         FilledButton.tonalIcon(
-          onPressed: () => _action(
-            () => manager.resumeBundleTasks(bundle.records),
-          ),
+          onPressed: () =>
+              _action(() => manager.resumeBundleTasks(bundle.records)),
           icon: const Icon(Icons.play_arrow_rounded),
           label: const Text('ادامه همه'),
         ),
       if (bundleCanPause(bundle))
         OutlinedButton.icon(
-          onPressed: () => _action(
-            () => manager.pauseBundleTasks(bundle.records),
-          ),
+          onPressed: () =>
+              _action(() => manager.pauseBundleTasks(bundle.records)),
           icon: const Icon(Icons.pause_rounded),
           label: const Text('توقف همه'),
         ),

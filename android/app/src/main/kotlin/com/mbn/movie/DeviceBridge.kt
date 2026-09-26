@@ -135,7 +135,12 @@ class DeviceBridge(
                 }
                 "installApk" -> result.success(installApk(call.argument<String>("path") ?: ""))
                 "isAppInstalled" -> result.success(isAppInstalled(call.argument<String>("package") ?: ""))
-                "openApp" -> result.success(openApp(call.argument<String>("package") ?: ""))
+                "openApp" -> result.success(openApp(call.argument<String>("package") ?: "", call.argument<String>("handoff")))
+                "takeHandoff" -> {
+                    val message = activity.intent?.getStringExtra("mbn_handoff")
+                    activity.intent?.removeExtra("mbn_handoff")
+                    result.success(message)
+                }
                 "playLocalVideo" -> {
                     val file = File(call.argument<String>("path") ?: "").canonicalFile
                     val root = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "MBNMovie").canonicalFile
@@ -181,10 +186,11 @@ class DeviceBridge(
         }
     }
 
-    private fun openApp(pkg: String): Boolean {
+    private fun openApp(pkg: String, handoff: String? = null): Boolean {
         if (pkg.isEmpty()) return false
         val intent = activity.packageManager.getLaunchIntentForPackage(pkg) ?: return false
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        if (handoff != null) intent.putExtra("mbn_handoff", handoff)
         return try {
             activity.startActivity(intent)
             true

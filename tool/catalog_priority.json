@@ -1,0 +1,47 @@
+[
+  {
+    "id": "23349",
+    "title": "آفیس",
+    "image": "http://vd1.findmylinkes.ir/app-pic/movies/2023/10/img_42f67ee6edf8958816e38b124609c38f1697043994.jpg",
+    "year": "2001",
+    "rating": "8.5",
+    "kind": "serie",
+    "aliases": [
+      "The Office"
+    ],
+    "genres": "کمدی,درام",
+    "countries": "انگلستان",
+    "is_duble": "F",
+    "subtitles": "",
+    "state_serie": "وضعیت سریال : پایان یافته است"
+  },
+  {
+    "id": "7632",
+    "title": "اداره",
+    "image": "http://dl.tdmm2.ir/rubi-pic/movies/2022/05/img_12e2f52aa0556012b07ff719674fa1211653044355.jpg",
+    "year": "2005",
+    "rating": "9.0",
+    "kind": "serie",
+    "aliases": [
+      "The Office"
+    ],
+    "genres": "250 برتر تاریخ,کمدی",
+    "countries": "امریکا",
+    "is_duble": "F",
+    "subtitles": "",
+    "state_serie": "وضعیت سریال : پایان یافته است"
+  },
+  {
+    "id": "8315",
+    "title": "آخرین پادشاهی",
+    "image": "http://dl.tdmm2.ir/rubi-pic/movies/2022/03/img_5d4e9ad861ef6d44fe34c3154ac207301647435953.jpg",
+    "year": "2015",
+    "rating": "8.5",
+    "kind": "serie",
+    "aliases": [
+      "The Last Kingdom"
+    ],
+    "genres": "اکشن,تاریخی,درام",
+    "countries": "انگلستان"
+  }
+]

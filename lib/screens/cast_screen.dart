@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../core/theme.dart';
+import '../core/search_direction.dart';
 import '../models/movie_content.dart';
 import '../services/movie_api.dart';
 import '../widgets/ambient_background.dart';
@@ -58,8 +59,9 @@ class _CastSearchScreenState extends State<CastSearchScreen> {
 
   void _changed(String value) {
     debounce?.cancel();
+    generation++;
+    setState(() {});
     debounce = Timer(const Duration(milliseconds: 420), () {
-      generation++;
       setState(() {
         page = 0;
         people.clear();
@@ -76,7 +78,10 @@ class _CastSearchScreenState extends State<CastSearchScreen> {
     final query = controller.text.trim();
     if (query.isNotEmpty && query.length < 2) return;
     final ticket = generation;
-    setState(() { loading = true; error = null; });
+    setState(() {
+      loading = true;
+      error = null;
+    });
     try {
       final result = query.isEmpty
           ? await widget.api.actors(page: page + 1)
@@ -108,11 +113,14 @@ class _CastSearchScreenState extends State<CastSearchScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.all(16),
-            child: SearchBar(
-              controller: controller,
-              hintText: 'جست‌وجوی بازیگران',
-              leading: const Icon(Icons.search_rounded),
-              onChanged: _changed,
+            child: Directionality(
+              textDirection: searchTextDirection(controller.text),
+              child: SearchBar(
+                controller: controller,
+                hintText: 'جست‌وجوی بازیگران',
+                leading: const Icon(Icons.search_rounded),
+                onChanged: _changed,
+              ),
             ),
           ),
           Expanded(
@@ -125,39 +133,56 @@ class _CastSearchScreenState extends State<CastSearchScreen> {
                 controller: scroll,
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 90),
                 gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 170, mainAxisExtent: 188,
-                  crossAxisSpacing: 12, mainAxisSpacing: 12,
+                  maxCrossAxisExtent: 170,
+                  mainAxisExtent: 188,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
                 ),
                 itemCount: people.length + (loading || error != null ? 1 : 0),
                 itemBuilder: (context, index) {
                   if (index == people.length) {
-                    return Center(child: error == null
-                        ? const CircularProgressIndicator()
-                        : TextButton(onPressed: _load, child: Text(error!)));
+                    return Center(
+                      child: error == null
+                          ? const CircularProgressIndicator()
+                          : TextButton(onPressed: _load, child: Text(error!)),
+                    );
                   }
                   final person = people[index];
                   return Pressable(
-                    onTap: () => Navigator.push(context, MaterialPageRoute<void>(
-                      builder: (_) => CastTitlesScreen(
-                        person: person, api: widget.api, onOpen: widget.onOpen),
-                    )),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute<void>(
+                        builder: (_) => CastTitlesScreen(
+                          person: person,
+                          api: widget.api,
+                          onOpen: widget.onOpen,
+                        ),
+                      ),
+                    ),
                     child: Card(
                       color: MovieColors.surfaceHigh,
-                      child: Column(children: [
-                        const SizedBox(height: 10),
-                        CircleAvatar(
-                          radius: 57,
-                          backgroundColor: MovieColors.surface,
-                          foregroundImage: person.imageUrl == null ||
-                                  person.imageUrl!.isEmpty
-                              ? null : NetworkImage(person.imageUrl!),
-                          child: const Icon(Icons.person_rounded, size: 48),
-                        ),
-                        const SizedBox(height: 10),
-                        Text(person.name, maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center),
-                      ]),
+                      child: Column(
+                        children: [
+                          const SizedBox(height: 10),
+                          CircleAvatar(
+                            radius: 57,
+                            backgroundColor: MovieColors.surface,
+                            foregroundImage:
+                                person.imageUrl == null ||
+                                    person.imageUrl!.isEmpty
+                                ? null
+                                : NetworkImage(person.imageUrl!),
+                            child: const Icon(Icons.person_rounded, size: 48),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            person.name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
                     ),
                   );
                 },
@@ -171,8 +196,12 @@ class _CastSearchScreenState extends State<CastSearchScreen> {
 }
 
 class CastTitlesScreen extends StatefulWidget {
-  const CastTitlesScreen({super.key, required this.person,
-    required this.api, required this.onOpen});
+  const CastTitlesScreen({
+    super.key,
+    required this.person,
+    required this.api,
+    required this.onOpen,
+  });
   final MoviePerson person;
   final MovieApi api;
   final Future<void> Function(MovieContent item, String tag) onOpen;
@@ -214,10 +243,15 @@ class _CastTitlesScreenState extends State<CastTitlesScreen> {
 
   Future<void> _load() async {
     if (loading || !more) return;
-    setState(() { loading = true; error = null; });
+    setState(() {
+      loading = true;
+      error = null;
+    });
     try {
-      final details =
-          await widget.api.actorDetails(widget.person, page: page + 1);
+      final details = await widget.api.actorDetails(
+        widget.person,
+        page: page + 1,
+      );
       if (!mounted) return;
       setState(() {
         page++;
@@ -265,54 +299,68 @@ class _CastTitlesScreenState extends State<CastTitlesScreen> {
         child: CustomScrollView(
           controller: scroll,
           slivers: [
-            SliverToBoxAdapter(child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(children: [
-                    CircleAvatar(
-                      radius: 36,
-                      foregroundImage: widget.person.imageUrl == null ||
-                              widget.person.imageUrl!.isEmpty
-                          ? null : NetworkImage(widget.person.imageUrl!),
-                      child: const Icon(Icons.person_rounded),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
-                        Text(widget.person.name,
-                          style: Theme.of(context).textTheme.titleLarge),
-                        if (widget.person.role.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Text(widget.person.role,
-                              style: const TextStyle(
-                                color: MovieColors.muted,
-                                fontSize: 12,
-                              )),
+                        CircleAvatar(
+                          radius: 36,
+                          foregroundImage:
+                              widget.person.imageUrl == null ||
+                                  widget.person.imageUrl!.isEmpty
+                              ? null
+                              : NetworkImage(widget.person.imageUrl!),
+                          child: const Icon(Icons.person_rounded),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                widget.person.name,
+                                style: Theme.of(context).textTheme.titleLarge,
+                              ),
+                              if (widget.person.role.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text(
+                                    widget.person.role,
+                                    style: const TextStyle(
+                                      color: MovieColors.muted,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
+                        ),
                       ],
-                    )),
-                  ]),
-                  if (bio.length > 15) ...[
-                    const SizedBox(height: 12),
-                    OutlinedButton.icon(
-                      onPressed: _showBio,
-                      icon: const Icon(Icons.description_outlined, size: 18),
-                      label: const Text('مشاهده بیوگرافی'),
                     ),
+                    if (bio.length > 15) ...[
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        onPressed: _showBio,
+                        icon: const Icon(Icons.description_outlined, size: 18),
+                        label: const Text('مشاهده بیوگرافی'),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
-            )),
+            ),
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 90),
               sliver: SliverGrid.builder(
                 gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 180, childAspectRatio: .57,
-                  crossAxisSpacing: 12, mainAxisSpacing: 12,
+                  maxCrossAxisExtent: 180,
+                  childAspectRatio: .57,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
                 ),
                 itemCount: titles.length,
                 itemBuilder: (context, index) {
@@ -320,17 +368,25 @@ class _CastTitlesScreenState extends State<CastTitlesScreen> {
                   final tag = 'cast-${widget.person.id}-${item.id}';
                   return Pressable(
                     onTap: () => widget.onOpen(item, tag),
-                    child: Hero(tag: tag, child: ContentArt(content: item)),
+                    child: Hero(
+                      tag: tag,
+                      child: ContentArt(content: item),
+                    ),
                   );
                 },
               ),
             ),
-            SliverToBoxAdapter(child: Center(child: loading
-                ? const CircularProgressIndicator()
-                : error != null
+            SliverToBoxAdapter(
+              child: Center(
+                child: loading
+                    ? const CircularProgressIndicator()
+                    : error != null
                     ? TextButton(onPressed: _load, child: Text(error!))
-                    : titles.isEmpty ? const Text('اثری پیدا نشد')
-                        : const SizedBox.shrink())),
+                    : titles.isEmpty
+                    ? const Text('اثری پیدا نشد')
+                    : const SizedBox.shrink(),
+              ),
+            ),
           ],
         ),
       ),

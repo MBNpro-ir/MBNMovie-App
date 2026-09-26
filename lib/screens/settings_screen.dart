@@ -5,7 +5,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/player_preferences.dart';
 import '../core/theme.dart';
+import '../core/title_language.dart';
 import '../services/device_bridge.dart';
+import '../services/mbn_sync.dart';
 import '../services/external_apps.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -81,6 +83,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   double _volume = 100;
   double _rate = 1;
   bool _fitCover = false;
+  bool _englishTitles = false;
   bool _customBrightness = false;
   double _brightness = .5;
   String _defaultPlayer = PlaybackPreferenceStore.askEveryTime;
@@ -120,6 +123,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _volume = (prefs.getDouble('player_volume') ?? 100).clamp(0, 100);
       _rate = (prefs.getDouble('player_rate') ?? 1).clamp(.5, 2);
       _fitCover = prefs.getBool('player_fit_cover') ?? false;
+      _englishTitles = prefs.getBool(TitleLanguage.preferenceKey) ?? false;
       _customBrightness = brightness != null;
       _brightness = (brightness ?? .5).clamp(0, 1);
       _defaultPlayer = _players.containsKey(player)
@@ -147,6 +151,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await prefs.remove('player_screen_brightness');
       if (Platform.isAndroid) await DeviceBridge.setScreenBrightness(null);
     }
+    await MbnSync.instance.pushPreferences();
   }
 
   Future<void> _saveSubtitle(SubtitlePreferences value) async {
@@ -161,25 +166,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _volume = 100;
       _rate = 1;
       _fitCover = false;
+      _englishTitles = false;
       _customBrightness = false;
       _brightness = .5;
       _defaultPlayer = PlaybackPreferenceStore.askEveryTime;
       _defaultStreamer = PlaybackPreferenceStore.askEveryTime;
       _subtitle = subtitle;
     });
-    await Future.wait([
-      prefs.setDouble('player_volume', 100),
-      prefs.setDouble('player_rate', 1),
-      prefs.setBool('player_fit_cover', false),
-      prefs.remove('player_screen_brightness'),
-      PlaybackPreferenceStore.setDefaultPlayer(
-        PlaybackPreferenceStore.askEveryTime,
-      ),
-      PlaybackPreferenceStore.setDefaultStreamer(
-        PlaybackPreferenceStore.askEveryTime,
-      ),
-      subtitle.save(prefs),
-    ]);
+    await prefs.setDouble('player_volume', 100);
+    await prefs.setDouble('player_rate', 1);
+    await prefs.setBool('player_fit_cover', false);
+    await TitleLanguage.setEnglish(false);
+    await prefs.remove('player_screen_brightness');
+    await prefs.setString(
+      PlaybackPreferenceStore.defaultPlayerKey,
+      PlaybackPreferenceStore.askEveryTime,
+    );
+    await prefs.setString(
+      PlaybackPreferenceStore.defaultStreamerKey,
+      PlaybackPreferenceStore.askEveryTime,
+    );
+    await subtitle.save(prefs);
     if (Platform.isAndroid) await DeviceBridge.setScreenBrightness(null);
   }
 
@@ -238,6 +245,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               ),
                             ],
                           ),
+                        ),
+                        _section(
+                          icon: Icons.translate_rounded,
+                          title: 'عنوان فیلم‌ها و سریال‌ها',
+                          children: [
+                            SwitchListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: const Text('نمایش عنوان‌های اصلی به انگلیسی'),
+                              subtitle: const Text(
+                                'جست‌وجو با نام فارسی و انگلیسی در هر دو حالت کار می‌کند.',
+                              ),
+                              value: _englishTitles,
+                              onChanged: (value) async {
+                                setState(() => _englishTitles = value);
+                                await TitleLanguage.setEnglish(value);
+                              },
+                            ),
+                          ],
                         ),
                         _section(
                           icon: Icons.route_rounded,
@@ -393,7 +418,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             _slider(
                               label: 'اندازه متن',
                               value: _subtitle.size,
-                              min: 18,
+                              min: 10,
                               max: 52,
                               suffix: _subtitle.size.round().toString(),
                               onChanged: (value) => _saveSubtitle(

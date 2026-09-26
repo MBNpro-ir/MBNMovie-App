@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart';
@@ -16,6 +17,7 @@ void main() {
   var offline = false;
   var corrupt = false;
   var downloads = 0;
+  Completer<void>? holdDownload;
   final bytes = utf8.encode('verified-package');
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
@@ -23,6 +25,7 @@ void main() {
     offline = false;
     corrupt = false;
     downloads = 0;
+    holdDownload = null;
     directory = await Directory.systemTemp.createTemp('mbnmovie-update-test-');
     server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     server.listen((request) async {
@@ -41,6 +44,7 @@ void main() {
         );
       } else {
         downloads++;
+        if (holdDownload != null) await holdDownload!.future;
         request.response.add(corrupt ? List.filled(bytes.length, 0) : bytes);
       }
       await request.response.close();
@@ -95,8 +99,10 @@ void main() {
       await instance.check();
       // The previously verified 1.2.0 package must remain installable;
       // the failed 1.3.0 bytes must never become the installable pair.
-      expect(instance.phase, UpdatePhase.ready);
+      expect(instance.phase, UpdatePhase.failed);
       expect(instance.release?.version.toString(), '1.2.0');
+      expect(instance.requiredRelease?.version.toString(), '1.3.0');
+      expect(instance.canInstallRequiredRelease, isFalse);
       expect(instance.error, isNotNull);
     },
   );
@@ -105,10 +111,42 @@ void main() {
     final instance = updater();
     await instance.initialize();
     expect(instance.phase, UpdatePhase.failed);
+    expect(instance.requiredRelease?.version.toString(), '1.2.0');
     corrupt = false;
     await instance.check();
     expect(instance.phase, UpdatePhase.ready);
   });
+  test('new release locks the app before its download finishes', () async {
+    holdDownload = Completer<void>();
+    final instance = updater();
+    final pending = instance.initialize();
+    expect(instance.phase, UpdatePhase.checking);
+    for (var i = 0; i < 100 && instance.phase != UpdatePhase.downloading; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    expect(instance.phase, UpdatePhase.downloading);
+    expect(instance.requiredRelease?.version.toString(), '1.2.0');
+    expect(instance.release, isNull);
+    holdDownload!.complete();
+    await pending;
+    expect(instance.canInstallRequiredRelease, isTrue);
+  });
+  test(
+    'known update stays required after failed download and offline restart',
+    () async {
+      corrupt = true;
+      final first = updater();
+      await first.initialize();
+      expect(first.phase, UpdatePhase.failed);
+      expect(first.requiredRelease?.version.toString(), '1.2.0');
+      offline = true;
+      final restarted = updater();
+      await restarted.initialize();
+      expect(restarted.phase, UpdatePhase.failed);
+      expect(restarted.requiredRelease?.version.toString(), '1.2.0');
+      expect(restarted.canInstallRequiredRelease, isFalse);
+    },
+  );
   test(
     'permission denial preserves package and retry installs only after grant',
     () async {

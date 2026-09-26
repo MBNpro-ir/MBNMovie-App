@@ -40,12 +40,20 @@ class AppUpdater extends ChangeNotifier {
   static const repository = 'MBNpro-ir/MBNMovie-App';
   UpdatePhase phase = UpdatePhase.idle;
   ReleaseUpdate? release;
+  ReleaseUpdate? requiredRelease;
   String currentVersion = '';
   String? error, installedNotes;
   double? progress;
   bool _busy = false;
+  bool startupCheckPending = false;
   bool installationPermissionRequired = false;
   File? _package;
+
+  bool get canInstallRequiredRelease =>
+      release != null &&
+      (requiredRelease == null ||
+          (release!.version.compareTo(requiredRelease!.version) >= 0 &&
+              release!.sha256 == requiredRelease!.sha256));
 
   Future<Directory> _cache() async {
     if (_testCache != null) return _testCache!.create(recursive: true);
@@ -54,11 +62,35 @@ class AppUpdater extends ChangeNotifier {
   }
 
   Future<void> initialize() async {
+    startupCheckPending = true;
+    phase = UpdatePhase.checking;
+    notifyListeners();
     try {
       if (currentVersion.isEmpty) {
         currentVersion = (await PackageInfo.fromPlatform()).version;
       }
       final prefs = await SharedPreferences.getInstance();
+      final required = prefs.getString('update_required');
+      if (required != null) {
+        try {
+          final stored = ReleaseUpdate.fromStored(
+            jsonDecode(required) as Map<String, dynamic>,
+            repository: repository,
+            platform: _testPlatform ?? await DeviceBridge.updatePlatform(),
+          );
+          final current = AppVersion.parse(currentVersion);
+          if (stored == null ||
+              current == null ||
+              stored.version.compareTo(current) <= 0) {
+            await prefs.remove('update_required');
+          } else {
+            requiredRelease = stored;
+            notifyListeners();
+          }
+        } catch (_) {
+          await prefs.remove('update_required');
+        }
+      }
       final pending = prefs.getString('update_pending');
       if (pending != null) {
         try {
@@ -87,6 +119,8 @@ class AppUpdater extends ChangeNotifier {
               if (await _validPackage(file, cachedRelease)) {
                 release = cachedRelease;
                 _package = file;
+                requiredRelease ??= cachedRelease;
+                notifyListeners();
               }
             }
           }
@@ -98,6 +132,9 @@ class AppUpdater extends ChangeNotifier {
     } catch (_) {
       error = 'بررسی بروزرسانی انجام نشد؛ اتصال اینترنت را بررسی کن.';
       phase = UpdatePhase.failed;
+      notifyListeners();
+    } finally {
+      startupCheckPending = false;
       notifyListeners();
     }
   }
@@ -163,9 +200,16 @@ class AppUpdater extends ChangeNotifier {
       if (latest.version.compareTo(current) <= 0) {
         phase = UpdatePhase.idle;
         release = null;
+        requiredRelease = null;
         _package = null;
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('update_required');
         return;
       }
+      requiredRelease = latest;
+      notifyListeners();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('update_required', latest.encode());
       // Keep the verified release/package pair together: `release`/`_package`
       // only ever describe an installable build. The newest metadata lives
       // in `latest` until its bytes are downloaded and hash-verified; a
@@ -226,11 +270,10 @@ class AppUpdater extends ChangeNotifier {
       phase = UpdatePhase.ready;
       progress = 1;
       // Retain verified notes for the first launch after installation.
-      final prefs = await SharedPreferences.getInstance();
       await prefs.setString('update_pending', latest.encode());
     } catch (e) {
       // A previously verified package remains installable during an outage.
-      if (release != null &&
+      if (canInstallRequiredRelease &&
           _package != null &&
           await _validPackage(_package!, release!)) {
         phase = UpdatePhase.ready;
@@ -258,7 +301,7 @@ class AppUpdater extends ChangeNotifier {
   Future<void> install() async {
     if (_busy ||
         phase != UpdatePhase.ready ||
-        release == null ||
+        !canInstallRequiredRelease ||
         _package == null) {
       return;
     }

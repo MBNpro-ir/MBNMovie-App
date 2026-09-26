@@ -23,6 +23,9 @@ class MbnProfile {
     required this.isActive,
     required this.subscriptionExpiresAt,
     required this.hasAnimeonLink,
+    this.delfanVerified = false,
+    this.delfanMobile = '',
+    this.hasDelfanPassword = false,
   });
 
   final int id;
@@ -34,6 +37,9 @@ class MbnProfile {
   final bool isActive;
   final int? subscriptionExpiresAt;
   final bool hasAnimeonLink;
+  final bool delfanVerified;
+  final String delfanMobile;
+  final bool hasDelfanPassword;
 
   static MbnProfile fromJson(Map<String, dynamic> row) => MbnProfile(
     id: (row['id'] as num?)?.toInt() ?? 0,
@@ -45,6 +51,9 @@ class MbnProfile {
     isActive: row['is_active'] == true,
     subscriptionExpiresAt: (row['subscription_expires_at'] as num?)?.toInt(),
     hasAnimeonLink: row['has_animeon_link'] == true,
+    delfanVerified: row['delfan_verified'] == true,
+    delfanMobile: row['delfan_mobile']?.toString() ?? '',
+    hasDelfanPassword: row['has_delfan_password'] == true,
   );
 }
 
@@ -86,6 +95,11 @@ class MbnAuth {
         .timeout(const Duration(seconds: 30));
     return _decode(response);
   }
+
+  Future<Map<String, dynamic>> postJson(
+    String path,
+    Map<String, dynamic> body,
+  ) => _post(path, body);
 
   Future<Map<String, dynamic>> getJson(
     String path, {
@@ -144,6 +158,13 @@ class MbnAuth {
       'password': password,
       'app': 'movie',
     });
+    return loginWithHandoff(data, identifier: identifier);
+  }
+
+  Future<MbnProfile> loginWithHandoff(
+    Map<String, dynamic> data, {
+    required String identifier,
+  }) async {
     token = data['token']?.toString();
     if (token == null || token!.isEmpty) {
       throw const MbnAuthException('توکن ورود دریافت نشد.');
@@ -173,7 +194,10 @@ class MbnAuth {
         (data['user'] as Map?)?.cast<String, dynamic>() ?? {},
       );
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_emailKey, profile!.email);
+      await prefs.setString(
+        _emailKey,
+        profile!.email.isNotEmpty ? profile!.email : profile!.username,
+      );
       return true;
     } on MbnAuthException catch (error) {
       if (error.statusCode == 401 || error.statusCode == 403) {

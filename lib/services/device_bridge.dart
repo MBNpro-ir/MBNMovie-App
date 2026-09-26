@@ -48,28 +48,31 @@ class DeviceBridge {
   static Future<bool> isAppInstalled(String package) async {
     if (!Platform.isAndroid) return false;
     try {
-      return await channel.invokeMethod<bool>(
-            'isAppInstalled',
-            {'package': package},
-          ) ==
+      return await channel.invokeMethod<bool>('isAppInstalled', {
+            'package': package,
+          }) ==
           true;
     } catch (_) {
       return false;
     }
   }
 
-  static Future<bool> openApp(String package) async {
+  static Future<String?> takeHandoff() async =>
+      Platform.isAndroid ? channel.invokeMethod<String>('takeHandoff') : null;
+
+  static Future<bool> openApp(String package, {String? handoff}) async {
     if (!Platform.isAndroid) return false;
     try {
-      return await channel.invokeMethod<bool>(
-            'openApp',
-            {'package': package},
-          ) ==
+      return await channel.invokeMethod<bool>('openApp', {
+            'package': package,
+            'handoff': handoff,
+          }) ==
           true;
     } catch (_) {
       return false;
     }
   }
+
   static Future<double> mediaVolume() async =>
       await channel.invokeMethod<double>('mediaVolume') ?? 1;
   static Future<double> setMediaVolume(

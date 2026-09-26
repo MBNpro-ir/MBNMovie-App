@@ -19,6 +19,10 @@ import io.flutter.plugin.common.MethodChannel
 import java.io.File
 
 class MainActivity : FlutterActivity() {
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+    }
     private var deviceBridge: DeviceBridge? = null
     @Deprecated("Delegates the install permission settings result")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {

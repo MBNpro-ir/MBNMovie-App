@@ -279,4 +279,3 @@ class _SessionRecord {
   final String email;
   final String cookie;
 }
-

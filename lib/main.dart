@@ -54,10 +54,10 @@ Future<void> main() async {
       ),
     );
   }
+  UpdatePresentation.start();
   runApp(const MbnmovieApp());
   WidgetsBinding.instance.addPostFrameCallback((_) {
     AppLinks.registerThisApp(appId: 'MBNMovie', exeName: 'mbnmovie.exe');
-    UpdatePresentation.start();
     DownloadManager.instance.initialize().catchError((Object error) {
       DownloadManager.instance.error = 'راه‌اندازی دانلودها انجام نشد.';
     });

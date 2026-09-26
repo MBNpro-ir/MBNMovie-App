@@ -8,6 +8,7 @@ import '../core/country_flags.dart';
 import '../core/episode_catalog.dart';
 import '../core/library_store.dart';
 import '../core/platform_ui.dart';
+import '../core/search_direction.dart';
 import '../core/theme.dart';
 import '../core/watch_progress.dart';
 import '../models/movie_content.dart';
@@ -21,6 +22,7 @@ import '../widgets/content_art.dart';
 import '../widgets/pressable.dart';
 import 'cast_screen.dart';
 import 'detail_screen.dart';
+import 'delfan_phone_link_screen.dart';
 import 'download_manager_screen.dart';
 import 'playlist_screen.dart';
 import 'settings_screen.dart';
@@ -165,6 +167,7 @@ class _MainShellState extends State<MainShell> {
       _push(CastTitlesScreen(person: person, api: widget.api, onOpen: _open));
   void _openHistory() => _push(
     _SavedPage(
+      api: widget.api,
       title: 'بازدیدشده‌ها',
       emptyText: 'هنوز عنوانی باز نکرده‌ای',
       emptyIcon: Icons.history_rounded,
@@ -187,6 +190,7 @@ class _MainShellState extends State<MainShell> {
 
   void _openFavorites() => _push(
     _SavedPage(
+      api: widget.api,
       title: 'علاقه‌مندی‌ها',
       emptyText: 'هنوز چیزی به علاقه‌مندی‌ها اضافه نکرده‌ای',
       emptyIcon: Icons.favorite_outline_rounded,
@@ -209,6 +213,27 @@ class _MainShellState extends State<MainShell> {
   void _openSiblingAnime() => AppLinks.openSibling(context, siblingAnime);
 
   void _openUpdates() => _push(const UpdateScreen());
+
+  Future<void> _openDelfanLink() async {
+    final linked = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute<bool>(
+        builder: (_) => DelfanPhoneLinkScreen(auth: widget.auth),
+      ),
+    );
+    if (linked == true) {
+      final body = await widget.auth.getJson('/api/me');
+      widget.auth.profile = MbnProfile.fromJson(
+        (body['user'] as Map).cast<String, dynamic>(),
+      );
+      final session = await widget.auth.getJson('/api/me/delfan/session');
+      widget.api.bindDelfanSession(
+        mobile: session['mobile']?.toString() ?? '',
+        password: session['password']?.toString() ?? '',
+      );
+      if (mounted) setState(() {});
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -242,6 +267,7 @@ class _MainShellState extends State<MainShell> {
         onOpen: _open,
       ),
       _SavedBody(
+        api: widget.api,
         title: 'علاقه‌مندی‌ها',
         emptyText: 'هنوز چیزی به علاقه‌مندی‌ها اضافه نکرده‌ای',
         emptyIcon: Icons.favorite_outline_rounded,
@@ -281,6 +307,8 @@ class _MainShellState extends State<MainShell> {
           child: Column(
             children: [
               _TopBar(
+                showPhoneWarning: widget.auth.profile?.delfanVerified != true,
+                onPhoneWarning: _openDelfanLink,
                 search: _openSearch,
                 actors: _openCastSearch,
                 history: _openHistory,
@@ -537,12 +565,16 @@ class _AppSwitchButtonState extends State<_AppSwitchButton>
 
 class _TopBar extends StatelessWidget {
   const _TopBar({
+    required this.showPhoneWarning,
+    required this.onPhoneWarning,
     required this.search,
     required this.actors,
     required this.history,
     required this.favorites,
     required this.switchApp,
   });
+  final bool showPhoneWarning;
+  final VoidCallback onPhoneWarning;
   final VoidCallback search;
   final VoidCallback actors;
   final VoidCallback history;
@@ -564,12 +596,22 @@ class _TopBar extends StatelessWidget {
                 onPressed: Scaffold.of(context).openDrawer,
                 icon: const Icon(Icons.menu_rounded, size: 30),
               ),
-              _AppSwitchButton(
-                tooltip: 'رفتن به MBNime',
-                gradient: const [Color(0xFFFF7A1A), Color(0xFFFF4F6D)],
-                icon: Icons.animation_rounded,
-                onTap: switchApp,
-              ),
+              if (showPhoneWarning)
+                TweenAnimationBuilder<double>(
+                  tween: Tween(begin: .75, end: 1),
+                  duration: const Duration(milliseconds: 1000),
+                  curve: Curves.easeInOut,
+                  builder: (context, value, child) => Transform.scale(
+                    scale: value,
+                    child: child,
+                  ),
+                  child: IconButton(
+                    tooltip: 'شمارهٔ موبایل تأیید نشده؛ تکمیل حساب',
+                    onPressed: onPhoneWarning,
+                    icon: const Icon(Icons.warning_rounded,
+                        color: Colors.redAccent, size: 28),
+                  ),
+                ),
               const Spacer(),
               IconButton(
                 tooltip: 'علاقه‌مندی‌ها',
@@ -581,19 +623,41 @@ class _TopBar extends StatelessWidget {
                 onPressed: history,
                 icon: const Icon(Icons.history_rounded, size: 28),
               ),
-              IconButton(
-                tooltip: 'جست‌وجوی بازیگران',
-                onPressed: actors,
-                icon: const Icon(Icons.people_alt_rounded, size: 26),
-              ),
+              if (MediaQuery.sizeOf(context).width >= 600)
+                IconButton(
+                  tooltip: 'جست‌وجوی بازیگران',
+                  onPressed: actors,
+                  icon: const Icon(Icons.people_alt_rounded, size: 26),
+                ),
               IconButton(
                 tooltip: 'جست‌وجو',
                 onPressed: search,
                 icon: const Icon(Icons.search_rounded, size: 30),
               ),
+              _AppSwitchButton(
+                tooltip: 'رفتن به MBNime',
+                gradient: const [Color(0xFFFF7A1A), Color(0xFFFF4F6D)],
+                icon: Icons.animation_rounded,
+                onTap: switchApp,
+              ),
             ],
           ),
-          const IgnorePointer(child: BrandMark(size: 42)),
+          IgnorePointer(
+            child: Align(
+              alignment: MediaQuery.sizeOf(context).width < 600
+                  ? Alignment.centerRight
+                  : Alignment.center,
+              child: Padding(
+                padding: EdgeInsets.only(
+                  right: MediaQuery.sizeOf(context).width < 600
+                      ? (showPhoneWarning ? 116 : 66) : 0,
+                ),
+                child: BrandMark(
+                  size: MediaQuery.sizeOf(context).width < 600 ? 34 : 42,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     ),
@@ -1862,7 +1926,17 @@ class _CatalogPageState extends State<_CatalogPage> {
         parent: AlwaysScrollableScrollPhysics(),
       ),
       slivers: [
-        SliverToBoxAdapter(child: _PageTitle(widget.title)),
+        SliverToBoxAdapter(
+          child: _PageTitle(
+            widget.title,
+            action: _FilterAction(
+              api: widget.api,
+              onOpen: widget.onOpen,
+              title: widget.title,
+              type: widget.kind == ContentKind.movie ? 'movie' : 'serie',
+            ),
+          ),
+        ),
         if (items.isEmpty && loading)
           const SliverFillRemaining(
             child: Center(child: CircularProgressIndicator()),
@@ -1907,7 +1981,20 @@ class _CatalogPageState extends State<_CatalogPage> {
 }
 
 class _SearchPage extends StatefulWidget {
-  const _SearchPage({required this.api, required this.onOpen});
+  const _SearchPage({
+    required this.api,
+    required this.onOpen,
+    this.title = 'جست‌وجو',
+    this.initialType = '',
+    this.initialGenre,
+    this.initialCountry,
+    this.sourcePage,
+  });
+  final String title;
+  final String initialType;
+  final CatalogGroup? initialGenre;
+  final CatalogGroup? initialCountry;
+  final Future<List<MovieContent>> Function(int page)? sourcePage;
   final MovieApi api;
   final OpenContent onOpen;
   @override
@@ -1931,6 +2018,24 @@ class _SearchPageState extends State<_SearchPage> {
   // latest may touch results/error/loading, so a slow earlier request can
   // never overwrite the current query's state.
   int _searchGeneration = 0;
+  Future<List<MovieContent>>? _scopedItems;
+
+  Future<List<MovieContent>> _loadScopedItems() => _scopedItems ??= () async {
+    final items = <MovieContent>[];
+    final seen = <String>{};
+    var repeatedPages = 0;
+    for (var page = 1; page <= 800; page++) {
+      final next = await widget.sourcePage!(page);
+      if (next.isEmpty) break;
+      final before = items.length;
+      for (final item in next) {
+        if (seen.add(item.id)) items.add(item);
+      }
+      repeatedPages = items.length == before ? repeatedPages + 1 : 0;
+      if (repeatedPages >= 2) break;
+    }
+    return items;
+  }();
 
   // فیلدهای جست‌وجوی پیشرفته (مطابق فرم اپ مرجع).
   bool exact = false;
@@ -1951,9 +2056,9 @@ class _SearchPageState extends State<_SearchPage> {
   ];
   static const _dubOptions = [
     MapEntry('', 'مهم نیست'),
-    MapEntry('T', 'دوبله'),
-    MapEntry('F', 'زیرنویس'),
-    MapEntry('B', 'بدون زیرنویس'),
+    MapEntry('dub', 'دوبله'),
+    MapEntry('sub', 'زیرنویس'),
+    MapEntry('nosub', 'بدون زیرنویس'),
   ];
   static const _stateOptions = [
     MapEntry('', 'مهم نیست'),
@@ -1977,6 +2082,9 @@ class _SearchPageState extends State<_SearchPage> {
   @override
   void initState() {
     super.initState();
+    type = widget.initialType;
+    genre = widget.initialGenre;
+    country = widget.initialCountry;
     scroll.addListener(() {
       if (_advMore &&
           !_advLoadingMore &&
@@ -1986,6 +2094,15 @@ class _SearchPageState extends State<_SearchPage> {
       }
     });
     _preloadGroups();
+    if (widget.sourcePage == null &&
+        (type.isNotEmpty ||
+            genre != null ||
+            country != null ||
+            controller.text.isNotEmpty)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) runAdvanced();
+      });
+    }
   }
 
   Future<void> _preloadGroups() async {
@@ -2014,6 +2131,7 @@ class _SearchPageState extends State<_SearchPage> {
 
   void changed(String value) {
     debounce?.cancel();
+    _searchGeneration++;
     setState(() {
       error = null;
       advanced = false;
@@ -2025,6 +2143,20 @@ class _SearchPageState extends State<_SearchPage> {
   }
 
   Future<void> search() async {
+    if (widget.sourcePage != null ||
+        exact ||
+        type.isNotEmpty ||
+        dub.isNotEmpty ||
+        stateSerie.isNotEmpty ||
+        genre != null ||
+        country != null ||
+        imdb.isNotEmpty ||
+        sortBy != 'NewMovie' ||
+        _year(yearFromController).isNotEmpty ||
+        _year(yearToController).isNotEmpty) {
+      await runAdvanced();
+      return;
+    }
     final query = controller.text.trim();
     if (query.length < 2) return;
     final generation = ++_searchGeneration;
@@ -2034,7 +2166,21 @@ class _SearchPageState extends State<_SearchPage> {
       advanced = false;
     });
     try {
-      final found = await widget.api.search(query);
+      final found = await widget.api.search(
+        query,
+        isCanceled: () =>
+            !mounted ||
+            generation != _searchGeneration ||
+            query != controller.text.trim(),
+        onPartial: (partial) {
+          if (!mounted ||
+              generation != _searchGeneration ||
+              query != controller.text.trim()) {
+            return;
+          }
+          setState(() => results = partial);
+        },
+      );
       if (!mounted || generation != _searchGeneration) return;
       if (query != controller.text.trim()) return;
       setState(() {
@@ -2068,6 +2214,22 @@ class _SearchPageState extends State<_SearchPage> {
 
   Future<void> runAdvanced() async {
     debounce?.cancel();
+    final query = controller.text.trim();
+    final hasFilters =
+        exact ||
+        type.isNotEmpty ||
+        dub.isNotEmpty ||
+        stateSerie.isNotEmpty ||
+        genre != null ||
+        country != null ||
+        imdb.isNotEmpty ||
+        sortBy != 'NewMovie' ||
+        _year(yearFromController).isNotEmpty ||
+        _year(yearToController).isNotEmpty;
+    if (widget.sourcePage == null && query.length >= 2 && !hasFilters) {
+      await search();
+      return;
+    }
     final generation = ++_searchGeneration;
     setState(() {
       loading = true;
@@ -2077,20 +2239,38 @@ class _SearchPageState extends State<_SearchPage> {
       _advMore = true;
     });
     try {
-      final found = await widget.api.advancedFilter(
-        query: controller.text.trim(),
-        exact: exact,
-        type: type,
-        dub: dub,
-        genre: genre?.id ?? '',
-        country: country?.id ?? '',
-        imdb: imdb,
-        sortBy: sortBy,
-        yearFrom: _year(yearFromController),
-        yearTo: _year(yearToController),
-        stateSerie: stateSerie,
-        page: 1,
-      );
+      final source = widget.sourcePage == null
+          ? null
+          : await _loadScopedItems();
+      final found = await (source == null
+          ? widget.api.advancedFilter(
+              query: controller.text.trim(),
+              exact: exact,
+              type: type,
+              dub: dub,
+              genre: genre?.id ?? '',
+              country: country?.id ?? '',
+              imdb: imdb,
+              sortBy: sortBy,
+              yearFrom: _year(yearFromController),
+              yearTo: _year(yearToController),
+              stateSerie: stateSerie,
+              page: 1,
+            )
+          : widget.api.filterWithinSource(
+              source,
+              query: controller.text.trim(),
+              exact: exact,
+              type: type,
+              dub: dub,
+              genre: genre?.id ?? '',
+              country: country?.id ?? '',
+              imdb: imdb,
+              sortBy: sortBy,
+              yearFrom: _year(yearFromController),
+              yearTo: _year(yearToController),
+              stateSerie: stateSerie,
+            ));
       if (!mounted || generation != _searchGeneration) return;
       setState(() {
         results = found;
@@ -2124,21 +2304,40 @@ class _SearchPageState extends State<_SearchPage> {
     final fExact = exact;
     setState(() => _advLoadingMore = true);
     try {
+      final source = widget.sourcePage == null
+          ? null
+          : await _loadScopedItems();
       final found = advanced
-          ? await widget.api.advancedFilter(
-              query: query,
-              exact: fExact,
-              type: fType,
-              dub: fDub,
-              genre: fGenre,
-              country: fCountry,
-              imdb: fImdb,
-              sortBy: fSort,
-              yearFrom: fYearFrom,
-              yearTo: fYearTo,
-              stateSerie: fState,
-              page: _advPage + 1,
-            )
+          ? await (source == null
+                ? widget.api.advancedFilter(
+                    query: query,
+                    exact: fExact,
+                    type: fType,
+                    dub: fDub,
+                    genre: fGenre,
+                    country: fCountry,
+                    imdb: fImdb,
+                    sortBy: fSort,
+                    yearFrom: fYearFrom,
+                    yearTo: fYearTo,
+                    stateSerie: fState,
+                    page: _advPage + 1,
+                  )
+                : widget.api.filterWithinSource(
+                    source,
+                    query: query,
+                    exact: fExact,
+                    type: fType,
+                    dub: fDub,
+                    genre: fGenre,
+                    country: fCountry,
+                    imdb: fImdb,
+                    sortBy: fSort,
+                    yearFrom: fYearFrom,
+                    yearTo: fYearTo,
+                    stateSerie: fState,
+                    page: _advPage + 1,
+                  ))
           : await widget.api.search(query, page: _advPage + 1);
       if (!mounted || generation != _searchGeneration) return;
       if (query != controller.text.trim()) return;
@@ -2260,7 +2459,7 @@ class _SearchPageState extends State<_SearchPage> {
   Widget build(BuildContext context) {
     final filtered = results;
     return _InnerScaffold(
-      title: 'جست‌وجو',
+      title: widget.title,
       child: CustomScrollView(
         controller: scroll,
         physics: const BouncingScrollPhysics(
@@ -2270,19 +2469,22 @@ class _SearchPageState extends State<_SearchPage> {
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 10),
-              child: SearchBar(
-                controller: controller,
-                hintText: 'نام فیلم یا سریال را بنویس…',
-                leading: const Icon(Icons.search_rounded),
-                trailing: [
-                  if (controller.text.isNotEmpty)
-                    IconButton(
-                      onPressed: clearSearch,
-                      icon: const Icon(Icons.close_rounded),
-                    ),
-                ],
-                onChanged: changed,
-                onSubmitted: (_) => search(),
+              child: Directionality(
+                textDirection: searchTextDirection(controller.text),
+                child: SearchBar(
+                  controller: controller,
+                  hintText: 'نام فیلم یا سریال را بنویس…',
+                  leading: const Icon(Icons.search_rounded),
+                  trailing: [
+                    if (controller.text.isNotEmpty)
+                      IconButton(
+                        onPressed: clearSearch,
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                  ],
+                  onChanged: changed,
+                  onSubmitted: (_) => search(),
+                ),
               ),
             ),
           ),
@@ -2776,6 +2978,10 @@ class _PaginatedGridPage extends StatefulWidget {
     required this.emptyMessage,
     required this.onOpen,
     required this.loadPage,
+    this.api,
+    this.filterGenre,
+    this.filterCountry,
+    this.filterWithinList = false,
   });
   final String title;
   final String heroPrefix;
@@ -2783,6 +2989,10 @@ class _PaginatedGridPage extends StatefulWidget {
   final String emptyMessage;
   final OpenContent onOpen;
   final Future<List<MovieContent>> Function(int page) loadPage;
+  final MovieApi? api;
+  final CatalogGroup? filterGenre;
+  final CatalogGroup? filterCountry;
+  final bool filterWithinList;
   @override
   State<_PaginatedGridPage> createState() => _PaginatedGridPageState();
 }
@@ -2838,10 +3048,14 @@ class _PaginatedGridPageState extends State<_PaginatedGridPage> {
       setState(() {
         _page++;
         final seen = {for (final item in _items) item.id};
+        var added = 0;
         for (final item in next) {
-          if (seen.add(item.id)) _items.add(item);
+          if (seen.add(item.id)) {
+            _items.add(item);
+            added++;
+          }
         }
-        _more = next.isNotEmpty;
+        _more = next.isNotEmpty && added > 0;
       });
       _fillIfNeeded();
     } on MovieApiException catch (e) {
@@ -2854,64 +3068,85 @@ class _PaginatedGridPageState extends State<_PaginatedGridPage> {
   @override
   Widget build(BuildContext context) => _InnerScaffold(
     title: widget.title,
-    child: _items.isEmpty && _loading
-        ? const Center(child: CircularProgressIndicator())
-        : _items.isEmpty && _error != null
-        ? _ErrorState(retry: () => _load(reset: true), error: _error)
-        : CustomScrollView(
-            controller: _scroll,
-            physics: const BouncingScrollPhysics(
-              parent: AlwaysScrollableScrollPhysics(),
+    child: Column(
+      children: [
+        if (widget.api != null)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+              child: _FilterAction(
+                api: widget.api!,
+                onOpen: widget.onOpen,
+                title: widget.title,
+                genre: widget.filterGenre,
+                country: widget.filterCountry,
+                sourcePage: widget.filterWithinList ? widget.loadPage : null,
+              ),
             ),
-            slivers: [
-              if (_items.isEmpty)
-                SliverToBoxAdapter(
-                  child: SizedBox(
-                    height: 300,
-                    child: _EmptyState(
-                      icon: widget.emptyIcon,
-                      message: widget.emptyMessage,
-                    ),
-                  ),
-                )
-              else
-                _ContentGrid(
-                  items: _items,
-                  onOpen: widget.onOpen,
-                  heroPrefix: widget.heroPrefix,
-                ),
-              if (_loading)
-                const SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Center(child: CircularProgressIndicator()),
-                  ),
-                )
-              else if (_error != null && _items.isNotEmpty)
-                SliverToBoxAdapter(
-                  child: Center(
-                    child: TextButton.icon(
-                      onPressed: _load,
-                      icon: const Icon(Icons.refresh_rounded),
-                      label: const Text('تلاش دوباره'),
-                    ),
-                  ),
-                )
-              else if (!_more && _items.isNotEmpty)
-                const SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(20, 8, 20, 24),
-                    child: Center(
-                      child: Text(
-                        'همه عنوان‌ها نمایش داده شد',
-                        style: TextStyle(color: MovieColors.muted),
-                      ),
-                    ),
-                  ),
-                ),
-              SliverToBoxAdapter(child: SizedBox(height: bottomListGap)),
-            ],
           ),
+        Expanded(
+          child: _items.isEmpty && _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _items.isEmpty && _error != null
+              ? _ErrorState(retry: () => _load(reset: true), error: _error)
+              : CustomScrollView(
+                  controller: _scroll,
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
+                  slivers: [
+                    if (_items.isEmpty)
+                      SliverToBoxAdapter(
+                        child: SizedBox(
+                          height: 300,
+                          child: _EmptyState(
+                            icon: widget.emptyIcon,
+                            message: widget.emptyMessage,
+                          ),
+                        ),
+                      )
+                    else
+                      _ContentGrid(
+                        items: _items,
+                        onOpen: widget.onOpen,
+                        heroPrefix: widget.heroPrefix,
+                      ),
+                    if (_loading)
+                      const SliverToBoxAdapter(
+                        child: Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Center(child: CircularProgressIndicator()),
+                        ),
+                      )
+                    else if (_error != null && _items.isNotEmpty)
+                      SliverToBoxAdapter(
+                        child: Center(
+                          child: TextButton.icon(
+                            onPressed: _load,
+                            icon: const Icon(Icons.refresh_rounded),
+                            label: const Text('تلاش دوباره'),
+                          ),
+                        ),
+                      )
+                    else if (!_more && _items.isNotEmpty)
+                      const SliverToBoxAdapter(
+                        child: Padding(
+                          padding: EdgeInsets.fromLTRB(20, 8, 20, 24),
+                          child: Center(
+                            child: Text(
+                              'همه عنوان‌ها نمایش داده شد',
+                              style: TextStyle(color: MovieColors.muted),
+                            ),
+                          ),
+                        ),
+                      ),
+                    SliverToBoxAdapter(child: SizedBox(height: bottomListGap)),
+                  ],
+                ),
+        ),
+      ],
+    ),
   );
 }
 
@@ -2923,6 +3158,9 @@ class _GroupResultsPageState extends State<_GroupResultsPage> {
     emptyIcon: Icons.movie_filter_outlined,
     emptyMessage: 'عنوانی در این بخش ثبت نشده است',
     onOpen: widget.onOpen,
+    api: widget.api,
+    filterGenre: widget.country ? null : widget.group,
+    filterCountry: widget.country ? widget.group : null,
     loadPage: (page) => widget.api.catalogByGroup(
       group: widget.group,
       country: widget.country,
@@ -2952,6 +3190,8 @@ class _CollectionTitlesPageState extends State<_CollectionTitlesPage> {
     emptyIcon: Icons.collections_outlined,
     emptyMessage: 'عنوانی در این مجموعه ثبت نشده است',
     onOpen: widget.onOpen,
+    api: widget.api,
+    filterWithinList: true,
     loadPage: (page) =>
         widget.api.collectionTitles(widget.collection, page: page),
   );
@@ -3109,62 +3349,85 @@ class _CategoryGridState extends State<_CategoryGrid>
         message: 'عنوانی در این بخش ثبت نشده است',
       );
     }
-    return CustomScrollView(
-      controller: _scroll,
-      physics: const BouncingScrollPhysics(
-        parent: AlwaysScrollableScrollPhysics(),
-      ),
-      slivers: [
-        SliverPadding(
-          padding: const EdgeInsets.all(20),
-          sliver: SliverGrid.builder(
-            gridDelegate: _grid(context),
-            itemCount: _items.length,
-            itemBuilder: (_, i) {
-              final tag = '${widget.heroPrefix}${_items[i].id}';
-              return Pressable(
-                onTap: () => widget.onOpen(_items[i], tag),
-                child: Hero(
-                  tag: tag,
-                  transitionOnUserGestures: true,
-                  createRectTween: smoothHeroRectTween,
-                  flightShuttleBuilder: portraitHeroFlightShuttle,
-                  child: ContentArt(content: _items[i]),
-                ),
-              );
-            },
+    return Column(
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+            child: _FilterAction(
+              api: widget.api,
+              onOpen: widget.onOpen,
+              title: widget.banner.title,
+              type: widget.isMovie,
+              sourcePage: (page) => widget.api.titlesByCategory(
+                widget.banner,
+                isMovie: widget.isMovie,
+                page: page,
+              ),
+            ),
           ),
         ),
-        if (_loading)
-          const SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.all(24),
-              child: Center(child: CircularProgressIndicator()),
+        Expanded(
+          child: CustomScrollView(
+            controller: _scroll,
+            physics: const BouncingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics(),
             ),
-          )
-        else if (_error != null)
-          SliverToBoxAdapter(
-            child: Center(
-              child: TextButton.icon(
-                onPressed: _load,
-                icon: const Icon(Icons.refresh_rounded),
-                label: const Text('تلاش دوباره'),
-              ),
-            ),
-          )
-        else if (!_more)
-          const SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(20, 8, 20, 24),
-              child: Center(
-                child: Text(
-                  'همه عنوان‌ها نمایش داده شد',
-                  style: TextStyle(color: MovieColors.muted),
+            slivers: [
+              SliverPadding(
+                padding: const EdgeInsets.all(20),
+                sliver: SliverGrid.builder(
+                  gridDelegate: _grid(context),
+                  itemCount: _items.length,
+                  itemBuilder: (_, i) {
+                    final tag = '${widget.heroPrefix}${_items[i].id}';
+                    return Pressable(
+                      onTap: () => widget.onOpen(_items[i], tag),
+                      child: Hero(
+                        tag: tag,
+                        transitionOnUserGestures: true,
+                        createRectTween: smoothHeroRectTween,
+                        flightShuttleBuilder: portraitHeroFlightShuttle,
+                        child: ContentArt(content: _items[i]),
+                      ),
+                    );
+                  },
                 ),
               ),
-            ),
+              if (_loading)
+                const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                )
+              else if (_error != null)
+                SliverToBoxAdapter(
+                  child: Center(
+                    child: TextButton.icon(
+                      onPressed: _load,
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('تلاش دوباره'),
+                    ),
+                  ),
+                )
+              else if (!_more)
+                const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(20, 8, 20, 24),
+                    child: Center(
+                      child: Text(
+                        'همه عنوان‌ها نمایش داده شد',
+                        style: TextStyle(color: MovieColors.muted),
+                      ),
+                    ),
+                  ),
+                ),
+              SliverToBoxAdapter(child: SizedBox(height: bottomListGap)),
+            ],
           ),
-        SliverToBoxAdapter(child: SizedBox(height: bottomListGap)),
+        ),
       ],
     );
   }
@@ -3191,12 +3454,15 @@ class _TagResultsPageState extends State<_TagResultsPage> {
     emptyIcon: Icons.tag_outlined,
     emptyMessage: 'عنوانی با این موضوع ثبت نشده است',
     onOpen: widget.onOpen,
+    api: widget.api,
+    filterWithinList: true,
     loadPage: (page) => widget.api.search(widget.tag.title, page: page),
   );
 }
 
 class _SavedPage extends StatefulWidget {
   const _SavedPage({
+    required this.api,
     required this.title,
     required this.emptyText,
     required this.emptyIcon,
@@ -3208,6 +3474,7 @@ class _SavedPage extends StatefulWidget {
     this.clearMessage = 'فهرست عنوان‌های بازدیدشده پاک می‌شود.',
   });
   final String title;
+  final MovieApi api;
   final String emptyText;
   final IconData emptyIcon;
 
@@ -3272,6 +3539,7 @@ class _SavedPageState extends State<_SavedPage> {
         ),
     ],
     child: _SavedBody(
+      api: widget.api,
       title: '',
       emptyText: widget.emptyText,
       emptyIcon: widget.emptyIcon,
@@ -3284,6 +3552,7 @@ class _SavedPageState extends State<_SavedPage> {
 
 class _SavedBody extends StatelessWidget {
   const _SavedBody({
+    required this.api,
     required this.title,
     required this.emptyText,
     required this.emptyIcon,
@@ -3292,6 +3561,7 @@ class _SavedBody extends StatelessWidget {
     required this.heroPrefix,
   });
   final String title;
+  final MovieApi api;
   final String emptyText;
   final IconData emptyIcon;
   final List<MovieContent> items;
@@ -3306,7 +3576,17 @@ class _SavedBody extends StatelessWidget {
         parent: AlwaysScrollableScrollPhysics(),
       ),
       slivers: [
-        if (title.isNotEmpty) SliverToBoxAdapter(child: _PageTitle(title)),
+        SliverToBoxAdapter(
+          child: _PageTitle(
+            title,
+            action: _FilterAction(
+              api: api,
+              onOpen: onOpen,
+              title: title.isEmpty ? 'فهرست من' : title,
+              sourcePage: (page) async => page == 1 ? items : const [],
+            ),
+          ),
+        ),
         _ContentGrid(items: items, onOpen: onOpen, heroPrefix: heroPrefix),
         SliverToBoxAdapter(child: SizedBox(height: bottomListGap)),
       ],
@@ -3810,46 +4090,114 @@ class _SectionAllPageState extends State<_SectionAllPage> {
   @override
   Widget build(BuildContext context) => _InnerScaffold(
     title: widget.section.title,
-    child: CustomScrollView(
-      controller: _scroll,
-      physics: const BouncingScrollPhysics(
-        parent: AlwaysScrollableScrollPhysics(),
-      ),
-      slivers: [
-        _ContentGrid(
-          items: _items,
-          onOpen: widget.onOpen,
-          heroPrefix: 'all-${widget.section.id}-',
-        ),
-        if (_loading)
-          const SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.all(24),
-              child: Center(child: CircularProgressIndicator()),
-            ),
-          )
-        else if (_error != null)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Center(
-                child: TextButton(onPressed: _loadMore, child: Text(_error!)),
-              ),
+    child: Column(
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+            child: _FilterAction(
+              api: widget.api,
+              onOpen: widget.onOpen,
+              title: widget.section.title,
+              type: widget.kind == ContentKind.movie ? 'movie' : 'serie',
             ),
           ),
-        SliverToBoxAdapter(child: SizedBox(height: bottomListGap)),
+        ),
+        Expanded(
+          child: CustomScrollView(
+            controller: _scroll,
+            physics: const BouncingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics(),
+            ),
+            slivers: [
+              _ContentGrid(
+                items: _items,
+                onOpen: widget.onOpen,
+                heroPrefix: 'all-${widget.section.id}-',
+              ),
+              if (_loading)
+                const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                )
+              else if (_error != null)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Center(
+                      child: TextButton(
+                        onPressed: _loadMore,
+                        child: Text(_error!),
+                      ),
+                    ),
+                  ),
+                ),
+              SliverToBoxAdapter(child: SizedBox(height: bottomListGap)),
+            ],
+          ),
+        ),
       ],
     ),
   );
 }
 
 class _PageTitle extends StatelessWidget {
-  const _PageTitle(this.title);
+  const _PageTitle(this.title, {this.action});
   final String title;
+  final Widget? action;
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.fromLTRB(20, 12, 20, 18),
-    child: Text(title, style: Theme.of(context).textTheme.headlineMedium),
+    child: Row(
+      children: [
+        Expanded(
+          child: Text(title, style: Theme.of(context).textTheme.headlineMedium),
+        ),
+        ?action,
+      ],
+    ),
+  );
+}
+
+class _FilterAction extends StatelessWidget {
+  const _FilterAction({
+    required this.api,
+    required this.onOpen,
+    required this.title,
+    this.type = '',
+    this.genre,
+    this.country,
+    this.sourcePage,
+  });
+  final MovieApi api;
+  final OpenContent onOpen;
+  final String title;
+  final String type;
+  final CatalogGroup? genre;
+  final CatalogGroup? country;
+  final Future<List<MovieContent>> Function(int page)? sourcePage;
+
+  @override
+  Widget build(BuildContext context) => OutlinedButton.icon(
+    onPressed: () => Navigator.push<void>(
+      context,
+      slideUpRoute(
+        _SearchPage(
+          api: api,
+          onOpen: onOpen,
+          title: 'فیلتر $title',
+          initialType: type,
+          initialGenre: genre,
+          initialCountry: country,
+          sourcePage: sourcePage,
+        ),
+      ),
+    ),
+    icon: const Icon(Icons.tune_rounded, size: 19),
+    label: const Text('فیلتر'),
   );
 }
 

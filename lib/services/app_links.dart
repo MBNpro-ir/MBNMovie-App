@@ -109,6 +109,68 @@ abstract final class AppLinks {
     return null;
   }
 
+  static Future<bool> isSiblingAvailable(SiblingApp sibling) async {
+    if (Platform.isAndroid) {
+      return DeviceBridge.isAppInstalled(sibling.androidPackage);
+    }
+    return Platform.isWindows && await findSiblingExe(sibling) != null;
+  }
+
+  static Future<bool> launchHandoff(SiblingApp sibling, String message) async {
+    if (Platform.isAndroid) {
+      return DeviceBridge.openApp(sibling.androidPackage, handoff: message);
+    }
+    if (!Platform.isWindows) return false;
+    final exe = await findSiblingExe(sibling);
+    if (exe == null) return false;
+    try {
+      final queued = await Process.run('reg', [
+        'add',
+        registryKey(sibling.id),
+        '/v',
+        'HandoffRequest',
+        '/t',
+        'REG_SZ',
+        '/d',
+        message,
+        '/f',
+      ]);
+      if (queued.exitCode != 0) return false;
+      await Process.start(exe, const [], mode: ProcessStartMode.detached);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<String?> takeHandoff(String appId) async {
+    if (Platform.isAndroid) return DeviceBridge.takeHandoff();
+    if (!Platform.isWindows) return null;
+    try {
+      final result = await Process.run('reg', [
+        'query',
+        registryKey(appId),
+        '/v',
+        'HandoffRequest',
+      ]);
+      if (result.exitCode != 0) return null;
+      final message = parseRegQueryValue(
+        result.stdout.toString(),
+        'HandoffRequest',
+      );
+      await Process.run('reg', [
+        'delete',
+        registryKey(appId),
+        '/v',
+        'HandoffRequest',
+        '/f',
+      ]);
+      return message;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Opens the sibling app and closes this one; otherwise shows the promo
   /// dialog with the GitHub download link.
   static Future<void> openSibling(

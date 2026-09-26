@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../models/movie_content.dart';
+import '../core/title_language.dart';
 import 'movie_image.dart';
 
 enum ArtworkOrientation { portrait, landscape }
@@ -376,13 +377,15 @@ class _ContentArtState extends State<ContentArt> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    widget.content.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.titleMedium?.copyWith(color: Colors.white),
+                  ValueListenableBuilder<int>(
+                    valueListenable: TitleLanguage.revision,
+                    builder: (context, _, _) => Text(
+                      TitleLanguage.title(widget.content),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleMedium
+                          ?.copyWith(color: Colors.white),
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Wrap(

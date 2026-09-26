@@ -68,13 +68,20 @@ Future<void> _openRelease(BuildContext context) async {
 class UpdatePresentation {
   static bool _dialog = false;
   static bool _started = false;
+  static Timer? _periodicCheck;
   static void start() {
     if (_started) return;
     _started = true;
     AppUpdater.instance.addListener(_changed);
     DeviceBridge.installStatus.addListener(_installStatusChanged);
     unawaited(AppUpdater.instance.initialize());
+    _periodicCheck ??= Timer.periodic(
+      const Duration(minutes: 5),
+      (_) => checkNow(),
+    );
   }
+
+  static void checkNow() => unawaited(AppUpdater.instance.check());
 
   static void _installStatusChanged() {
     AppUpdater.instance.handleNativeInstallStatus(
@@ -132,8 +139,11 @@ class _MandatoryUpdateGateState extends State<MandatoryUpdateGate> {
   bool _installing = false;
 
   void _scheduleAutomaticInstall(AppUpdater updater) {
-    final version = updater.release?.version.toString();
+    final version =
+        updater.requiredRelease?.version.toString() ??
+        updater.release?.version.toString();
     if (version == null ||
+        !updater.canInstallRequiredRelease ||
         _installing ||
         updater.installationPermissionRequired ||
         _attemptedVersion == version) {
@@ -162,17 +172,23 @@ class _MandatoryUpdateGateState extends State<MandatoryUpdateGate> {
     builder: (context, _) {
       final updater = _updater;
       final required =
-          updater.release != null && updater.phase != UpdatePhase.idle;
+          updater.startupCheckPending ||
+          updater.requiredRelease != null ||
+          (updater.release != null && updater.phase != UpdatePhase.idle);
       if (!required) return widget.child;
       if (updater.phase == UpdatePhase.ready) {
         _scheduleAutomaticInstall(updater);
       }
       return Stack(
         children: [
-          ExcludeSemantics(
-            child: IgnorePointer(
-              key: const Key('mandatory-update-blocked-content'),
-              child: widget.child,
+          FocusScope(
+            canRequestFocus: false,
+            descendantsAreFocusable: false,
+            child: ExcludeSemantics(
+              child: IgnorePointer(
+                key: const Key('mandatory-update-blocked-content'),
+                child: widget.child,
+              ),
             ),
           ),
           Positioned.fill(
@@ -251,7 +267,9 @@ class _MandatoryUpdateGateState extends State<MandatoryUpdateGate> {
             Text(title, style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
             Text(
-              'نسخهٔ ${updater.release!.version} برای ادامهٔ استفاده از برنامه لازم است. این صفحه پس از تکمیل به‌روزرسانی خودکار بسته می‌شود.',
+              updater.requiredRelease == null && updater.release == null
+                  ? 'پیش از ورود، آخرین نسخهٔ برنامه بررسی می‌شود.'
+                  : 'نسخهٔ ${updater.requiredRelease?.version ?? updater.release!.version} برای ادامهٔ استفاده از برنامه لازم است. این صفحه پس از تکمیل به‌روزرسانی خودکار بسته می‌شود.',
               style: const TextStyle(color: MovieColors.muted),
             ),
             if (checking || downloading || installing) ...[

@@ -19,13 +19,64 @@ class MbnSync {
 
   static const _app = 'movie';
   static const _tsPrefix = 'mbn_sync_ts_';
-  static const _categories = ['favorites', 'playlists', 'history', 'progress'];
+  static const _categories = [
+    'favorites', 'playlists', 'history', 'progress', 'preferences',
+  ];
 
   MbnAuth? _auth;
   DateTime? _lastHistoryPush;
+  Timer? _pendingProgressPush;
+  Timer? _pendingPreferencesPush;
+  bool _syncing = false;
 
   void configure({required MbnAuth auth}) => _auth = auth;
-  void clear() => _auth = null;
+  void clear() {
+    _pendingProgressPush?.cancel();
+    _pendingPreferencesPush?.cancel();
+    _pendingProgressPush = null;
+    _pendingPreferencesPush = null;
+    _auth = null;
+  }
+
+  Future<void> bindAccount(int userId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final owner = prefs.getInt('mbn_sync_owner_v1');
+    if (owner == userId) return;
+    if (owner != null) {
+      final lib = LibraryStore();
+      await lib.saveFavorites([]);
+      await lib.saveHistory([]);
+      final lists = PlaylistStore();
+      for (final list in await lists.playlists()) {
+        await lists.delete(list.id);
+      }
+      for (final key in prefs.getKeys().toList()) {
+        if (_isProgressKey(key) || _isPreferenceKey(key) ||
+            key.startsWith(_tsPrefix) ||
+            key.startsWith('mbn_sync_dirty_') ||
+            key.startsWith('mbn_sync_rev_')) {
+          await prefs.remove(key);
+        }
+      }
+    }
+    await prefs.setInt('mbn_sync_owner_v1', userId);
+  }
+
+  static bool _isProgressKey(String key) =>
+      key.startsWith('watch_pos_') ||
+      key.startsWith('watch_dur_') ||
+      key.startsWith('watch_done_') ||
+      key.startsWith('watch_time_') ||
+      key == 'watch_last_v1';
+
+  static bool _isPreferenceKey(String key) =>
+      key.startsWith('sub_') ||
+      key == 'player_volume' ||
+      key == 'player_rate' ||
+      key == 'player_fit_cover' ||
+      key == 'default_video_player' ||
+      key == 'default_streamer' ||
+      key == 'preferred_stream_quality';
 
   static String _tsKey(String category) => '$_tsPrefix$category';
 
@@ -45,6 +96,11 @@ class MbnSync {
         _tsKey(category),
         DateTime.now().millisecondsSinceEpoch ~/ 1000,
       );
+      await prefs.setBool('mbn_sync_dirty_$category', true);
+      await prefs.setInt(
+        'mbn_sync_rev_$category',
+        (prefs.getInt('mbn_sync_rev_$category') ?? 0) + 1,
+      );
     } catch (_) {}
   }
 
@@ -58,7 +114,8 @@ class MbnSync {
   /// Full sync: pull newer server rows, push newer local rows.
   Future<void> syncAll() async {
     final auth = _auth;
-    if (auth?.token == null) return;
+    if (auth?.token == null || _syncing) return;
+    _syncing = true;
     try {
       final server = await auth!.getJson('/api/sync', query: {'app': _app});
       final lib = LibraryStore();
@@ -67,14 +124,21 @@ class MbnSync {
         final row = (server[category] as Map?)?.cast<String, dynamic>();
         final serverTs = (row?['updated_at'] as num?)?.toInt() ?? 0;
         final localTs = await _localTs(category);
-        if (serverTs > localTs) {
+        final prefs = await SharedPreferences.getInstance();
+        final dirty = prefs.getBool('mbn_sync_dirty_$category') ?? false;
+        if (dirty) {
+          await _pushCategories([category]);
+        } else if (serverTs > localTs) {
           await _applyServer(category, row?['payload'], lib, lists);
           await _setLocalTs(category, serverTs);
-        } else {
+        } else if (serverTs == 0 && localTs == 0) {
           await _pushCategories([category]);
         }
       }
-    } catch (_) {}
+    } catch (_) {
+    } finally {
+      _syncing = false;
+    }
   }
 
   Future<void> _applyServer(
@@ -93,6 +157,8 @@ class MbnSync {
           await _restorePlaylists(lists, payload);
         case 'progress':
           await _restoreProgress(payload);
+        case 'preferences':
+          await _restorePreferences(payload);
       }
     } catch (_) {}
   }
@@ -103,7 +169,10 @@ class MbnSync {
     final lib = LibraryStore();
     final lists = PlaylistStore();
     final data = <String, dynamic>{};
+    final prefs = await SharedPreferences.getInstance();
+    final revisions = <String, int>{};
     for (final category in targets) {
+      revisions[category] = prefs.getInt('mbn_sync_rev_$category') ?? 0;
       data[category] = await _localBundle(category, lib, lists);
     }
     try {
@@ -115,6 +184,10 @@ class MbnSync {
         final row = (updated[category] as Map?)?.cast<String, dynamic>();
         final ts = (row?['updated_at'] as num?)?.toInt() ?? 0;
         await _setLocalTs(category, ts);
+        if ((prefs.getInt('mbn_sync_rev_$category') ?? 0) ==
+            revisions[category]) {
+          await prefs.setBool('mbn_sync_dirty_$category', false);
+        }
       }
     } catch (_) {}
   }
@@ -129,6 +202,16 @@ class MbnSync {
     await _pushCategories(['playlists']);
   }
 
+  Future<void> pushPreferences() async {
+    if (_auth?.token == null) return;
+    await _touchLocal('preferences');
+    _pendingPreferencesPush?.cancel();
+    _pendingPreferencesPush = Timer(const Duration(seconds: 2), () {
+      _pendingPreferencesPush = null;
+      unawaited(_pushCategories(['preferences']));
+    });
+  }
+
   /// History/progress change often during playback; throttle pushes.
   Future<void> pushHistoryThrottled() async {
     final now = DateTime.now();
@@ -136,6 +219,7 @@ class MbnSync {
         now.difference(_lastHistoryPush!) < const Duration(seconds: 60)) {
       await _touchLocal('history');
       await _touchLocal('progress');
+      _scheduleProgressPush();
       return;
     }
     _lastHistoryPush = now;
@@ -143,6 +227,40 @@ class MbnSync {
     await _touchLocal('progress');
     await _pushCategories(['history']);
     await _pushCategories(['progress']);
+  }
+
+  Future<void> pushProgressThrottled() async {
+    if (_auth?.token == null) return;
+    await _touchLocal('progress');
+    final now = DateTime.now();
+    if (_lastHistoryPush == null ||
+        now.difference(_lastHistoryPush!) >= const Duration(seconds: 60)) {
+      _lastHistoryPush = now;
+      await _pushCategories(['progress']);
+    } else {
+      _scheduleProgressPush();
+    }
+  }
+
+  void _scheduleProgressPush() {
+    _pendingProgressPush ??= Timer(const Duration(seconds: 60), () {
+      _pendingProgressPush = null;
+      _lastHistoryPush = DateTime.now();
+      unawaited(_pushCategories(['progress']));
+    });
+  }
+
+  Future<void> flushPending() async {
+    _pendingProgressPush?.cancel();
+    _pendingProgressPush = null;
+    _pendingPreferencesPush?.cancel();
+    _pendingPreferencesPush = null;
+    final prefs = await SharedPreferences.getInstance();
+    for (final category in _categories) {
+      if (prefs.getBool('mbn_sync_dirty_$category') ?? false) {
+        await _pushCategories([category]);
+      }
+    }
   }
 
   Future<void> pushAll() => _pushCategories(_categories);
@@ -167,6 +285,8 @@ class MbnSync {
         return (await lists.playlists()).map((list) => list.toJson()).toList();
       case 'progress':
         return _readProgressKeys();
+      case 'preferences':
+        return _readPreferenceKeys();
     }
     return null;
   }
@@ -175,24 +295,50 @@ class MbnSync {
     try {
       final prefs = await SharedPreferences.getInstance();
       final out = <String, dynamic>{};
-      var count = 0;
       for (final key in prefs.getKeys()) {
-        if (count >= 400) break;
-        if (key.startsWith('watch_pos_') ||
-            key.startsWith('watch_dur_') ||
-            key.startsWith('watch_done_') ||
-            key.startsWith('watch_time_') ||
-            key == 'watch_last_v1') {
+        if (_isProgressKey(key)) {
           final value = prefs.get(key);
           if (value is num || value is bool || value is String) {
             out[key] = value;
-            count++;
           }
         }
       }
       return out;
     } catch (_) {
       return {};
+    }
+  }
+
+  Future<Map<String, dynamic>> _readPreferenceKeys() async {
+    final prefs = await SharedPreferences.getInstance();
+    final out = <String, dynamic>{};
+    for (final key in prefs.getKeys().where(_isPreferenceKey)) {
+      final value = prefs.get(key);
+      if (value is num || value is bool || value is String) out[key] = value;
+    }
+    return out;
+  }
+
+  Future<void> _restorePreferences(Object? payload) async {
+    if (payload is! Map) return;
+    final prefs = await SharedPreferences.getInstance();
+    final received = payload.keys.map((key) => '$key').where(_isPreferenceKey).toSet();
+    for (final key in prefs.getKeys().where(_isPreferenceKey).toList()) {
+      if (!received.contains(key)) await prefs.remove(key);
+    }
+    for (final entry in payload.entries) {
+      final key = '${entry.key}';
+      if (!_isPreferenceKey(key)) continue;
+      final value = entry.value;
+      if (value is int) {
+        await prefs.setInt(key, value);
+      } else if (value is double) {
+        await prefs.setDouble(key, value);
+      } else if (value is bool) {
+        await prefs.setBool(key, value);
+      } else if (value is String) {
+        await prefs.setString(key, value);
+      }
     }
   }
 
@@ -218,17 +364,17 @@ class MbnSync {
     if (payload is! Map) return;
     try {
       final prefs = await SharedPreferences.getInstance();
-      var count = 0;
+      final received = payload.keys
+          .map((key) => '$key')
+          .where(_isProgressKey)
+          .toSet();
+      for (final key in prefs.getKeys().where(_isProgressKey).toList()) {
+        if (!received.contains(key)) await prefs.remove(key);
+      }
       for (final entry in payload.entries) {
-        if (count >= 400) break;
         final key = '${entry.key}';
         final value = entry.value;
-        final isWatchKey =
-            key.startsWith('watch_pos_') ||
-            key.startsWith('watch_dur_') ||
-            key.startsWith('watch_done_') ||
-            key.startsWith('watch_time_') ||
-            key == 'watch_last_v1';
+        final isWatchKey = _isProgressKey(key);
         if (!isWatchKey) continue;
         if (value is int) {
           await prefs.setInt(key, value);
@@ -241,7 +387,6 @@ class MbnSync {
         } else {
           continue;
         }
-        count++;
       }
     } catch (_) {}
   }

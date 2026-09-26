@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/mbn_sync.dart';
 
 class SubtitlePreferences {
   const SubtitlePreferences({
     this.fontFamily = 'Vazirmatn',
-    this.size = 28,
+    this.size = 14,
     this.lineHeight = 1.45,
     this.backgroundColor = Colors.black,
     this.backgroundOpacity = .62,
@@ -61,7 +62,7 @@ class SubtitlePreferences {
   factory SubtitlePreferences.fromStore(SharedPreferences prefs) =>
       SubtitlePreferences(
         fontFamily: prefs.getString('sub_font') ?? 'Vazirmatn',
-        size: prefs.getDouble('sub_size') ?? 28,
+        size: prefs.getDouble('sub_size') ?? 14,
         lineHeight: prefs.getDouble('sub_height') ?? 1.45,
         backgroundColor: Color(
           prefs.getInt('sub_bg_color') ?? Colors.black.toARGB32(),
@@ -89,6 +90,7 @@ class SubtitlePreferences {
     await prefs.setBool('sub_shadow', shadow);
     await prefs.setDouble('sub_delay', delay);
     await prefs.setDouble('sub_timing_scale', timingScale);
+    await MbnSync.instance.pushPreferences();
   }
 }
 
@@ -108,17 +110,15 @@ abstract final class PlaybackPreferenceStore {
       (await SharedPreferences.getInstance()).getString(defaultStreamerKey) ??
       askEveryTime;
 
-  static Future<void> setDefaultPlayer(String value) async =>
-      (await SharedPreferences.getInstance()).setString(
-        defaultPlayerKey,
-        value,
-      );
+  static Future<void> setDefaultPlayer(String value) async {
+    await (await SharedPreferences.getInstance()).setString(defaultPlayerKey, value);
+    await MbnSync.instance.pushPreferences();
+  }
 
-  static Future<void> setDefaultStreamer(String value) async =>
-      (await SharedPreferences.getInstance()).setString(
-        defaultStreamerKey,
-        value,
-      );
+  static Future<void> setDefaultStreamer(String value) async {
+    await (await SharedPreferences.getInstance()).setString(defaultStreamerKey, value);
+    await MbnSync.instance.pushPreferences();
+  }
 
   static Future<bool> recordPlayerUse(String value) =>
       _recordUse(group: 'player', value: value, suggestAt: 4);

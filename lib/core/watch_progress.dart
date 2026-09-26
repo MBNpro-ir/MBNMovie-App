@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/mbn_sync.dart';
 
 /// Saved playback position of a single episode.
 class SavedWatchProgress {
@@ -68,6 +70,7 @@ class WatchProgressStore {
     if (markWatched || reachedEnd) {
       await prefs.setBool(_watchedKey(contentId, episodeId), true);
     }
+    unawaited(MbnSync.instance.pushProgressThrottled());
   }
 
   Future<SavedWatchProgress?> load({
@@ -96,6 +99,7 @@ class WatchProgressStore {
     await prefs.remove(_durKey(contentId, episodeId));
     await prefs.remove(_watchedKey(contentId, episodeId));
     await prefs.remove(_timeKey(contentId, episodeId));
+    unawaited(MbnSync.instance.pushProgressThrottled());
   }
 }
 
@@ -179,6 +183,7 @@ class LastWatchStore {
       'updatedAtMs': DateTime.now().millisecondsSinceEpoch,
     };
     await prefs.setString(_slot, jsonEncode(payload));
+    unawaited(MbnSync.instance.pushProgressThrottled());
   }
 
   Future<LastWatch?> load() async {
@@ -200,6 +205,7 @@ class LastWatchStore {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_slot);
+      unawaited(MbnSync.instance.pushProgressThrottled());
     } catch (_) {}
   }
 }

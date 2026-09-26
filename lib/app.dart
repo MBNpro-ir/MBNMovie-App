@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
@@ -6,6 +7,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'core/desktop_window_frame.dart';
 import 'core/theme.dart';
+import 'core/title_language.dart';
 import 'core/platform_ui.dart';
 import 'widgets/tv_navigation.dart';
 import 'screens/login_screen.dart';
@@ -15,6 +17,9 @@ import 'screens/update_screen.dart';
 import 'services/mbn_auth.dart';
 import 'services/mbn_sync.dart';
 import 'services/movie_api.dart';
+import 'services/auth_handoff.dart';
+import 'services/app_links.dart';
+import 'services/app_updater.dart';
 
 class MbnmovieApp extends StatefulWidget {
   const MbnmovieApp({super.key});
@@ -33,6 +38,10 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
   bool _restoring = true;
   bool _loggedIn = false;
   Timer? _accountTimer;
+  Timer? _syncTimer;
+  Timer? _handoffTimer;
+  bool _handoffBusy = false;
+  bool _siblingAvailable = false;
   bool _checkingAccount = false;
   bool _terminating = false;
 
@@ -40,23 +49,44 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    unawaited(TitleLanguage.initialize());
     _accountTimer = Timer.periodic(
       const Duration(seconds: 20),
       (_) => _checkAccount(),
     );
+    _syncTimer = Timer.periodic(
+      const Duration(minutes: 1),
+      (_) => unawaited(MbnSync.instance.syncAll()),
+    );
+    _handoffTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => unawaited(_checkHandoff()),
+    );
+    unawaited(_checkSibling());
     _restoreSession();
   }
 
   @override
   void dispose() {
     _accountTimer?.cancel();
+    _syncTimer?.cancel();
+    _handoffTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _checkAccount();
+    if (state == AppLifecycleState.resumed) {
+      _checkAccount();
+      UpdatePresentation.checkNow();
+      unawaited(MbnSync.instance.syncAll());
+      unawaited(_checkSibling());
+      unawaited(_checkHandoff());
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      unawaited(MbnSync.instance.flushPending());
+    }
   }
 
   Future<void> _checkAccount() async {
@@ -88,6 +118,7 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
     if (_terminating || !mounted) return;
     _terminating = true;
     MbnSync.instance.clear();
+    _api.clearDelfanSession();
     await _auth.logout();
     if (!mounted) return;
     appNavigatorKey.currentState?.popUntil((route) => route.isFirst);
@@ -135,6 +166,10 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
             ok = true;
           }
           if (ok) {
+            await _bindDelfanSession();
+            if (_auth.profile != null && _auth.profile!.id > 0) {
+              await MbnSync.instance.bindAccount(_auth.profile!.id);
+            }
             MbnSync.instance.configure(auth: _auth);
             await MbnSync.instance.syncAll();
           }
@@ -161,6 +196,170 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
   }
 
   void _refresh() => setState(() {});
+
+  Future<void> _bindDelfanSession() async {
+    _api.clearDelfanSession();
+    if (_auth.profile?.delfanVerified != true) return;
+    try {
+      final data = await _auth.getJson('/api/me/delfan/session');
+      _api.bindDelfanSession(
+        mobile: data['mobile']?.toString() ?? '',
+        password: data['password']?.toString() ?? '',
+      );
+    } catch (_) {
+      // Catalog can still use its guest/index fallback when the link is down.
+    }
+  }
+
+  Future<void> _checkSibling() async {
+    final available = await AppLinks.isSiblingAvailable(siblingAnime);
+    if (mounted && _siblingAvailable != available) {
+      setState(() => _siblingAvailable = available);
+    }
+  }
+
+  Future<void> _beginHandoff() async {
+    final id = await AuthHandoff.create(
+      post: _auth.postJson,
+      sourceApp: 'anime',
+      targetApp: 'movie',
+    );
+    final opened = await AppLinks.launchHandoff(siblingAnime, 'request:$id');
+    if (!opened) {
+      await AuthHandoff.clear(id);
+      throw StateError('برنامهٔ دیگر باز نشد.');
+    }
+    exit(0);
+  }
+
+  Future<void> _checkHandoff() async {
+    if (_handoffBusy ||
+        _restoring ||
+        !mounted ||
+        AppUpdater.instance.startupCheckPending ||
+        AppUpdater.instance.requiredRelease != null) {
+      return;
+    }
+    _handoffBusy = true;
+    try {
+      final message = await AppLinks.takeHandoff('MBNMovie');
+      if (message == null) return;
+      final parts = message.split(':');
+      if (parts.length != 2 || parts[1].length < 20) return;
+      if (parts[0] == 'request') {
+        await _respondHandoff(parts[1]);
+      } else if (parts[0] == 'return') {
+        await _offerHandoff(parts[1]);
+      }
+    } finally {
+      _handoffBusy = false;
+    }
+  }
+
+  Future<void> _respondHandoff(String id) async {
+    if (_loggedIn && _auth.token != null && _auth.profile != null) {
+      final identifier = _auth.profile!.email.isNotEmpty
+          ? _auth.profile!.email
+          : _auth.profile!.username;
+      final approved =
+          await showDialog<bool>(
+            context: context,
+            barrierDismissible: false,
+            builder: (dialogContext) => AlertDialog(
+              title: const Text('ورود مشترک به MBNime'),
+              content: Text(
+                'حساب $identifier در MBNMovie فعال است. اجازه می‌دهی همین حساب در MBNime پیشنهاد شود؟',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, false),
+                  child: const Text('خیر'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(dialogContext, true),
+                  child: const Text('بله، پیشنهاد بده'),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+      try {
+        if (approved) {
+          await AuthHandoff.approve(post: _auth.postJson, id: id);
+        } else {
+          await AuthHandoff.deny(post: _auth.postJson, id: id);
+        }
+      } catch (_) {}
+    }
+    await AppLinks.launchHandoff(siblingAnime, 'return:$id');
+  }
+
+  Future<void> _offerHandoff(String id) async {
+    try {
+      final status = await AuthHandoff.status(post: _auth.postJson, id: id);
+      if (status == null || status['state'] != 'approved') {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'حساب فعالی در برنامهٔ دیگر تأیید نشد؛ می‌توانی دستی وارد شوی.',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+      final identifier = status['identifier']?.toString() ?? '';
+      if (!mounted) return;
+      final useIt =
+          await showDialog<bool>(
+            context: context,
+            barrierDismissible: false,
+            builder: (dialogContext) => AlertDialog(
+              title: const Text('استفاده از حساب MBNime'),
+              content: Text(
+                'در MBNime با $identifier وارد شده‌ای. می‌خواهی همین حساب در MBNMovie استفاده شود؟',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, false),
+                  child: const Text('ورود با حساب دیگر'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(dialogContext, true),
+                  child: const Text('استفاده از همین حساب'),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+      if (!useIt) return;
+      final data = await AuthHandoff.consume(
+        post: _auth.postJson,
+        id: id,
+        targetApp: 'movie',
+      );
+      if (data == null) return;
+      await _auth.loginWithHandoff(data, identifier: identifier);
+      await _bindDelfanSession();
+      if (_auth.profile != null && _auth.profile!.id > 0) {
+        await MbnSync.instance.bindAccount(_auth.profile!.id);
+      }
+      MbnSync.instance.configure(auth: _auth);
+      await MbnSync.instance.syncAll();
+      if (mounted) setState(() => _loggedIn = true);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('ورود مشترک انجام نشد؛ دوباره تلاش کن.'),
+          ),
+        );
+      }
+    } finally {
+      await AuthHandoff.clear(id);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -190,7 +389,7 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
       builder: (context, child) => DesktopWindowFrame(
         child: Directionality(
           textDirection: TextDirection.rtl,
-          child: TvNavigation(child: MandatoryUpdateGate(child: child!)),
+          child: MandatoryUpdateGate(child: TvNavigation(child: child!)),
         ),
       ),
       home: AnimatedSwitcher(
@@ -218,9 +417,10 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
                 api: _api,
                 onLogout: () async {
                   try {
-                    await MbnSync.instance.pushAll();
+                    await MbnSync.instance.flushPending();
                   } catch (_) {}
                   MbnSync.instance.clear();
+                  _api.clearDelfanSession();
                   await _auth.logout();
                   _loggedIn = false;
                   _refresh();
@@ -228,9 +428,25 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
               )
             : LoginScreen(
                 key: const ValueKey('login'),
+                auth: _auth,
+                onAuthenticated: (data, identifier) async {
+                  await _auth.loginWithHandoff(data, identifier: identifier);
+                  await _bindDelfanSession();
+                  MbnSync.instance.configure(auth: _auth);
+                  if (_auth.profile != null && _auth.profile!.id > 0) {
+                    await MbnSync.instance.bindAccount(_auth.profile!.id);
+                  }
+                  await MbnSync.instance.syncAll();
+                  if (mounted) setState(() => _loggedIn = true);
+                },
+                onUseOtherApp: _siblingAvailable ? _beginHandoff : null,
                 onLogin: (identifier, password) async {
                   await _auth.login(identifier: identifier, password: password);
+                  await _bindDelfanSession();
                   MbnSync.instance.configure(auth: _auth);
+                  if (_auth.profile != null && _auth.profile!.id > 0) {
+                    await MbnSync.instance.bindAccount(_auth.profile!.id);
+                  }
                   await MbnSync.instance.syncAll();
                   _loggedIn = true;
                   _refresh();

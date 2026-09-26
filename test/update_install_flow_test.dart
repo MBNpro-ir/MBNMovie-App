@@ -7,6 +7,109 @@ import 'package:mbnmovie/screens/update_screen.dart';
 import 'release_update_test.dart' show releaseJson;
 
 void main() {
+  testWidgets(
+    'startup check blocks navigation before release metadata arrives',
+    (tester) async {
+      final directory = Directory.systemTemp.createTempSync(
+        'mbnmovie-check-gate-',
+      );
+      addTearDown(() => directory.deleteSync(recursive: true));
+      final updater =
+          AppUpdater.testing(
+              currentVersion: '1.0.0',
+              cacheDirectory: directory,
+              route: (uri) => uri,
+              platform: 'Windows-x64',
+            )
+            ..phase = UpdatePhase.checking
+            ..startupCheckPending = true;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MandatoryUpdateGate(
+            updater: updater,
+            child: const Scaffold(body: Text('محتوای برنامه')),
+          ),
+        ),
+      );
+      expect(find.text('در حال بررسی دوبارهٔ به‌روزرسانی'), findsOneWidget);
+      expect(
+        find.byKey(const Key('mandatory-update-blocked-content')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('periodic check without an update leaves content available', (
+    tester,
+  ) async {
+    final directory = Directory.systemTemp.createTempSync('mbnmovie-periodic-');
+    addTearDown(() => directory.deleteSync(recursive: true));
+    final updater = AppUpdater.testing(
+      currentVersion: '1.0.0',
+      cacheDirectory: directory,
+      route: (uri) => uri,
+      platform: 'Windows-x64',
+    )..phase = UpdatePhase.checking;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MandatoryUpdateGate(
+          updater: updater,
+          child: const Scaffold(body: Text('محتوای برنامه')),
+        ),
+      ),
+    );
+    expect(find.text('محتوای برنامه'), findsOneWidget);
+    expect(
+      find.byKey(const Key('mandatory-update-blocked-content')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('failed known update keeps content blocked', (tester) async {
+    final directory = Directory.systemTemp.createTempSync(
+      'mbnmovie-failed-gate-',
+    );
+    addTearDown(() => directory.deleteSync(recursive: true));
+    final updater =
+        AppUpdater.testing(
+            currentVersion: '1.0.0',
+            cacheDirectory: directory,
+            route: (uri) => uri,
+            platform: 'Windows-x64',
+          )
+          ..requiredRelease = ReleaseUpdate.fromGitHub(
+            releaseJson(version: '2.0.0'),
+            repository: AppUpdater.repository,
+            platform: 'Windows-x64',
+          )
+          ..phase = UpdatePhase.failed;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MandatoryUpdateGate(
+          updater: updater,
+          child: const Scaffold(body: Text('محتوای برنامه')),
+        ),
+      ),
+    );
+    expect(find.text('به‌روزرسانی کامل نشد'), findsOneWidget);
+    expect(
+      find.text(
+        'نسخهٔ 2.0.0 برای ادامهٔ استفاده از برنامه لازم است. این صفحه پس از تکمیل به‌روزرسانی خودکار بسته می‌شود.',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<IgnorePointer>(
+            find.byKey(const Key('mandatory-update-blocked-content')),
+          )
+          .ignoring,
+      isTrue,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('known update blocks the app with a non-dismissible gate', (
     tester,
   ) async {
