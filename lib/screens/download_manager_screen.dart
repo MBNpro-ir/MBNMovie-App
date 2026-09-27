@@ -696,11 +696,30 @@ class _DownloadManagerScreenState extends State<DownloadManagerScreen> {
                 textDirection: TextDirection.ltr,
                 style: const TextStyle(color: Colors.white60),
               ),
-            if (record.status == TaskStatus.running && live != null)
-              Text(
-                '${live.networkSpeedAsString}  •  ${live.timeRemainingAsString} مانده',
-                style: const TextStyle(color: Colors.white60),
-              ),
+            if (record.status == TaskStatus.running && live != null) ...[
+              if (live.networkSpeedAsString.isNotEmpty)
+                Text(
+                  live.networkSpeedAsString,
+                  textDirection: TextDirection.ltr,
+                  style: const TextStyle(color: Colors.white60),
+                ),
+              if (live.timeRemainingAsString.isNotEmpty)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      live.timeRemainingAsString,
+                      textDirection: TextDirection.ltr,
+                      style: const TextStyle(color: Colors.white60),
+                    ),
+                    const SizedBox(width: 4),
+                    const Text(
+                      'مانده',
+                      style: TextStyle(color: Colors.white60),
+                    ),
+                  ],
+                ),
+            ],
           ],
         ),
         if (record.exception != null) ...[

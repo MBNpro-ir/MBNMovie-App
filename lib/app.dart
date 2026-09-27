@@ -51,7 +51,7 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     unawaited(TitleLanguage.initialize());
     _accountTimer = Timer.periodic(
-      const Duration(seconds: 20),
+      const Duration(seconds: 6),
       (_) => _checkAccount(),
     );
     _syncTimer = Timer.periodic(
@@ -105,7 +105,11 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
       }
     } on MbnAuthException catch (error) {
       if (error.statusCode == 401 || error.statusCode == 403) {
-        await _forceLogout('نشست شما پایان یافته است؛ دوباره وارد شوید.');
+        await _forceLogout(
+          error.message.isNotEmpty
+              ? error.message
+              : 'نشست شما پایان یافته است؛ دوباره وارد شوید.',
+        );
       }
     } catch (_) {
       // A network failure must not sign out the user.

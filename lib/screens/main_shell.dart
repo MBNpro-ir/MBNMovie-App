@@ -29,6 +29,8 @@ import 'settings_screen.dart';
 import 'subscription_screen.dart';
 import 'update_screen.dart';
 import '../services/app_links.dart';
+import '../widgets/announcement_popup.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Opens a content item along with its source card's Hero [tag] so the
 /// cover flies into the detail popup (and back on close).
@@ -64,6 +66,11 @@ class _MainShellState extends State<MainShell> {
     super.initState();
     _pageController = PageController();
     _restore();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        unawaited(AnnouncementService.checkAndShow(context, widget.auth, app: 'movie'));
+      }
+    });
   }
 
   @override
@@ -261,11 +268,11 @@ class _MainShellState extends State<MainShell> {
         title: 'سریال‌ها',
         onOpen: _open,
       ),
-      _UnseenPage(
-        api: widget.api,
-        seenIds: _history.map((item) => item.id).toSet(),
-        onOpen: _open,
-      ),
+      // _UnseenPage(
+      //   api: widget.api,
+      //   seenIds: _history.map((item) => item.id).toSet(),
+      //   onOpen: _open,
+      // ),
       _SavedBody(
         api: widget.api,
         title: 'علاقه‌مندی‌ها',
@@ -279,6 +286,7 @@ class _MainShellState extends State<MainShell> {
     return Scaffold(
       extendBody: true,
       drawer: _MenuDrawer(
+        auth: widget.auth,
         email: widget.email,
         selected: _index,
         select: _select,
@@ -324,7 +332,7 @@ class _MainShellState extends State<MainShell> {
                         'ویترین',
                         'سینمایی',
                         'سریال',
-                        'دیده‌نشده',
+                        // 'دیده‌نشده',
                         'علاقه‌مندی‌ها',
                       ].indexed)
                         Padding(
@@ -373,7 +381,7 @@ class _AnimatedBottomNav extends StatelessWidget {
     (icon: Icons.home_rounded, label: 'ویترین'),
     (icon: Icons.movie_rounded, label: 'سینمایی'),
     (icon: Icons.video_collection_rounded, label: 'سریال'),
-    (icon: Icons.visibility_off_rounded, label: 'دیده‌نشده'),
+    // (icon: Icons.visibility_off_rounded, label: 'دیده‌نشده'),
     (icon: Icons.favorite_rounded, label: 'علاقه‌مندی‌ها'),
   ];
 
@@ -532,15 +540,15 @@ class _AppSwitchButtonState extends State<_AppSwitchButton>
       builder: (context, child) {
         final pulse = Curves.easeInOut.transform(_controller.value);
         return Container(
-          width: 44,
-          height: 44,
+          width: 40,
+          height: 40,
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topRight,
               end: Alignment.bottomLeft,
               colors: widget.gradient,
             ),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(14),
             boxShadow: [
               BoxShadow(
                 color: widget.gradient.first.withValues(
@@ -556,8 +564,8 @@ class _AppSwitchButtonState extends State<_AppSwitchButton>
       },
       child: InkWell(
         onTap: widget.onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Icon(widget.icon, color: Colors.white, size: 24),
+        borderRadius: BorderRadius.circular(14),
+        child: Icon(widget.icon, color: Colors.white, size: 22),
       ),
     ),
   );
@@ -580,6 +588,24 @@ class _TopBar extends StatelessWidget {
   final VoidCallback history;
   final VoidCallback favorites;
   final VoidCallback switchApp;
+
+  Widget _actionButton({
+    required String tooltip,
+    required VoidCallback onPressed,
+    required IconData icon,
+    double iconSize = 24,
+  }) => SizedBox(
+    width: 40,
+    height: 40,
+    child: IconButton(
+      tooltip: tooltip,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+      iconSize: iconSize,
+      onPressed: onPressed,
+      icon: Icon(icon),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -613,27 +639,34 @@ class _TopBar extends StatelessWidget {
                   ),
                 ),
               const Spacer(),
-              IconButton(
+              _actionButton(
                 tooltip: 'علاقه‌مندی‌ها',
                 onPressed: favorites,
-                icon: const Icon(Icons.favorite_rounded, size: 28),
+                icon: Icons.favorite_rounded,
               ),
-              IconButton(
+              const SizedBox(width: 4),
+              _actionButton(
                 tooltip: 'بازدیدشده‌ها',
                 onPressed: history,
-                icon: const Icon(Icons.history_rounded, size: 28),
+                icon: Icons.history_rounded,
               ),
-              if (MediaQuery.sizeOf(context).width >= 600)
-                IconButton(
+              if (MediaQuery.sizeOf(context).width >= 600) ...[
+                const SizedBox(width: 4),
+                _actionButton(
                   tooltip: 'جست‌وجوی بازیگران',
                   onPressed: actors,
-                  icon: const Icon(Icons.people_alt_rounded, size: 26),
+                  icon: Icons.people_alt_rounded,
+                  iconSize: 22,
                 ),
-              IconButton(
+              ],
+              const SizedBox(width: 4),
+              _actionButton(
                 tooltip: 'جست‌وجو',
                 onPressed: search,
-                icon: const Icon(Icons.search_rounded, size: 30),
+                icon: Icons.search_rounded,
+                iconSize: 26,
               ),
+              const SizedBox(width: 4),
               _AppSwitchButton(
                 tooltip: 'رفتن به MBNime',
                 gradient: const [Color(0xFFFF7A1A), Color(0xFFFF4F6D)],
@@ -666,6 +699,7 @@ class _TopBar extends StatelessWidget {
 
 class _MenuDrawer extends StatelessWidget {
   const _MenuDrawer({
+    required this.auth,
     required this.email,
     required this.selected,
     required this.select,
@@ -681,6 +715,7 @@ class _MenuDrawer extends StatelessWidget {
     required this.updates,
     required this.subscription,
   });
+  final MbnAuth auth;
   final String email;
   final int selected;
   final ValueChanged<int> select;
@@ -712,7 +747,9 @@ class _MenuDrawer extends StatelessWidget {
             textDirection: TextDirection.ltr,
             style: const TextStyle(color: MovieColors.muted),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 10),
+          _subscriptionBadge(context),
+          const SizedBox(height: 14),
           _section('مرور محتوا', [
             _tile(Icons.home_rounded, 'ویترین', () => select(0), index: 0),
             _tile(Icons.movie_rounded, 'فیلم‌ها', () => select(1), index: 1),
@@ -728,17 +765,17 @@ class _MenuDrawer extends StatelessWidget {
             _tile(Icons.flag_rounded, 'کشورها', countries),
           ]),
           _section('کتابخانهٔ من', [
-            _tile(
-              Icons.visibility_off_rounded,
-              'دیده‌نشده‌ها',
-              () => select(3),
-              index: 3,
-            ),
+            // _tile(
+            //   Icons.visibility_off_rounded,
+            //   'دیده‌نشده‌ها',
+            //   () => select(3),
+            //   index: 3,
+            // ),
             _tile(
               Icons.favorite_rounded,
               'علاقه‌مندی‌ها',
-              () => select(4),
-              index: 4,
+              () => select(3),
+              index: 3,
             ),
             _tile(Icons.history_rounded, 'بازدیدشده‌ها', history),
             _tile(Icons.queue_music_rounded, 'پلی‌لیست‌ها', playlists),
@@ -752,6 +789,53 @@ class _MenuDrawer extends StatelessWidget {
             ),
             _tile(Icons.logout_rounded, 'خروج از حساب کاربری', logout),
           ]),
+          // Support button with Telegram blue color #229ED9
+          Container(
+            margin: const EdgeInsets.only(bottom: 14),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  const Color(0xFF229ED9).withValues(alpha: .24),
+                  const Color(0xFF229ED9).withValues(alpha: .08),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(
+                color: const Color(0xFF229ED9).withValues(alpha: .6),
+              ),
+            ),
+            child: ListTile(
+              leading: Container(
+                width: 36,
+                height: 36,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF229ED9),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.send_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+              title: const Text(
+                'تماس با پشتیبانی',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              subtitle: const Text(
+                '@mbnproo در تلگرام',
+                style: TextStyle(color: Color(0xFF229ED9), fontSize: 12),
+              ),
+              trailing: const Icon(
+                Icons.chevron_left_rounded,
+                color: Color(0xFF229ED9),
+              ),
+              onTap: () => launchUrl(
+                Uri.parse('https://t.me/mbnproo'),
+                mode: LaunchMode.externalApplication,
+              ),
+            ),
+          ),
           Container(
             margin: const EdgeInsets.only(bottom: 14),
             decoration: BoxDecoration(
@@ -795,6 +879,100 @@ class _MenuDrawer extends StatelessWidget {
         ],
       ),
     ),
+  );
+
+  Widget _subscriptionBadge(BuildContext context) {
+    final profile = auth.profile;
+    final isAdmin = profile?.role == 'admin';
+    final exp = profile?.subscriptionExpiresAt;
+    final expiry = exp == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(exp * 1000);
+    final remaining = expiry?.difference(DateTime.now());
+    final hasActive = isAdmin || (remaining != null && !remaining.isNegative);
+
+    String text;
+    if (isAdmin) {
+      text = 'اشتراک: نامحدود (مدیر)';
+    } else if (exp == null) {
+      text = 'اشتراک: ثبت نشده';
+    } else if (remaining == null || remaining.isNegative) {
+      text = 'اشتراک به پایان رسیده';
+    } else if (remaining.inDays > 0) {
+      text = '${_toPersianDigits(remaining.inDays)} روز مانده از اشتراک';
+    } else {
+      final hours = remaining.inHours;
+      text = hours > 0
+          ? '${_toPersianDigits(hours)} ساعت مانده از اشتراک'
+          : 'کمتر از ۱ ساعت مانده از اشتراک';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: MovieColors.surfaceHigh,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: hasActive
+              ? MovieColors.orange.withValues(alpha: 0.3)
+              : Colors.redAccent.withValues(alpha: 0.4),
+        ),
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                hasActive ? Icons.verified_rounded : Icons.schedule_rounded,
+                size: 16,
+                color: hasActive ? const Color(0xFF00E676) : Colors.redAccent,
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  text,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: hasActive ? Colors.white70 : Colors.redAccent,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            height: 34,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFE50914),
+                foregroundColor: Colors.white,
+                padding: EdgeInsets.zero,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              onPressed: () => launchUrl(
+                Uri.parse('https://t.me/mbnproo'),
+                mode: LaunchMode.externalApplication,
+              ),
+              icon: const Icon(Icons.autorenew_rounded, size: 16),
+              label: const Text(
+                'تمدید اشتراک',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _toPersianDigits(Object value) => '$value'.replaceAllMapped(
+    RegExp(r'\d'),
+    (match) => '۰۱۲۳۴۵۶۷۸۹'[int.parse(match.group(0)!)],
   );
 
   Widget _label(String label) => Padding(
@@ -1790,6 +1968,7 @@ class _SliderArrow extends StatelessWidget {
   );
 }
 
+// ignore: unused_element
 class _UnseenPage extends StatelessWidget {
   const _UnseenPage({
     required this.api,

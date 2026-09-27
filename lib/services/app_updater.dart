@@ -130,8 +130,12 @@ class AppUpdater extends ChangeNotifier {
       }
       await check();
     } catch (_) {
-      error = 'بررسی بروزرسانی انجام نشد؛ اتصال اینترنت را بررسی کن.';
-      phase = UpdatePhase.failed;
+      if (requiredRelease != null) {
+        error = 'بررسی بروزرسانی انجام نشد؛ اتصال اینترنت را بررسی کن.';
+        phase = UpdatePhase.failed;
+      } else {
+        phase = UpdatePhase.idle;
+      }
       notifyListeners();
     } finally {
       startupCheckPending = false;
@@ -277,12 +281,14 @@ class AppUpdater extends ChangeNotifier {
           _package != null &&
           await _validPackage(_package!, release!)) {
         phase = UpdatePhase.ready;
-      } else {
+      } else if (requiredRelease != null) {
         phase = UpdatePhase.failed;
+        error = e is FormatException
+            ? e.message
+            : 'دسترسی به GitHub یا دانلود قطع شد. دوباره تلاش کن.';
+      } else {
+        phase = UpdatePhase.idle;
       }
-      error = e is FormatException
-          ? e.message
-          : 'دسترسی به GitHub یا دانلود قطع شد. دوباره تلاش کن.';
     } finally {
       client.close(force: true);
       _busy = false;

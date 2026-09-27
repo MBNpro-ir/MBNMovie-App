@@ -237,7 +237,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           verifying
                               ? 'کد ارسال شده به ${_mobile.text} را وارد کن.'
                               : registering
-                              ? 'نام نمایشی، شماره موبایل و رمز را وارد کن. حساب پس از تأیید پیامکی ساخته می‌شود.'
+                              ? 'نام کاربری و رمز را وارد کن. وارد کردن شماره موبایل اختیاری است.'
                               : recovering
                               ? 'برای بازیابی رمز شمارهٔ تأییدشده، کد پیامک را وارد کن.'
                               : 'با ایمیل، نام کاربری یا شمارهٔ تأییدشده و رمز وارد شو.',
@@ -262,6 +262,37 @@ class _LoginScreenState extends State<LoginScreen> {
                         ],
                         const SizedBox(height: 20),
                         if (registering) ...[
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 16),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: MovieColors.cyan.withValues(alpha: .12),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: MovieColors.cyan.withValues(alpha: .35),
+                              ),
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(
+                                  Icons.info_outline_rounded,
+                                  color: MovieColors.cyan,
+                                  size: 22,
+                                ),
+                                SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    'وارد کردن شماره موبایل اختیاری است؛ می‌توانید بدون شماره و بدون دریافت پیامک، به عنوان کاربر مهمان ثبت‌نام کنید.',
+                                    style: TextStyle(
+                                      fontSize: 12.5,
+                                      height: 1.6,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                           TextFormField(
                             controller: _name,
                             decoration: InputDecoration(

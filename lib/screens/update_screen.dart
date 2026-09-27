@@ -172,7 +172,6 @@ class _MandatoryUpdateGateState extends State<MandatoryUpdateGate> {
     builder: (context, _) {
       final updater = _updater;
       final required =
-          updater.startupCheckPending ||
           updater.requiredRelease != null ||
           (updater.release != null && updater.phase != UpdatePhase.idle);
       if (!required) return widget.child;
