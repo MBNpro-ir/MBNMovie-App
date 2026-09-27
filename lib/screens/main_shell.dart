@@ -2669,7 +2669,11 @@ class _SearchPageState extends State<_SearchPage> {
                 child: SearchBar(
                   controller: controller,
                   hintText: 'نام فیلم یا سریال را بنویس…',
-                  leading: const Icon(Icons.search_rounded),
+                  leading: IconButton(
+                    icon: const Icon(Icons.search_rounded),
+                    onPressed: search,
+                    tooltip: 'جستجو',
+                  ),
                   trailing: [
                     if (controller.text.isNotEmpty)
                       IconButton(
@@ -3422,9 +3426,7 @@ class _AllCollectionsPageState extends State<_AllCollectionsPage> {
     _scroll.addListener(() {
       if (_scroll.position.extentAfter < 450) _loadMore();
     });
-    if (_collections.isEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _loadMore());
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadMore());
   }
 
   @override

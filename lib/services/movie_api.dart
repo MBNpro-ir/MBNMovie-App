@@ -587,15 +587,24 @@ class MovieApi implements ContentApi {
       )
       .toList();
 
-  /// یک بار تلاش اضافه با نشست تازه وقتی صفحه اول خالی برگردد؛ سرویس
-  /// گاهی به درخواست‌های تکراری پاسخ خالی می‌دهد.
+  /// تلاش‌های مجدد با نشست تازه وقتی پاسخ خالی برگردد تا از بازگشت
+  /// لیست خالی به کاربر جلوگیری شود.
   Future<List<T>> _firstPageWithRetry<T>(
-    Future<List<T>> Function() fetch,
-  ) async {
-    final first = await fetch();
-    if (first.isNotEmpty) return first;
-    await Future<void>.delayed(const Duration(milliseconds: 500));
-    return fetch();
+    Future<List<T>> Function() fetch, {
+    int maxAttempts = 3,
+  }) async {
+    for (var attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        final result = await fetch();
+        if (result.isNotEmpty) return result;
+      } catch (_) {
+        if (attempt == maxAttempts - 1) rethrow;
+      }
+      if (attempt < maxAttempts - 1) {
+        await Future<void>.delayed(Duration(milliseconds: 400 * (attempt + 1)));
+      }
+    }
+    return <T>[];
   }
 
   List<MovieCollection> _collections(Object? rows) => _list(rows)
@@ -704,9 +713,14 @@ class MovieApi implements ContentApi {
 
   Future<List<MovieCollection>> collections({int page = 1}) async {
     try {
-      final data = await _request('collection_list&pageno=$page');
-      final rows = data['list'] ?? data['all'] ?? data['collection'];
-      return _collections(rows);
+      Future<List<MovieCollection>> fetch() async {
+        final data = await _request('collection_list&pageno=$page');
+        final rows = data['list'] ?? data['all'] ?? data['collection'];
+        return _collections(rows);
+      }
+
+      if (page > 1) return await fetch();
+      return await _firstPageWithRetry(fetch, maxAttempts: 3);
     } catch (_) {
       return const [];
     }
@@ -884,7 +898,7 @@ class MovieApi implements ContentApi {
     'StateSerie': '',
     'search_text': query,
     'StateCheckSearchDagig': 'F',
-    'langueg': RegExp(r'[a-zA-Z]').hasMatch(query) ? 'EN' : 'Fa',
+    'langueg': '',
   };
   Future<List<MovieContent>> catalogByGroup({
     required CatalogGroup group,
@@ -990,11 +1004,13 @@ class MovieApi implements ContentApi {
     if (trimmed.isEmpty) return [];
     try {
       Future<List<MovieContent>> fetch() async {
-        final data = await _request(
-          'filter_search&pageno=$page',
-          _searchFields(query: trimmed),
-        );
-        return _items(data['all'], ContentKind.movie);
+        return await _firstPageWithRetry(() async {
+          final data = await _request(
+            'filter_search&pageno=$page',
+            _searchFields(query: trimmed),
+          );
+          return _items(data['all'], ContentKind.movie);
+        }, maxAttempts: 3);
       }
 
       final fetchFuture = fetch().catchError((_) => <MovieContent>[]);
