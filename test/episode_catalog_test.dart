@@ -45,7 +45,7 @@ void main() {
 
     final catalog = EpisodeCatalog.from(content);
     expect(catalog.seasons, hasLength(1));
-    expect(catalog.seasons.single.name, 'فصل 1');
+    expect(catalog.seasons.single.name, 'فصل 1 زیرنویس');
     expect(catalog.seasons.single.episodes, hasLength(2));
     expect(catalog.seasons.single.episodes.first.variants, hasLength(3));
     expect(catalog.qualities, ['1080p', '720p', '480p']);
@@ -110,7 +110,9 @@ void main() {
     );
 
     final catalog = EpisodeCatalog.from(content);
-    final season = catalog.seasons.singleWhere((item) => item.name == 'فصل 1');
+    final season = catalog.seasons.singleWhere(
+      (item) => item.name == 'فصل 1 زیرنویس',
+    );
     expect(season.qualities, ['720p']);
     expect(
       catalog.seasons.singleWhere((item) => item.name == 'تیزرها').qualities,
@@ -363,5 +365,102 @@ void main() {
     expect(episodeQuality('', '720 کیفیت'), '720p');
     expect(episodeQuality('', 'نسخه 720p دوبله'), '720p');
     expect(episodeQuality('کیفیت‌های پخش', 'پخش فیلم'), unknownQualityLabel);
+  });
+
+  test('distinct season variants (dub, sub, black & white) are not merged into servers', () {
+    const content = MovieContent(
+      id: 'show-variants',
+      title: 'Show Variants',
+      subtitle: '',
+      description: '',
+      year: 2026,
+      rating: 8,
+      kind: ContentKind.series,
+      colors: [],
+      genres: [],
+      seasons: [
+        MovieSeason(
+          id: 's1-dub',
+          name: 'فصل 1 دوبله',
+          episodes: [
+            MovieEpisode(id: '1d', name: 'قسمت 1 - کیفیت : 720', fileUrl: 'dub-1-720'),
+            MovieEpisode(id: '2d', name: 'قسمت 2 - کیفیت : 720', fileUrl: 'dub-2-720'),
+          ],
+        ),
+        MovieSeason(
+          id: 's1-sub',
+          name: 'فصل 1 زیرنویس',
+          episodes: [
+            MovieEpisode(id: '1s', name: 'قسمت 1 - کیفیت : 720', fileUrl: 'sub-1-720'),
+            MovieEpisode(id: '2s', name: 'قسمت 2 - کیفیت : 720', fileUrl: 'sub-2-720'),
+          ],
+        ),
+        MovieSeason(
+          id: 's1-bw',
+          name: 'فصل 1 دوبله سیاه و سفید',
+          episodes: [
+            MovieEpisode(id: '1bw', name: 'قسمت 1 - کیفیت : 720', fileUrl: 'bw-1-720'),
+            MovieEpisode(id: '2bw', name: 'قسمت 2 - کیفیت : 720', fileUrl: 'bw-2-720'),
+          ],
+        ),
+      ],
+    );
+
+    final catalog = EpisodeCatalog.from(content);
+    expect(catalog.seasons, hasLength(3));
+    expect(
+      catalog.seasons.map((s) => s.name).toList(),
+      ['فصل 1 دوبله', 'فصل 1 دوبله سیاه و سفید', 'فصل 1 زیرنویس'],
+    );
+    for (final season in catalog.seasons) {
+      expect(season.episodes, hasLength(2));
+      expect(season.episodes.map((e) => e.name).toList(), ['قسمت 1', 'قسمت 2']);
+      expect(season.episodes.first.variants.single.quality, '720p');
+    }
+  });
+
+  test('episodeDisplayName normalizes raw titles with qualities to clean episode labels', () {
+    expect(episodeDisplayName('قسمت 1 - کیفیت : 480'), 'قسمت 1');
+    expect(episodeDisplayName('قسمت ۱ - کیفیت ۷۲۰'), 'قسمت 1');
+    expect(episodeDisplayName('1 - کیفیت 1080'), 'قسمت 1');
+    expect(episodeDisplayName('*1'), 'قسمت 1');
+    expect(episodeDisplayName('قسمت اول'), 'قسمت اول');
+    expect(episodeDisplayName('Episode 5'), 'قسمت 5');
+    expect(episodeDisplayName('Ep 3 - 720p'), 'قسمت 3');
+  });
+
+  test('pure seasons without variant labels collapse into bare season', () {
+    const content = MovieContent(
+      id: 'show-pure',
+      title: 'Show Pure',
+      subtitle: '',
+      description: '',
+      year: 2026,
+      rating: 8,
+      kind: ContentKind.series,
+      colors: [],
+      genres: [],
+      seasons: [
+        MovieSeason(
+          id: 's1-1080',
+          name: 'فصل 1 1080p',
+          episodes: [
+            MovieEpisode(id: '1a', name: 'قسمت 1', fileUrl: 's1-1080-1'),
+          ],
+        ),
+        MovieSeason(
+          id: 's1-720',
+          name: 'فصل 1 720p',
+          episodes: [
+            MovieEpisode(id: '1b', name: 'قسمت 1', fileUrl: 's1-720-1'),
+          ],
+        ),
+      ],
+    );
+
+    final catalog = EpisodeCatalog.from(content);
+    expect(catalog.seasons, hasLength(1));
+    expect(catalog.seasons.single.name, 'فصل 1');
+    expect(catalog.seasons.single.episodes.first.variants, hasLength(2));
   });
 }

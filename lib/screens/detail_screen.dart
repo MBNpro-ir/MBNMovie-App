@@ -3171,23 +3171,20 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                           ),
                         ),
                         if (_episodeCatalog.seasons.length > 1) ...[
-                          SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: Row(
-                              children: [
-                                for (final (index, item)
-                                    in _episodeCatalog.seasons.indexed) ...[
-                                  ChoiceChip(
-                                    key: Key('player-season-${item.id}'),
-                                    label: Text(item.name),
-                                    selected: index == seasonIndex,
-                                    onSelected: (_) =>
-                                        updateSheet(() => seasonIndex = index),
-                                  ),
-                                  const SizedBox(width: 8),
-                                ],
-                              ],
-                            ),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              for (final (index, item)
+                                  in _episodeCatalog.seasons.indexed)
+                                ChoiceChip(
+                                  key: Key('player-season-${item.id}'),
+                                  label: Text(item.name),
+                                  selected: index == seasonIndex,
+                                  onSelected: (_) =>
+                                      updateSheet(() => seasonIndex = index),
+                                ),
+                            ],
                           ),
                           const SizedBox(height: 12),
                         ],

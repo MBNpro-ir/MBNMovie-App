@@ -1112,6 +1112,19 @@ class _HomePageState extends State<_HomePage> {
     );
   }
 
+  void _openAllCollections(List<MovieCollection> initial) {
+    Navigator.push<void>(
+      context,
+      slideUpRoute(
+        _AllCollectionsPage(
+          api: widget.api,
+          initialCollections: initial,
+          onOpenCollection: _openCollection,
+        ),
+      ),
+    );
+  }
+
   void _openBanner(MovieBanner banner) {
     Navigator.push<void>(
       context,
@@ -1370,7 +1383,10 @@ class _HomePageState extends State<_HomePage> {
                   child: Column(
                     children: [
                       const SizedBox(height: 26),
-                      const _PlainSectionTitle('مجموعه‌ها'),
+                      _SectionTitle(
+                        'مجموعه‌ها',
+                        onAll: () => _openAllCollections(data.collections),
+                      ),
                       _HorizontalRail(
                         height: 190,
                         children: [
@@ -3373,6 +3389,166 @@ class _CollectionTitlesPageState extends State<_CollectionTitlesPage> {
     filterWithinList: true,
     loadPage: (page) =>
         widget.api.collectionTitles(widget.collection, page: page),
+  );
+}
+
+class _AllCollectionsPage extends StatefulWidget {
+  const _AllCollectionsPage({
+    required this.api,
+    required this.initialCollections,
+    required this.onOpenCollection,
+  });
+
+  final MovieApi api;
+  final List<MovieCollection> initialCollections;
+  final ValueChanged<MovieCollection> onOpenCollection;
+
+  @override
+  State<_AllCollectionsPage> createState() => _AllCollectionsPageState();
+}
+
+class _AllCollectionsPageState extends State<_AllCollectionsPage> {
+  late final List<MovieCollection> _collections = List.of(widget.initialCollections);
+  late final Set<String> _seen = {for (final c in widget.initialCollections) c.id};
+  final _scroll = ScrollController();
+  int _page = 1;
+  bool _loading = false;
+  bool _more = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(() {
+      if (_scroll.position.extentAfter < 450) _loadMore();
+    });
+    if (_collections.isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadMore());
+    }
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadMore() async {
+    if (_loading || !_more) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final next = await widget.api.collections(page: _page);
+      if (!mounted) return;
+      setState(() {
+        _page++;
+        for (final item in next) {
+          if (_seen.add(item.id)) _collections.add(item);
+        }
+        _more = next.isNotEmpty;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: const Text('همه مجموعه‌ها'),
+      centerTitle: false,
+    ),
+    body: _collections.isEmpty && _loading
+        ? const Center(child: CircularProgressIndicator())
+        : _collections.isEmpty && _error != null
+        ? Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.error_outline_rounded, size: 48, color: MovieColors.muted),
+                const SizedBox(height: 12),
+                Text(_error!, style: const TextStyle(color: MovieColors.muted)),
+                const SizedBox(height: 16),
+                FilledButton.tonal(
+                  onPressed: _loadMore,
+                  child: const Text('تلاش مجدد'),
+                ),
+              ],
+            ),
+          )
+        : GridView.builder(
+            controller: _scroll,
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 170,
+              childAspectRatio: 0.72,
+              crossAxisSpacing: 14,
+              mainAxisSpacing: 16,
+            ),
+            itemCount: _collections.length + (_loading ? 1 : 0),
+            itemBuilder: (context, index) {
+              if (index >= _collections.length) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final collection = _collections[index];
+              return Pressable(
+                onTap: () => widget.onOpenCollection(collection),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(18),
+                        child: collection.imageUrl == null
+                            ? const DecoratedBox(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      MovieColors.surface,
+                                      Color(0xFF232838),
+                                    ],
+                                  ),
+                                ),
+                                child: Icon(
+                                  Icons.collections_rounded,
+                                  color: MovieColors.cyan,
+                                  size: 40,
+                                ),
+                              )
+                            : Image.network(
+                                collection.imageUrl!,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, _, _) => const DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    color: MovieColors.surface,
+                                  ),
+                                  child: Icon(
+                                    Icons.collections_rounded,
+                                    color: MovieColors.cyan,
+                                    size: 40,
+                                  ),
+                                ),
+                              ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      collection.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
   );
 }
 

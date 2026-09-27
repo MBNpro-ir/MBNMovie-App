@@ -254,11 +254,11 @@ void main() {
     expect(find.text('تماشا کردی'), findsOneWidget);
     expect(find.text('تقریباً تماشا کردی'), findsOneWidget);
     final card = tester.widget<Material>(
-      find.byKey(const Key('episode-card-logical:season-1:episode-اول')),
+      find.byKey(const Key('episode-card-logical:season-1-زیرنویس:episode-اول')),
     );
     expect(card.color, isNot(MovieColors.surface));
     final almostCard = tester.widget<Material>(
-      find.byKey(const Key('episode-card-logical:season-1:episode-دوم')),
+      find.byKey(const Key('episode-card-logical:season-1-زیرنویس:episode-دوم')),
     );
     expect(almostCard.color, isNot(MovieColors.surface));
     expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget);

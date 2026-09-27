@@ -368,7 +368,7 @@ class MovieApi implements ContentApi {
     'MBN_API_KEY',
     defaultValue: 'pwep5d4sdoe0ewsosa7d563d',
   );
-  static const _wireApp = 'MBNMovie';
+  static const _wireApp = 'Delfan';
   static const _headers = {'User-Agent': 'Mozilla/5.0 (Linux; Android 15)'};
   final http.Client _client;
   Future<void> _tail = Future<void>.value();
@@ -702,6 +702,16 @@ class MovieApi implements ContentApi {
     }
   }
 
+  Future<List<MovieCollection>> collections({int page = 1}) async {
+    try {
+      final data = await _request('collection_list&pageno=$page');
+      final rows = data['list'] ?? data['all'] ?? data['collection'];
+      return _collections(rows);
+    } catch (_) {
+      return const [];
+    }
+  }
+
   Future<List<MovieContent>> collectionTitles(
     MovieCollection collection, {
     int page = 1,
@@ -711,7 +721,10 @@ class MovieApi implements ContentApi {
         final data = await _request('collection_show&pageno=$page', {
           'video_id': collection.id,
         });
-        final rows = data['all'] ?? data['movie_list'] ?? data['collection'];
+        final rows = data['list'] ??
+            data['all'] ??
+            data['movie_list'] ??
+            data['collection'];
         return _items(rows, ContentKind.movie);
       }
 
@@ -871,6 +884,7 @@ class MovieApi implements ContentApi {
     'StateSerie': '',
     'search_text': query,
     'StateCheckSearchDagig': 'F',
+    'langueg': RegExp(r'[a-zA-Z]').hasMatch(query) ? 'EN' : 'Fa',
   };
   Future<List<MovieContent>> catalogByGroup({
     required CatalogGroup group,
@@ -972,35 +986,67 @@ class MovieApi implements ContentApi {
     void Function(List<MovieContent>)? onPartial,
     bool Function()? isCanceled,
   }) async {
-    if (query.trim().isEmpty) return [];
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) return [];
     try {
       Future<List<MovieContent>> fetch() async {
         final data = await _request(
           'filter_search&pageno=$page',
-          _searchFields(query: query.trim()),
+          _searchFields(query: trimmed),
         );
         return _items(data['all'], ContentKind.movie);
       }
 
-      List<MovieContent> primary = const [];
-      try {
-        primary = await fetch();
-      } catch (_) {}
-      if (primary.isNotEmpty) return primary;
-      final indexed = await _indexFilter(query: query.trim(), page: page);
-      if (indexed.isNotEmpty) return indexed;
-      return await _catalogScanSearch(
-        query.trim(),
-        page: page,
-        onPartial: onPartial,
-        isCanceled: isCanceled,
-      );
+      final fetchFuture = fetch().catchError((_) => <MovieContent>[]);
+      final indexFuture =
+          _indexFilter(query: trimmed, page: page).catchError((_) => <MovieContent>[]);
+
+      final results = await Future.wait([fetchFuture, indexFuture]);
+      final primary = results[0];
+      final indexed = results[1];
+
+      if (primary.isEmpty && indexed.isEmpty) {
+        return await _catalogScanSearch(
+          trimmed,
+          page: page,
+          onPartial: onPartial,
+          isCanceled: isCanceled,
+        );
+      }
+
+      final combined = <MovieContent>[];
+      final seen = <String>{};
+      final needle = _normalizeQuery(trimmed);
+
+      // 1. Prioritize strong matches from indexed (where title or aliases start with or contain needle)
+      for (final item in indexed) {
+        final names = [item.title, ...item.alternateTitles].map(_normalizeQuery);
+        if (names.any((n) => n.startsWith(needle) || n == needle) && seen.add(item.id)) {
+          combined.add(item);
+        }
+      }
+
+      // 2. Add remaining indexed matches
+      for (final item in indexed) {
+        if (seen.add(item.id)) {
+          combined.add(item);
+        }
+      }
+
+      // 3. Add primary upstream results
+      for (final item in primary) {
+        if (seen.add(item.id)) {
+          combined.add(item);
+        }
+      }
+
+      return combined.take(24).toList();
     } catch (_) {
       // The upstream search endpoint can reject guest requests even while
       // movie_list remains available. Keep text search usable in that case.
       try {
         return await _catalogScanSearch(
-          query.trim(),
+          trimmed,
           page: page,
           onPartial: onPartial,
           isCanceled: isCanceled,
@@ -1092,6 +1138,7 @@ class MovieApi implements ContentApi {
       .replaceAll(RegExp(r'[\u064B-\u065F\u0670ـ]'), '')
       .replaceAll('‌', '')
       .replaceAll(RegExp(r'\s+'), '')
+      .replaceAll('بریکینگ', 'برکینگ')
       .toLowerCase();
 
   Future<List<MovieContent>> _catalogScanSearch(

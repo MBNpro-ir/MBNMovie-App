@@ -294,11 +294,25 @@ String episodeDisplayName(String rawName) {
   final name = rawName.trim();
   if (name.isEmpty) return 'قسمت';
   if (isTrailerLabel(name)) return name;
-  final bare = RegExp(
-    r'^\*?\s*([0-9۰-۹٠-٩]+)\s*\*?\s*$',
-  ).firstMatch(name);
-  if (bare != null) return 'قسمت ${bare.group(1)}';
-  return name;
+
+  final latin = _latinDigits(name).toLowerCase();
+
+  final epMatch = RegExp(
+    r'(?:قسمت|episode|ep|part)\s*(\d+)',
+    caseSensitive: false,
+  ).firstMatch(latin);
+  if (epMatch != null) {
+    return 'قسمت ${int.parse(epMatch.group(1)!)}';
+  }
+
+  final bare = RegExp(r'^\*?\s*(\d+)\b').firstMatch(latin) ??
+      RegExp(r'\b(\d+)\s*\*?$').firstMatch(latin);
+  if (bare != null) {
+    return 'قسمت ${int.parse(bare.group(1)!)}';
+  }
+
+  final cleaned = _cleanQualityTokens(name);
+  return cleaned.isEmpty ? 'قسمت' : cleaned;
 }
 
 String episodeQuality(String seasonName, String episodeName) {
@@ -594,17 +608,38 @@ int _qualityRank(String value) {
       0;
 }
 
+String _cleanQualityTokens(String input) {
+  var value = _latinDigits(input);
+  value = value.replaceAll(RegExp(r'\d{3,4}\s*[pP]\b', caseSensitive: false), ' ');
+  value = value.replaceAll(RegExp(r'\b(4k|uhd|fhd|hd|sd)\b', caseSensitive: false), ' ');
+  value = value.replaceAll(RegExp(r'کیفیت\s*:?\s*\d{3,4}'), ' ');
+  value = value.replaceAll(RegExp(r'\d{3,4}\s*:?\s*کیفیت'), ' ');
+  value = value.replaceAll(RegExp(r'فول\s*اچ\s*دی|اچ\s*دی'), ' ');
+  value = value.replaceAll(RegExp(r'[-_·•/|:؛،,\(\)\[\]]+'), ' ');
+  return value.replaceAll(RegExp(r'\s+'), ' ').trim();
+}
+
 String _seasonKey(String input, int fallbackIndex) {
   var value = _latinDigits(input).toLowerCase();
   if (isTrailerLabel(value)) return 'trailer';
-  value = value.replaceAll(RegExp(r'\d{3,4}\s*p\b'), ' ');
-  final number = RegExp(r'\d+').firstMatch(value)?.group(0);
-  if (number != null) return 'season-${int.parse(number)}';
-  value = value
-      .replaceAll(RegExp(r'فصل|season|زیرنویس|دوبله|فارسی|اختصاصی'), ' ')
-      .replaceAll(RegExp(r'[^a-z\u0600-\u06ff]+'), ' ')
-      .trim();
-  return value.isEmpty ? 'season-${fallbackIndex + 1}' : 'season-$value';
+
+  final numMatch = RegExp(r'(?:فصل|season|s)\s*(\d+)').firstMatch(value) ??
+      RegExp(r'^\s*(\d+)').firstMatch(value);
+  final seasonNum = numMatch != null ? int.tryParse(numMatch.group(1)!) : null;
+
+  var cleaned = _cleanQualityTokens(value).toLowerCase();
+  if (seasonNum != null) {
+    cleaned = cleaned
+        .replaceAll(RegExp(r'(?:فصل|season|s)\s*' + seasonNum.toString()), ' ')
+        .replaceAll(RegExp(r'^\s*' + seasonNum.toString()), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  if (seasonNum != null) {
+    return cleaned.isEmpty ? 'season-$seasonNum' : 'season-$seasonNum-$cleaned';
+  }
+  return cleaned.isEmpty ? 'season-${fallbackIndex + 1}' : 'season-$cleaned';
 }
 
 String _episodeKey(String input, int fallbackIndex) {
@@ -612,8 +647,10 @@ String _episodeKey(String input, int fallbackIndex) {
   if (isTrailerLabel(value)) {
     return 'trailer-${fallbackIndex + 1}';
   }
-  final number = RegExp(r'\d+').firstMatch(value)?.group(0);
-  if (number != null) return 'episode-${int.parse(number)}';
+  final match = RegExp(r'(?:قسمت|episode|ep|part)\s*(\d+)').firstMatch(value) ??
+      RegExp(r'^\*?\s*(\d+)\b').firstMatch(value) ??
+      RegExp(r'\b(\d+)\b').firstMatch(value);
+  if (match != null) return 'episode-${int.parse(match.group(1)!)}';
   final text = value
       .replaceAll(RegExp(r'قسمت|episode|part'), ' ')
       .replaceAll(RegExp(r'[^a-z\u0600-\u06ff]+'), ' ')
@@ -623,13 +660,16 @@ String _episodeKey(String input, int fallbackIndex) {
 
 String _seasonDisplayName(String key, String original) {
   if (key == 'trailer') return 'تیزرها';
-  final number = RegExp(r'^season-(\d+)$').firstMatch(key)?.group(1);
-  if (number != null) return 'فصل $number';
-  final cleaned = original
-      .replaceAll(RegExp(r'\d{3,4}\s*[pP]\b'), ' ')
-      .replaceAll(RegExp(r'زیرنویس|دوبله|فارسی|اختصاصی'), ' ')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
+
+  var cleaned = _cleanQualityTokens(original);
+
+  final bareNumMatch = RegExp(r'^(\d+)\s*(.*)$').firstMatch(_latinDigits(cleaned));
+  if (bareNumMatch != null && !cleaned.startsWith('فصل')) {
+    final num = bareNumMatch.group(1)!;
+    final rest = bareNumMatch.group(2)!.trim();
+    return rest.isEmpty ? 'فصل $num' : 'فصل $num $rest';
+  }
+
   return cleaned.isEmpty ? 'فصل' : cleaned;
 }
 

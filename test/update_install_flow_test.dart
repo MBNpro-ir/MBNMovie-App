@@ -8,7 +8,7 @@ import 'release_update_test.dart' show releaseJson;
 
 void main() {
   testWidgets(
-    'startup check blocks navigation before release metadata arrives',
+    'startup check leaves content available before release metadata arrives',
     (tester) async {
       final directory = Directory.systemTemp.createTempSync(
         'mbnmovie-check-gate-',
@@ -31,10 +31,10 @@ void main() {
           ),
         ),
       );
-      expect(find.text('در حال بررسی دوبارهٔ به‌روزرسانی'), findsOneWidget);
+      expect(find.text('محتوای برنامه'), findsOneWidget);
       expect(
         find.byKey(const Key('mandatory-update-blocked-content')),
-        findsOneWidget,
+        findsNothing,
       );
       expect(tester.takeException(), isNull);
     },

@@ -28,6 +28,8 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   static const _telegramUrl = 'https://t.me/mbnproo';
+  static const _hideRegistration = true;
+  static const _hidePasswordRecovery = true;
 
   final _formKey = GlobalKey<FormState>();
   final _email = TextEditingController();
@@ -511,7 +513,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             'پشتیبانی تلگرام',
                           ),
                         ),
-                        if (!recovering && !verifying) ...[
+                        if (!_hideRegistration && !recovering && !verifying) ...[
                           const SizedBox(height: 4),
                           TextButton(
                             onPressed: _loading
@@ -527,7 +529,10 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                         ],
-                        if (!registering && !verifying && !recovering)
+                        if (!_hidePasswordRecovery &&
+                            !registering &&
+                            !verifying &&
+                            !recovering)
                           TextButton(
                             onPressed: _loading ? null : () => setState(() {
                               _recovering = true;

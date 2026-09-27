@@ -431,27 +431,31 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
     required String title,
     required IconData icon,
     required List<Widget> children,
-  }) => Row(
+  }) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      Icon(icon, size: 20, color: MovieColors.orange),
-      const SizedBox(width: 7),
-      Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
-      const SizedBox(width: 12),
-      Expanded(
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(children: children),
-        ),
+      Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 20, color: MovieColors.orange),
+          const SizedBox(width: 7),
+          Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+        ],
+      ),
+      const SizedBox(height: 8),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: children,
       ),
     ],
   );
 
   Widget _episodeCard(EpisodeGroup group) {
     final variant = group.variantFor(_selectedQuality);
-    // تیزر بدون تگ کیفیت نباید «بدون برچسب کیفیت» نشان بدهد؛ بج مخفی می‌شود.
     final showQualityBadge =
-        !(group.isTrailer && isUnknownQuality(variant.quality));
-    // عنوان نمایشی گروه بدون پسوند کیفیت اضافی.
+        widget.content.kind == ContentKind.movie &&
+        !isUnknownQuality(variant.quality);
     final title = group.name;
     final saved = _saved[group.id];
     final resumable = saved?.isResumable ?? false;
@@ -679,14 +683,12 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
                       title: 'فصل',
                       icon: Icons.video_library_rounded,
                       children: [
-                        for (var i = 0; i < seasons.length; i++) ...[
+                        for (var i = 0; i < seasons.length; i++)
                           ChoiceChip(
                             label: Text(seasons[i].name),
                             selected: i == _seasonIndex,
                             onSelected: (_) => _selectSeason(i),
                           ),
-                          const SizedBox(width: 7),
-                        ],
                       ],
                     ),
                     if (displayQualities.isNotEmpty)
@@ -697,15 +699,13 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
                       title: 'کیفیت',
                       icon: Icons.high_quality_rounded,
                       children: [
-                        for (final quality in displayQualities) ...[
+                        for (final quality in displayQualities)
                           ChoiceChip(
                             key: Key('quality-$quality'),
                             label: Text(quality),
                             selected: quality == _selectedQuality,
                             onSelected: (_) => _setQuality(quality),
                           ),
-                          const SizedBox(width: 7),
-                        ],
                       ],
                     ),
                 ],

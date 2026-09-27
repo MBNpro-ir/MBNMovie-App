@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'cross_app_auth.dart';
 
 class MbnAuthException implements Exception {
   const MbnAuthException(this.message, {this.statusCode});
@@ -176,6 +179,18 @@ class MbnAuth {
     return profile!;
   }
 
+  /// Signs in directly with a pre-validated JWT token from sibling app.
+  Future<MbnProfile> loginWithToken(String authToken) async {
+    token = authToken;
+    final data = await getJson('/api/me');
+    profile = MbnProfile.fromJson(
+      (data['user'] as Map?)?.cast<String, dynamic>() ?? {},
+    );
+    final identifier = profile!.email.isNotEmpty ? profile!.email : profile!.username;
+    await _persist(identifier);
+    return profile!;
+  }
+
   /// Restores a previously saved session. Never throws.
   Future<bool> restore() async {
     forcedLogoutMessage = null;
@@ -254,6 +269,9 @@ class MbnAuth {
       await _secureStorage.write(key: _tokenKey, value: token);
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_emailKey, email);
+      if (token != null && token!.isNotEmpty) {
+        unawaited(CrossAppAuth.saveSharedToken(token: token!, email: email));
+      }
     } catch (_) {}
   }
 }

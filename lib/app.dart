@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
@@ -20,6 +19,7 @@ import 'services/movie_api.dart';
 import 'services/auth_handoff.dart';
 import 'services/app_links.dart';
 import 'services/app_updater.dart';
+import 'services/cross_app_auth.dart';
 
 class MbnmovieApp extends StatefulWidget {
   const MbnmovieApp({super.key});
@@ -223,17 +223,55 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
   }
 
   Future<void> _beginHandoff() async {
-    final id = await AuthHandoff.create(
-      post: _auth.postJson,
-      sourceApp: 'anime',
-      targetApp: 'movie',
-    );
-    final opened = await AppLinks.launchHandoff(siblingAnime, 'request:$id');
-    if (!opened) {
-      await AuthHandoff.clear(id);
-      throw StateError('برنامهٔ دیگر باز نشد.');
+    final token = await CrossAppAuth.readSiblingToken(siblingId: 'MBNime');
+    if (token == null || token.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'حساب فعالی در برنامه MBNime یافت نشد. ابتدا در MBNime وارد شوید.',
+            ),
+          ),
+        );
+      }
+      return;
     }
-    exit(0);
+    try {
+      await _auth.loginWithToken(token);
+      await _bindDelfanSession();
+      MbnSync.instance.configure(auth: _auth);
+      if (_auth.profile != null && _auth.profile!.id > 0) {
+        await MbnSync.instance.bindAccount(_auth.profile!.id);
+      }
+      await MbnSync.instance.syncAll();
+      if (mounted) {
+        setState(() => _loggedIn = true);
+        final displayName = _auth.profile?.name.isNotEmpty == true
+            ? _auth.profile!.name
+            : (_auth.profile?.email.isNotEmpty == true
+                ? _auth.profile!.email
+                : _auth.profile?.username ?? '');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              displayName.isNotEmpty
+                  ? 'ورود با حساب MBNime ($displayName)'
+                  : 'ورود با حساب MBNime با موفقیت انجام شد.',
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'ورود با حساب MBNime ناموفق بود؛ لطفاً دوباره تلاش کنید.',
+            ),
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _checkHandoff() async {

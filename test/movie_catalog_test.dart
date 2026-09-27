@@ -176,7 +176,7 @@ void main() {
     final actions = <String>[];
     final client = MockClient((request) async {
       expect(request.method, 'POST');
-      expect(request.bodyFields['apname'], 'MBNMovie');
+      expect(request.bodyFields['apname'], 'Delfan');
       final action = request.url.queryParameters['action']!;
       actions.add(action);
       if (action == 'login') {

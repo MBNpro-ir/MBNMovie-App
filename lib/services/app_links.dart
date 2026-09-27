@@ -113,7 +113,13 @@ abstract final class AppLinks {
     if (Platform.isAndroid) {
       return DeviceBridge.isAppInstalled(sibling.androidPackage);
     }
-    return Platform.isWindows && await findSiblingExe(sibling) != null;
+    if (Platform.isWindows) {
+      if (await findSiblingExe(sibling) != null) return true;
+      final appData = Platform.environment['APPDATA'] ?? '';
+      return Directory(p.join(appData, 'com.mbn', sibling.id)).existsSync() ||
+          File(p.join(appData, 'com.mbn', 'shared_auth.json')).existsSync();
+    }
+    return false;
   }
 
   static Future<bool> launchHandoff(SiblingApp sibling, String message) async {
