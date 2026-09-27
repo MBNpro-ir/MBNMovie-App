@@ -181,14 +181,20 @@ class MbnAuth {
 
   /// Signs in directly with a pre-validated JWT token from sibling app.
   Future<MbnProfile> loginWithToken(String authToken) async {
+    final prevToken = token;
     token = authToken;
-    final data = await getJson('/api/me');
-    profile = MbnProfile.fromJson(
-      (data['user'] as Map?)?.cast<String, dynamic>() ?? {},
-    );
-    final identifier = profile!.email.isNotEmpty ? profile!.email : profile!.username;
-    await _persist(identifier);
-    return profile!;
+    try {
+      final data = await getJson('/api/me');
+      profile = MbnProfile.fromJson(
+        (data['user'] as Map?)?.cast<String, dynamic>() ?? {},
+      );
+      final identifier = profile!.email.isNotEmpty ? profile!.email : profile!.username;
+      await _persist(identifier);
+      return profile!;
+    } catch (_) {
+      token = prevToken;
+      rethrow;
+    }
   }
 
   /// Restores a previously saved session. Never throws.
@@ -257,6 +263,7 @@ class MbnAuth {
   Future<void> logout() async {
     token = null;
     profile = null;
+    unawaited(CrossAppAuth.clearSharedToken());
     try {
       await _secureStorage.delete(key: _tokenKey);
       final prefs = await SharedPreferences.getInstance();

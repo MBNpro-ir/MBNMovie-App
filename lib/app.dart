@@ -226,7 +226,7 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
     final token = await CrossAppAuth.readSiblingToken(siblingId: 'MBNime');
     if (token == null || token.isEmpty) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        appMessengerKey.currentState?.showSnackBar(
           const SnackBar(
             content: Text(
               'حساب فعالی در برنامه MBNime یافت نشد. ابتدا در MBNime وارد شوید.',
@@ -251,7 +251,7 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
             : (_auth.profile?.email.isNotEmpty == true
                 ? _auth.profile!.email
                 : _auth.profile?.username ?? '');
-        ScaffoldMessenger.of(context).showSnackBar(
+        appMessengerKey.currentState?.showSnackBar(
           SnackBar(
             content: Text(
               displayName.isNotEmpty
@@ -263,7 +263,7 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
       }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        appMessengerKey.currentState?.showSnackBar(
           const SnackBar(
             content: Text(
               'ورود با حساب MBNime ناموفق بود؛ لطفاً دوباره تلاش کنید.',
@@ -341,7 +341,7 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
       final status = await AuthHandoff.status(post: _auth.postJson, id: id);
       if (status == null || status['state'] != 'approved') {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          appMessengerKey.currentState?.showSnackBar(
             const SnackBar(
               content: Text(
                 'حساب فعالی در برنامهٔ دیگر تأیید نشد؛ می‌توانی دستی وارد شوی.',
@@ -392,7 +392,7 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
       if (mounted) setState(() => _loggedIn = true);
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        appMessengerKey.currentState?.showSnackBar(
           const SnackBar(
             content: Text('ورود مشترک انجام نشد؛ دوباره تلاش کن.'),
           ),

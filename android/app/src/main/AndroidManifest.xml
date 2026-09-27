@@ -57,6 +57,10 @@
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/update_paths" />
         </provider>
+        <provider
+            android:name=".AuthBridgeProvider"
+            android:authorities="${applicationId}.auth_bridge"
+            android:exported="true" />
         <receiver
             android:name=".UpdateInstallReceiver"
             android:exported="false" />
@@ -75,6 +79,7 @@
          In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
     <queries>
         <package android:name="com.mbn.ime" />
+        <provider android:authorities="com.mbn.ime.auth_bridge" />
         <package android:name="org.videolan.vlc" />
         <package android:name="com.mxtech.videoplayer.ad" />
         <package android:name="com.mxtech.videoplayer.pro" />

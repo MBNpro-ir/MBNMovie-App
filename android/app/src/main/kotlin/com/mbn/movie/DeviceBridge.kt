@@ -162,6 +162,34 @@ class DeviceBridge(
                     try { activity.startActivity(intent); result.success("launched") }
                     catch (_: android.content.ActivityNotFoundException) { result.success("missing") }
                 }
+                "saveAuthBridge" -> {
+                    val token = call.argument<String>("token")
+                    val email = call.argument<String>("email")
+                    val prefs = activity.getSharedPreferences("mbn_auth_bridge", Context.MODE_PRIVATE)
+                    prefs.edit().putString("token", token).putString("email", email).apply()
+                    result.success(true)
+                }
+                "clearAuthBridge" -> {
+                    val prefs = activity.getSharedPreferences("mbn_auth_bridge", Context.MODE_PRIVATE)
+                    prefs.edit().clear().apply()
+                    result.success(true)
+                }
+                "readSiblingAuth" -> {
+                    val targetPackage = call.argument<String>("package") ?: ""
+                    try {
+                        val uri = Uri.parse("content://$targetPackage.auth_bridge")
+                        val bundle = activity.contentResolver.call(uri, "getAuthToken", null, null)
+                        val token = bundle?.getString("token")
+                        val email = bundle?.getString("email")
+                        if (!token.isNullOrEmpty()) {
+                            result.success(mapOf("token" to token, "email" to (email ?: "")))
+                        } else {
+                            result.success(null)
+                        }
+                    } catch (e: Exception) {
+                        result.success(null)
+                    }
+                }
                 else -> result.notImplemented()
             }
         } catch (e: Exception) { result.error("DEVICE", e.javaClass.simpleName, null) }

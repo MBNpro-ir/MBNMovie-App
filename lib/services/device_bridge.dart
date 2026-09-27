@@ -60,6 +60,44 @@ class DeviceBridge {
   static Future<String?> takeHandoff() async =>
       Platform.isAndroid ? channel.invokeMethod<String>('takeHandoff') : null;
 
+  static Future<void> saveAuthBridge({
+    required String token,
+    required String email,
+  }) async {
+    if (!Platform.isAndroid) return;
+    try {
+      await channel.invokeMethod('saveAuthBridge', {
+        'token': token,
+        'email': email,
+      });
+    } catch (_) {}
+  }
+
+  static Future<void> clearAuthBridge() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await channel.invokeMethod('clearAuthBridge');
+    } catch (_) {}
+  }
+
+  static Future<Map<String, String>?> readSiblingAuth(String package) async {
+    if (!Platform.isAndroid) return null;
+    try {
+      final res = await channel.invokeMapMethod<String, dynamic>(
+        'readSiblingAuth',
+        {'package': package},
+      );
+      if (res != null) {
+        final token = res['token']?.toString();
+        final email = res['email']?.toString() ?? '';
+        if (token != null && token.isNotEmpty) {
+          return {'token': token, 'email': email};
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
   static Future<bool> openApp(String package, {String? handoff}) async {
     if (!Platform.isAndroid) return false;
     try {
