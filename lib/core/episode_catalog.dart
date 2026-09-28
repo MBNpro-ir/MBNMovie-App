@@ -196,7 +196,6 @@ class EpisodeCatalog {
           qualities: _qualityList(fallbackVariants),
         );
       }
-      final mainVariants = _uniqueVariants(mains);
       final trailerGroups = [
         for (final variant in trailers)
           EpisodeGroup(
@@ -207,22 +206,69 @@ class EpisodeCatalog {
             variants: [variant],
           ),
       ];
-      return EpisodeCatalog(
-        seasons: [
+
+      // دسته‌بندی نسخه‌های مختلف فیلم (مثل دوبله فارسی، زیرنویس فارسی، زبان اصلی)
+      final categoryBuckets = <String, List<EpisodeVariant>>{};
+      for (final variant in mains) {
+        final catKey = _movieCategoryKey(variant.episode.name);
+        categoryBuckets.putIfAbsent(catKey, () => []).add(variant);
+      }
+
+      if (categoryBuckets.length <= 1) {
+        final mainVariants = _uniqueVariants(mains);
+        return EpisodeCatalog(
+          seasons: [
+            EpisodeSeasonGroup(
+              id: 'movie',
+              name: 'فیلم',
+              episodes: [
+                EpisodeGroup(
+                  id: 'logical:movie:main',
+                  name: 'پخش فیلم',
+                  variants: mainVariants,
+                ),
+                ...trailerGroups,
+              ],
+            ),
+          ],
+          qualities: _qualityList(mainVariants),
+        );
+      }
+
+      final sortedKeys = categoryBuckets.keys.toList()
+        ..sort((a, b) {
+          final orderA = _categoryOrder(a);
+          final orderB = _categoryOrder(b);
+          return orderA != orderB ? orderA.compareTo(orderB) : a.compareTo(b);
+        });
+
+      final movieSeasons = <EpisodeSeasonGroup>[];
+      final allMainVariants = <EpisodeVariant>[];
+
+      for (var i = 0; i < sortedKeys.length; i++) {
+        final key = sortedKeys[i];
+        final variants = _uniqueVariants(categoryBuckets[key]!);
+        allMainVariants.addAll(variants);
+        final title = _movieCategoryTitle(key, variants.first.episode.name);
+        movieSeasons.add(
           EpisodeSeasonGroup(
-            id: 'movie',
-            name: 'فیلم',
+            id: 'movie-$key',
+            name: title,
             episodes: [
               EpisodeGroup(
-                id: 'logical:movie:main',
+                id: 'logical:movie:$key',
                 name: 'پخش فیلم',
-                variants: mainVariants,
+                variants: variants,
               ),
-              ...trailerGroups,
+              if (i == 0) ...trailerGroups,
             ],
           ),
-        ],
-        qualities: _qualityList(mainVariants),
+        );
+      }
+
+      return EpisodeCatalog(
+        seasons: movieSeasons,
+        qualities: _qualityList(allMainVariants),
       );
     }
 
@@ -315,25 +361,76 @@ String episodeDisplayName(String rawName) {
   return cleaned.isEmpty ? 'قسمت' : cleaned;
 }
 
+String _formatQualityWithModifier(int pixels, String contextText) {
+  final lower = contextText.toLowerCase();
+  final modifiers = <String>[];
+
+  // HD / HQ release modifier (for 1080p, indicates higher bitrate/uncompressed bluray vs standard web-dl)
+  if (pixels >= 1080) {
+    final isStandAloneHd = (RegExp(r'\b(hd|hq)\b').hasMatch(lower) ||
+            RegExp(r'اچ\s*دی').hasMatch(lower)) &&
+        !RegExp(r'\bfhd\b').hasMatch(lower) &&
+        !RegExp(r'فول\s*اچ\s*دی').hasMatch(lower) &&
+        !RegExp(r'full\s*hd').hasMatch(lower);
+    if (isStandAloneHd) {
+      modifiers.add('HD');
+    }
+  }
+
+  if (RegExp(r'\b(x265|hevc)\b').hasMatch(lower)) {
+    modifiers.add('x265');
+  }
+
+  if (RegExp(r'\b10bit\b').hasMatch(lower)) {
+    modifiers.add('10bit');
+  }
+
+  if (RegExp(r'\bimax\b').hasMatch(lower)) {
+    modifiers.add('IMAX');
+  }
+
+  if (RegExp(r'\b3d\b').hasMatch(lower)) {
+    modifiers.add('3D');
+  }
+
+  if (modifiers.isEmpty) {
+    return '${pixels}p';
+  }
+  return '${pixels}p ${modifiers.join(' ')}';
+}
+
 String episodeQuality(String seasonName, String episodeName) {
   final value = _latinDigits('$seasonName $episodeName');
-  final pixels = RegExp(
+  final pixelsMatch = RegExp(
     r'(?<!\d)(\d{3,4})\s*[pP](?!\w)',
   ).firstMatch(value)?.group(1);
-  if (pixels != null) return '${int.parse(pixels)}p';
+  if (pixelsMatch != null) {
+    return _formatQualityWithModifier(int.parse(pixelsMatch), value);
+  }
   // برچسب‌های فارسی سرویس کاتالوگ: «کیفیت 720»، «کیفیت : 480»،
   // «720 کیفیت»، «دوبله 1080»...
   final faPixels =
       RegExp(r'کیفیت\s*:?\s*(\d{3,4})').firstMatch(value)?.group(1) ??
       RegExp(r'(\d{3,4})\s*:?\s*کیفیت').firstMatch(value)?.group(1);
-  if (faPixels != null) return '${int.parse(faPixels)}p';
-  if (RegExp(r'\b(4k|uhd)\b', caseSensitive: false).hasMatch(value)) {
-    return '4K';
+  if (faPixels != null) {
+    return _formatQualityWithModifier(int.parse(faPixels), value);
   }
-  if (RegExp(r'\bfhd\b', caseSensitive: false).hasMatch(value)) return '1080p';
-  if (RegExp(r'فول\s*اچ\s*دی').hasMatch(value)) return '1080p';
-  if (RegExp(r'\bhd\b', caseSensitive: false).hasMatch(value)) return '720p';
-  if (RegExp(r'(^|\W)اچ\s*دی(\W|$)').hasMatch(value)) return '720p';
+  if (RegExp(r'\b(4k|uhd)\b', caseSensitive: false).hasMatch(value)) {
+    final lower = value.toLowerCase();
+    final mods = <String>[];
+    if (lower.contains('imax')) mods.add('IMAX');
+    if (lower.contains('10bit')) mods.add('10bit');
+    if (lower.contains('x265') || lower.contains('hevc')) mods.add('x265');
+    return mods.isEmpty ? '4K' : '4K ${mods.join(' ')}';
+  }
+  if (RegExp(r'\bfhd\b', caseSensitive: false).hasMatch(value) ||
+      RegExp(r'فول\s*اچ\s*دی').hasMatch(value)) {
+    return _formatQualityWithModifier(1080, value);
+  }
+  if (RegExp(r'\bhd\b', caseSensitive: false).hasMatch(value) ||
+      RegExp(r'(^|\W)اچ\s*دی(\W|$)').hasMatch(value)) {
+    return '720p';
+  }
   if (RegExp(r'\bsd\b', caseSensitive: false).hasMatch(value)) return '480p';
   return unknownQualityLabel;
 }
@@ -448,72 +545,117 @@ List<MovieEpisode> _distinctEpisodes(Iterable<MovieEpisode> input) {
 ///   (بدون قاطی کردن چند کیفیت باهم)؛ تیزرها کنار گذاشته می‌شوند.
 NormalDownloadPlan normalDownloadPlan(MovieContent content) {
   final catalog = EpisodeCatalog.from(content);
-  final isMovie =
-      content.kind == ContentKind.movie &&
-      catalog.seasons.length == 1 &&
-      catalog.seasons.first.id == 'movie';
+  final isMovie = content.kind == ContentKind.movie;
   if (isMovie) {
-    final season = catalog.seasons.first;
-    final main = season.episodes.firstWhere(
-      (group) => group.id == 'logical:movie:main',
-      orElse: () => season.episodes.first,
-    );
-    final mains = main.variants
-        .where(
-          (variant) =>
-              !isTrailerLabel(variant.episode.name) &&
-              !isTrailerLabel(variant.season.name),
-        )
-        .toList(growable: false);
-    if (mains.isEmpty) return const NormalDownloadPlan(isMovie: true, batches: []);
-    final qualities = _qualityList(mains);
-    if (qualities.every(isUnknownQuality)) {
-      final episodes = _distinctEpisodes(mains.map((item) => item.episode));
-      return NormalDownloadPlan(
-        isMovie: true,
-        batches: [
-          QualityDownloadBatch(
-            label: 'دانلود فیلم',
-            season: MovieSeason(
-              id: 'movie-all',
-              name: 'کیفیت‌های پخش',
+    if (catalog.seasons.length == 1 && catalog.seasons.first.id == 'movie') {
+      final season = catalog.seasons.first;
+      final main = season.episodes.firstWhere(
+        (group) => group.id == 'logical:movie:main',
+        orElse: () => season.episodes.first,
+      );
+      final mains = main.variants
+          .where(
+            (variant) =>
+                !isTrailerLabel(variant.episode.name) &&
+                !isTrailerLabel(variant.season.name),
+          )
+          .toList(growable: false);
+      if (mains.isEmpty) {
+        return const NormalDownloadPlan(isMovie: true, batches: []);
+      }
+      final qualities = _qualityList(mains);
+      if (qualities.every(isUnknownQuality)) {
+        final episodes = _distinctEpisodes(mains.map((item) => item.episode));
+        return NormalDownloadPlan(
+          isMovie: true,
+          batches: [
+            QualityDownloadBatch(
+              label: 'دانلود فیلم',
+              season: MovieSeason(
+                id: 'movie-all',
+                name: 'کیفیت‌های پخش',
+                episodes: episodes,
+              ),
               episodes: episodes,
             ),
-            episodes: episodes,
+          ],
+        );
+      }
+      final known = qualities
+          .where((quality) => !isUnknownQuality(quality))
+          .toList(growable: false);
+      final effective = known.isEmpty ? qualities : known;
+      return NormalDownloadPlan(
+        isMovie: true,
+        movieAll: QualityDownloadBatch(
+          label: 'دانلود همه ${mains.length} کیفیت',
+          season: MovieSeason(
+            id: 'movie-all',
+            name: 'کیفیت‌های پخش',
+            episodes: _distinctEpisodes(mains.map((item) => item.episode)),
           ),
+          episodes: _distinctEpisodes(mains.map((item) => item.episode)),
+        ),
+        batches: [
+          for (final quality in effective)
+            for (final variant in mains.where(
+              (item) => item.quality == quality,
+            ))
+              QualityDownloadBatch(
+                label: 'دانلود کیفیت ${qualityDisplayLabel(quality)}',
+                season: MovieSeason(
+                  id: 'movie-$quality',
+                  name: 'کیفیت‌های پخش · $quality',
+                  episodes: [variant.episode],
+                ),
+                episodes: [variant.episode],
+              ),
         ],
       );
     }
-    final known = qualities
-        .where((quality) => !isUnknownQuality(quality))
+
+    // فیلم با چند دسته‌بندی (مثلاً دوبله فارسی، زیرنویس فارسی)
+    final allMains = catalog.seasons
+        .where((s) => !s.isTrailerSeason)
+        .expand((s) => s.episodes.where((e) => !e.isTrailer).expand((e) => e.variants))
         .toList(growable: false);
-    final effective = known.isEmpty ? qualities : known;
+    if (allMains.isEmpty) {
+      return const NormalDownloadPlan(isMovie: true, batches: []);
+    }
+    final batches = <QualityDownloadBatch>[];
+    for (final season in catalog.seasons) {
+      if (season.isTrailerSeason) continue;
+      final mainVariants = season.episodes
+          .where((e) => !e.isTrailer)
+          .expand((e) => e.variants)
+          .toList(growable: false);
+      if (mainVariants.isEmpty) continue;
+      for (final variant in mainVariants) {
+        batches.add(
+          QualityDownloadBatch(
+            label: '${season.name} · کیفیت ${qualityDisplayLabel(variant.quality)}',
+            season: MovieSeason(
+              id: '${season.id}-${variant.quality}',
+              name: '${season.name} · ${variant.quality}',
+              episodes: [variant.episode],
+            ),
+            episodes: [variant.episode],
+          ),
+        );
+      }
+    }
     return NormalDownloadPlan(
       isMovie: true,
       movieAll: QualityDownloadBatch(
-        label: 'دانلود همه ${mains.length} کیفیت',
+        label: 'دانلود همه ${allMains.length} نسخه',
         season: MovieSeason(
           id: 'movie-all',
           name: 'کیفیت‌های پخش',
-          episodes: _distinctEpisodes(mains.map((item) => item.episode)),
+          episodes: _distinctEpisodes(allMains.map((item) => item.episode)),
         ),
-        episodes: _distinctEpisodes(mains.map((item) => item.episode)),
+        episodes: _distinctEpisodes(allMains.map((item) => item.episode)),
       ),
-      batches: [
-        for (final quality in effective)
-          for (final variant in mains.where(
-            (item) => item.quality == quality,
-          ))
-            QualityDownloadBatch(
-              label: 'دانلود کیفیت ${qualityDisplayLabel(quality)}',
-              season: MovieSeason(
-                id: 'movie-$quality',
-                name: 'کیفیت‌های پخش · $quality',
-                episodes: [variant.episode],
-              ),
-              episodes: [variant.episode],
-            ),
-      ],
+      batches: batches,
     );
   }
 
@@ -582,7 +724,7 @@ List<EpisodeVariant> _uniqueVariants(Iterable<EpisodeVariant> input) {
           : EpisodeVariant(
               season: variant.season,
               episode: variant.episode,
-              quality: '${variant.quality} · سرور $count',
+              quality: _disambiguateQuality(variant, count),
             ),
     );
   }
@@ -591,6 +733,15 @@ List<EpisodeVariant> _uniqueVariants(Iterable<EpisodeVariant> input) {
     return rank != 0 ? rank : a.quality.compareTo(b.quality);
   });
   return List.unmodifiable(values);
+}
+
+String _disambiguateQuality(EpisodeVariant variant, int count) {
+  final name = variant.episode.name;
+  final cleaned = _cleanQualityTokens(name);
+  if (cleaned.contains('کم حجم')) {
+    return '${variant.quality} · کم‌حجم';
+  }
+  return '${variant.quality} · سرور $count';
 }
 
 List<String> _qualityList(Iterable<EpisodeVariant> variants) {
@@ -603,9 +754,83 @@ List<String> _qualityList(Iterable<EpisodeVariant> variants) {
 }
 
 int _qualityRank(String value) {
-  if (value.toLowerCase().contains('4k')) return 2160;
-  return int.tryParse(RegExp(r'\d{3,4}').firstMatch(value)?.group(0) ?? '') ??
-      0;
+  final lower = value.toLowerCase();
+  var base = 0;
+  if (lower.contains('4k') || lower.contains('2160')) {
+    base = 2160;
+  } else {
+    base = int.tryParse(RegExp(r'\d{3,4}').firstMatch(value)?.group(0) ?? '') ?? 0;
+  }
+
+  var boost = 0;
+  if (lower.contains('hd') || lower.contains('hq')) boost += 4;
+  if (lower.contains('imax')) boost += 3;
+  if (lower.contains('10bit')) boost += 2;
+  if (lower.contains('x265') || lower.contains('hevc')) boost += 1;
+
+  return base * 10 + boost;
+}
+
+int _categoryOrder(String key) {
+  if (key.startsWith('dubbed')) return 1;
+  switch (key) {
+    case 'subbed':
+      return 2;
+    case 'original':
+      return 3;
+    case 'main':
+      return 4;
+    default:
+      return 5;
+  }
+}
+
+String _movieCategoryKey(String name) {
+  final lower = _latinDigits(name).toLowerCase();
+  if (lower.contains('دوبله') || lower.contains('farsi dub')) {
+    for (final studio in const ['گلوری', 'سورن', 'کوالیما', 'آواژه', 'فیلیمو', 'نماوا']) {
+      if (lower.contains(studio)) {
+        return 'dubbed-$studio';
+      }
+    }
+    return 'dubbed';
+  }
+  if (lower.contains('زیرنویس') || lower.contains('softsub') || lower.contains('sub')) {
+    return 'subbed';
+  }
+  if (lower.contains('زبان اصلی') || lower.contains('original')) {
+    return 'original';
+  }
+  final cleaned = _cleanQualityTokens(name);
+  return cleaned.isEmpty ? 'main' : cleaned;
+}
+
+String _movieCategoryTitle(String key, String sampleEpisodeName) {
+  if (key.startsWith('dubbed')) {
+    final cleaned = _cleanQualityTokens(sampleEpisodeName);
+    if (cleaned.contains('دوبله') && cleaned.length > 5 && cleaned.length < 30) {
+      return cleaned;
+    }
+    if (key.contains('-')) {
+      final studio = key.split('-').last;
+      return 'دوبله $studio';
+    }
+    return 'دوبله فارسی';
+  }
+  switch (key) {
+    case 'subbed':
+      final cleaned = _cleanQualityTokens(sampleEpisodeName);
+      if (cleaned.contains('زیرنویس') && cleaned.length > 8 && cleaned.length < 30) {
+        return cleaned;
+      }
+      return 'زیرنویس فارسی';
+    case 'original':
+      return 'زبان اصلی';
+    case 'main':
+      return 'نسخه اصلی';
+    default:
+      return key;
+  }
 }
 
 String _cleanQualityTokens(String input) {

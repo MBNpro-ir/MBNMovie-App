@@ -680,8 +680,12 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
                 children: [
                   if (seasons.length > 1) ...[
                     _selectorRow(
-                      title: 'فصل',
-                      icon: Icons.video_library_rounded,
+                      title: widget.content.kind == ContentKind.movie
+                          ? 'دسته‌بندی'
+                          : 'فصل',
+                      icon: widget.content.kind == ContentKind.movie
+                          ? Icons.category_rounded
+                          : Icons.video_library_rounded,
                       children: [
                         for (var i = 0; i < seasons.length; i++)
                           ChoiceChip(

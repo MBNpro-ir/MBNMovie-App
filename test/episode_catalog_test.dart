@@ -463,4 +463,92 @@ void main() {
     expect(catalog.seasons.single.name, 'فصل 1');
     expect(catalog.seasons.single.episodes.first.variants, hasLength(2));
   });
+
+  test('movie with dub and sub variants separates into clean categories without server labels', () {
+    const content = MovieContent(
+      id: 'kung-fu-panda-4',
+      title: 'پاندای کونگ فو کار 4',
+      subtitle: '',
+      description: '',
+      year: 2024,
+      rating: 7.5,
+      kind: ContentKind.movie,
+      colors: [],
+      genres: [],
+      seasons: [
+        MovieSeason(
+          id: 'movie',
+          name: 'کیفیت‌های پخش',
+          episodes: [
+            MovieEpisode(
+              id: 'ep-sub-1080-hd',
+              name: 'کیفیت 1080 زیرنویس hd',
+              fileUrl: 'https://example.com/sub-1080-hd.mp4',
+              fileSize: '4849 MB',
+            ),
+            MovieEpisode(
+              id: 'ep-sub-1080',
+              name: 'کیفیت 1080 زیرنویس',
+              fileUrl: 'https://example.com/sub-1080.mp4',
+              fileSize: '1765 MB',
+            ),
+            MovieEpisode(
+              id: 'ep-sub-720',
+              name: 'کیفیت 720 زیرنویس',
+              fileUrl: 'https://example.com/sub-720.mp4',
+              fileSize: '859 MB',
+            ),
+            MovieEpisode(
+              id: 'ep-dub-480',
+              name: 'کیفیت 480 دوبله',
+              fileUrl: 'https://example.com/dub-480.mp4',
+              fileSize: '537 MB',
+            ),
+            MovieEpisode(
+              id: 'ep-dub-720',
+              name: 'کیفیت 720 دوبله',
+              fileUrl: 'https://example.com/dub-720.mp4',
+              fileSize: '987 MB',
+            ),
+            MovieEpisode(
+              id: 'ep-dub-1080',
+              name: 'کیفیت 1080 دوبله',
+              fileUrl: 'https://example.com/dub-1080.mp4',
+              fileSize: '1931 MB',
+            ),
+          ],
+        ),
+      ],
+    );
+
+    final catalog = EpisodeCatalog.from(content);
+
+    // Should have 2 category seasons: Dubbed and Subbed
+    expect(catalog.seasons, hasLength(2));
+    expect(catalog.seasons[0].name, 'دوبله فارسی');
+    expect(catalog.seasons[1].name, 'زیرنویس فارسی');
+
+    // Dubbed qualities
+    expect(catalog.seasons[0].displayQualities, ['1080p', '720p', '480p']);
+
+    // Subbed qualities with 1080p HD ranked first
+    expect(catalog.seasons[1].displayQualities, ['1080p HD', '1080p', '720p']);
+
+    // Ensure NO variant has 'سرور' in its quality label
+    for (final season in catalog.seasons) {
+      for (final episodeGroup in season.episodes) {
+        for (final variant in episodeGroup.variants) {
+          expect(variant.quality.contains('سرور'), isFalse,
+              reason: 'Quality "${variant.quality}" should not contain "سرور"');
+        }
+      }
+    }
+
+    // Check normalDownloadPlan
+    final plan = normalDownloadPlan(content);
+    expect(plan.isMovie, isTrue);
+    expect(plan.batches, hasLength(6));
+    expect(plan.movieAll?.label, 'دانلود همه 6 نسخه');
+  });
 }
+
