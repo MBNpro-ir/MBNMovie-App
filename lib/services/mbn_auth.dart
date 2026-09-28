@@ -184,6 +184,12 @@ class MbnAuth {
     final prevToken = token;
     token = authToken;
     try {
+      try {
+        final exchanged = await postJson('/api/auth/exchange', {'target_app': 'movie'});
+        if (exchanged['token'] != null) {
+          token = exchanged['token'].toString();
+        }
+      } catch (_) {}
       final data = await getJson('/api/me');
       profile = MbnProfile.fromJson(
         (data['user'] as Map?)?.cast<String, dynamic>() ?? {},

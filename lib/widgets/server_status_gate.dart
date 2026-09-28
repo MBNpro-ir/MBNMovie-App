@@ -34,6 +34,8 @@ class _ServerStatusGateState extends State<ServerStatusGate> {
   Timer? _pollTimer;
   Timer? _countdownTimer;
   int _remainingSeconds = 0;
+  int _serverTimeSkew = 0;
+  Duration _currentPollInterval = const Duration(seconds: 10);
   bool _retrying = false;
 
   @override
@@ -46,16 +48,23 @@ class _ServerStatusGateState extends State<ServerStatusGate> {
       return;
     }
     _checkServer();
-    _pollTimer = Timer.periodic(const Duration(seconds: 15), (_) => _pollServer());
+    _pollTimer = Timer.periodic(_currentPollInterval, (_) => _pollServer());
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       if (_state == ServerState.maintenance && _remainingSeconds > 0) {
         setState(() => _remainingSeconds--);
         if (_remainingSeconds <= 0) {
-          _checkServer();
+          _pollServer();
         }
       }
     });
+  }
+
+  void _adjustPollInterval(Duration next) {
+    if (_currentPollInterval == next) return;
+    _currentPollInterval = next;
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(next, (_) => _pollServer());
   }
 
   @override
@@ -72,16 +81,22 @@ class _ServerStatusGateState extends State<ServerStatusGate> {
     if (!mounted) return;
     setState(() {
       _maintenanceData = data;
-      _state = ServerState.maintenance;
       _calcRemaining(data);
+      _state = ServerState.maintenance;
     });
+    _adjustPollInterval(const Duration(seconds: 3));
   }
 
   void _calcRemaining(Map<String, dynamic> data) {
     final endsAt = (data['ends_at'] as num?)?.toInt() ?? 0;
-    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    if (endsAt > now) {
-      _remainingSeconds = endsAt - now;
+    final serverTime = (data['server_time'] as num?)?.toInt();
+    final localNow = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    if (serverTime != null) {
+      _serverTimeSkew = serverTime - localNow;
+    }
+    final effectiveNow = localNow + _serverTimeSkew;
+    if (endsAt > effectiveNow) {
+      _remainingSeconds = endsAt - effectiveNow;
     } else {
       _remainingSeconds = 0;
     }
@@ -96,19 +111,24 @@ class _ServerStatusGateState extends State<ServerStatusGate> {
       if (res.statusCode == 200 || res.statusCode == 503) {
         final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
         final m = (data['maintenance'] as Map<String, dynamic>?) ?? data;
-        if (m['enabled'] == true) {
-          setState(() {
-            _maintenanceData = m;
-            _calcRemaining(m);
-            _state = ServerState.maintenance;
-          });
-          return;
-        } else {
-          setState(() {
-            _state = ServerState.online;
-          });
-          return;
+        final enabled = m['enabled'] == true;
+        if (enabled) {
+          _calcRemaining(m);
+          if (_remainingSeconds > 0 || (m['ends_at'] as num? ?? 0) == 0) {
+            setState(() {
+              _maintenanceData = m;
+              _state = ServerState.maintenance;
+            });
+            _adjustPollInterval(const Duration(seconds: 3));
+            return;
+          }
         }
+        setState(() {
+          _maintenanceData = null;
+          _remainingSeconds = 0;
+          _state = ServerState.online;
+        });
+        _adjustPollInterval(const Duration(seconds: 10));
       } else {
         setState(() => _state = ServerState.offline);
       }
@@ -122,25 +142,31 @@ class _ServerStatusGateState extends State<ServerStatusGate> {
   Future<void> _pollServer() async {
     try {
       final uri = Uri.parse('${widget.baseUrl}/api/maintenance');
-      final res = await http.get(uri).timeout(const Duration(seconds: 10));
+      final res = await http.get(uri).timeout(const Duration(seconds: 5));
       if (!mounted) return;
       if (res.statusCode == 200 || res.statusCode == 503) {
         final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
         final m = (data['maintenance'] as Map<String, dynamic>?) ?? data;
-        if (m['enabled'] == true) {
-          if (_state != ServerState.maintenance) {
+        final enabled = m['enabled'] == true;
+        if (enabled) {
+          _calcRemaining(m);
+          if (_remainingSeconds > 0 || (m['ends_at'] as num? ?? 0) == 0) {
             setState(() {
               _maintenanceData = m;
-              _calcRemaining(m);
               _state = ServerState.maintenance;
             });
+            _adjustPollInterval(const Duration(seconds: 3));
+            return;
           }
-        } else {
-          if (_state == ServerState.maintenance) {
-            setState(() {
-              _state = ServerState.online;
-            });
-          }
+        }
+        // If maintenance is turned off or time elapsed:
+        if (_state == ServerState.maintenance || _state == ServerState.checking || _state == ServerState.offline) {
+          setState(() {
+            _maintenanceData = null;
+            _remainingSeconds = 0;
+            _state = ServerState.online;
+          });
+          _adjustPollInterval(const Duration(seconds: 10));
         }
       }
     } catch (_) {}
