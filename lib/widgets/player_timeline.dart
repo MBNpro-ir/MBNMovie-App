@@ -8,9 +8,11 @@ class PlayerTimeline extends StatefulWidget {
     required this.duration,
     required this.buffer,
     required this.onSeek,
+    this.onSeekStateChanged,
   });
   final Duration position, duration, buffer;
   final ValueChanged<Duration> onSeek;
+  final ValueChanged<bool>? onSeekStateChanged;
   @override
   State<PlayerTimeline> createState() => _PlayerTimelineState();
 }
@@ -74,7 +76,10 @@ class _PlayerTimelineState extends State<PlayerTimeline> {
                   '${playerTime(destination)} / ${playerTime(widget.duration)}',
               onChangeStart: length <= 0
                   ? null
-                  : (value) => setState(() => _drag = value),
+                  : (value) {
+                      widget.onSeekStateChanged?.call(true);
+                      setState(() => _drag = value);
+                    },
               onChanged: length <= 0
                   ? null
                   : (value) => setState(() => _drag = value),
@@ -85,6 +90,7 @@ class _PlayerTimelineState extends State<PlayerTimeline> {
                       widget.onSeek(
                         Duration(milliseconds: (value * length).round()),
                       );
+                      widget.onSeekStateChanged?.call(false);
                     },
             ),
           ),

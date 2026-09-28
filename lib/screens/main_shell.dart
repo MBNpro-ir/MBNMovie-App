@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/country_flags.dart';
 import '../core/episode_catalog.dart';
@@ -2214,6 +2215,40 @@ class _SearchPageState extends State<_SearchPage> {
   // never overwrite the current query's state.
   int _searchGeneration = 0;
   Future<List<MovieContent>>? _scopedItems;
+  static const _recentSearchesKey = 'recent_searches_movie';
+  List<String> _recentSearches = [];
+
+  Future<void> _loadRecentSearches() async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList(_recentSearchesKey) ?? [];
+    if (mounted) setState(() => _recentSearches = list);
+  }
+
+  Future<void> _addRecentSearch(String query) async {
+    final q = query.trim();
+    if (q.length < 2) return;
+    final updated = [
+      q,
+      ..._recentSearches.where((s) => s.toLowerCase() != q.toLowerCase()),
+    ];
+    if (updated.length > 15) updated.removeRange(15, updated.length);
+    if (mounted) setState(() => _recentSearches = updated);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_recentSearchesKey, updated);
+  }
+
+  Future<void> _removeRecentSearch(String item) async {
+    final updated = _recentSearches.where((s) => s != item).toList();
+    if (mounted) setState(() => _recentSearches = updated);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_recentSearchesKey, updated);
+  }
+
+  Future<void> _clearRecentSearches() async {
+    if (mounted) setState(() => _recentSearches = []);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_recentSearchesKey);
+  }
 
   Future<List<MovieContent>> _loadScopedItems() => _scopedItems ??= () async {
     final items = <MovieContent>[];
@@ -2289,6 +2324,7 @@ class _SearchPageState extends State<_SearchPage> {
       }
     });
     _preloadGroups();
+    unawaited(_loadRecentSearches());
     if (widget.sourcePage == null &&
         (type.isNotEmpty ||
             genre != null ||
@@ -2332,9 +2368,6 @@ class _SearchPageState extends State<_SearchPage> {
       advanced = false;
       if (value.trim().length < 2) results = [];
     });
-    if (value.trim().length >= 2) {
-      debounce = Timer(const Duration(milliseconds: 420), search);
-    }
   }
 
   Future<void> search() async {
@@ -2354,6 +2387,7 @@ class _SearchPageState extends State<_SearchPage> {
     }
     final query = controller.text.trim();
     if (query.length < 2) return;
+    unawaited(_addRecentSearch(query));
     final generation = ++_searchGeneration;
     setState(() {
       loading = true;
@@ -2425,6 +2459,7 @@ class _SearchPageState extends State<_SearchPage> {
       await search();
       return;
     }
+    if (query.length >= 2) unawaited(_addRecentSearch(query));
     final generation = ++_searchGeneration;
     setState(() {
       loading = true;
@@ -2662,35 +2697,140 @@ class _SearchPageState extends State<_SearchPage> {
         ),
         slivers: [
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 10),
-              child: Directionality(
-                textDirection: searchTextDirection(controller.text),
-                child: SearchBar(
-                  controller: controller,
-                  hintText: 'نام فیلم یا سریال را بنویس…',
-                  leading: IconButton(
-                    icon: const Icon(Icons.search_rounded),
-                    onPressed: search,
-                    tooltip: 'جستجو',
-                  ),
-                  trailing: [
-                    if (controller.text.isNotEmpty)
-                      IconButton(
-                        onPressed: clearSearch,
-                        icon: const Icon(Icons.close_rounded),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 860),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 10, 20, 6),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Directionality(
+                          textDirection: searchTextDirection(controller.text),
+                          child: SearchBar(
+                            controller: controller,
+                            hintText: 'نام فیلم یا سریال را بنویس…',
+                            leading: IconButton(
+                              icon: const Icon(Icons.search_rounded),
+                              onPressed: search,
+                              tooltip: 'جستجو',
+                            ),
+                            trailing: [
+                              if (controller.text.isNotEmpty)
+                                IconButton(
+                                  onPressed: clearSearch,
+                                  icon: const Icon(Icons.close_rounded),
+                                ),
+                            ],
+                            onChanged: changed,
+                            onSubmitted: (_) => search(),
+                          ),
+                        ),
                       ),
-                  ],
-                  onChanged: changed,
-                  onSubmitted: (_) => search(),
+                      const SizedBox(width: 10),
+                      FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size(116, 54),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(28),
+                          ),
+                        ),
+                        onPressed: loading ? null : search,
+                        icon: const Icon(Icons.search_rounded),
+                        label: const Text('جست‌وجو کن'),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
+          if (controller.text.trim().isEmpty &&
+              results.isEmpty &&
+              !loading &&
+              _recentSearches.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 860),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 6, 20, 8),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: MovieColors.surfaceHigh.withValues(alpha: .5),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white10),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.history_rounded,
+                                  size: 20,
+                                  color: MovieColors.orange,
+                                ),
+                                const SizedBox(width: 8),
+                                const Text(
+                                  'جست‌وجوهای اخیر',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                const Spacer(),
+                                TextButton.icon(
+                                  onPressed: _clearRecentSearches,
+                                  icon: const Icon(
+                                    Icons.delete_sweep_rounded,
+                                    size: 18,
+                                  ),
+                                  label: const Text(
+                                    'پاک کردن تاریخچه',
+                                    style: TextStyle(fontSize: 12),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                for (final item in _recentSearches)
+                                  InputChip(
+                                    avatar: const Icon(
+                                      Icons.history_rounded,
+                                      size: 16,
+                                      color: MovieColors.orange,
+                                    ),
+                                    label: Text(item),
+                                    onDeleted: () => _removeRecentSearch(item),
+                                    onPressed: () {
+                                      controller.text = item;
+                                      search();
+                                    },
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
-              child: Card(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 860),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+                  child: Card(
                 color: MovieColors.surfaceHigh,
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(8, 4, 8, 12),
@@ -2820,6 +2960,8 @@ class _SearchPageState extends State<_SearchPage> {
               ),
             ),
           ),
+        ),
+      ),
           if (loading)
             const SliverToBoxAdapter(
               child: LinearProgressIndicator(minHeight: 2),

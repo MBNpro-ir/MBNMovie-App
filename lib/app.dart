@@ -9,6 +9,7 @@ import 'core/theme.dart';
 import 'core/title_language.dart';
 import 'core/platform_ui.dart';
 import 'widgets/tv_navigation.dart';
+import 'widgets/server_status_gate.dart';
 import 'screens/login_screen.dart';
 import 'screens/main_shell.dart';
 import 'screens/splash_screen.dart';
@@ -195,6 +196,13 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
         WidgetsBinding.instance.addPostFrameCallback(
           (_) => _showLogoutDialog(message),
         );
+      } else if (_loggedIn) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final ctx = appNavigatorKey.currentContext;
+          if (ctx != null && ctx.mounted) {
+            unawaited(MbnSync.instance.checkOtherAppSettingsPrompt(ctx));
+          }
+        });
       }
     }
   }
@@ -431,7 +439,11 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
       builder: (context, child) => DesktopWindowFrame(
         child: Directionality(
           textDirection: TextDirection.rtl,
-          child: MandatoryUpdateGate(child: TvNavigation(child: child!)),
+          child: MandatoryUpdateGate(
+            child: TvNavigation(
+              child: ServerStatusGate(child: child!),
+            ),
+          ),
         ),
       ),
       home: AnimatedSwitcher(

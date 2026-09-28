@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -250,6 +251,18 @@ class MbnSync {
     });
   }
 
+  Future<void> pushPreferencesThrottled() async {
+    if (_auth?.token == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    if (!(prefs.getBool('sync_settings_enabled') ?? true)) return;
+    await _touchLocal('preferences');
+    _pendingPreferencesPush?.cancel();
+    _pendingPreferencesPush = Timer(const Duration(milliseconds: 800), () {
+      _pendingPreferencesPush = null;
+      unawaited(_pushCategories(['preferences']));
+    });
+  }
+
   Future<void> flushPending() async {
     _pendingProgressPush?.cancel();
     _pendingProgressPush = null;
@@ -261,6 +274,54 @@ class MbnSync {
         await _pushCategories([category]);
       }
     }
+  }
+
+  Future<void> checkOtherAppSettingsPrompt(BuildContext context) async {
+    final auth = _auth;
+    if (auth?.token == null) return;
+    final profile = auth?.profile;
+    if (profile == null || profile.id <= 0) return;
+    final prefs = await SharedPreferences.getInstance();
+    final promptKey = 'mbn_other_app_settings_prompted_${profile.id}';
+    if (prefs.getBool(promptKey) ?? false) return;
+
+    try {
+      final platformKey = Platform.isWindows ? 'windows' : (Platform.isAndroid ? 'android' : 'other');
+      final res = await auth!.getJson('/api/sync/other-settings', query: {'platform': platformKey});
+      if (res['has_settings'] == true && res['settings'] is Map) {
+        final otherName = res['other_app_name']?.toString() ?? 'برنامه دیگر';
+        if (!context.mounted) return;
+        final accepted = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => Directionality(
+            textDirection: TextDirection.rtl,
+            child: AlertDialog(
+              title: const Text('همگام‌سازی تنظیمات'),
+              content: Text(
+                'بخش تنظیمات برنامه در سرور یافت شد ، آیا مایل هستی که تنظیمات خودت رو از برنامه $otherName دریافت کنم ؟',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('خیر'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('بله'),
+                ),
+              ],
+            ),
+          ),
+        );
+        if (accepted == true) {
+          await _restorePreferences(res['settings']);
+          await _touchLocal('preferences');
+          await pushPreferencesThrottled();
+        }
+      }
+      await prefs.setBool(promptKey, true);
+    } catch (_) {}
   }
 
   Future<void> pushAll() => _pushCategories(_categories);
@@ -286,7 +347,11 @@ class MbnSync {
       case 'progress':
         return _readProgressKeys();
       case 'preferences':
-        return _readPreferenceKeys();
+        final prefs = await SharedPreferences.getInstance();
+        if (!(prefs.getBool('sync_settings_enabled') ?? true)) return null;
+        final raw = await _readPreferenceKeys();
+        final platformKey = Platform.isWindows ? 'windows' : (Platform.isAndroid ? 'android' : 'other');
+        return {platformKey: raw};
     }
     return null;
   }
@@ -322,11 +387,21 @@ class MbnSync {
   Future<void> _restorePreferences(Object? payload) async {
     if (payload is! Map) return;
     final prefs = await SharedPreferences.getInstance();
-    final received = payload.keys.map((key) => '$key').where(_isPreferenceKey).toSet();
+    if (!(prefs.getBool('sync_settings_enabled') ?? true)) return;
+    final platformKey = Platform.isWindows ? 'windows' : (Platform.isAndroid ? 'android' : 'other');
+    Map targetPayload;
+    if (payload.containsKey(platformKey) && payload[platformKey] is Map) {
+      targetPayload = payload[platformKey] as Map;
+    } else if (!payload.containsKey('windows') && !payload.containsKey('android')) {
+      targetPayload = payload;
+    } else {
+      return;
+    }
+    final received = targetPayload.keys.map((key) => '$key').where(_isPreferenceKey).toSet();
     for (final key in prefs.getKeys().where(_isPreferenceKey).toList()) {
       if (!received.contains(key)) await prefs.remove(key);
     }
-    for (final entry in payload.entries) {
+    for (final entry in targetPayload.entries) {
       final key = '${entry.key}';
       if (!_isPreferenceKey(key)) continue;
       final value = entry.value;

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -80,6 +81,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   };
 
   bool _loading = true;
+  bool _syncSettingsEnabled = true;
   double _volume = 100;
   double _rate = 1;
   bool _fitCover = false;
@@ -133,6 +135,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ? streamer!
           : PlaybackPreferenceStore.askEveryTime;
       _subtitle = SubtitlePreferences.fromStore(prefs);
+      _syncSettingsEnabled = prefs.getBool('sync_settings_enabled') ?? true;
       _loading = false;
     });
   }
@@ -157,6 +160,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _saveSubtitle(SubtitlePreferences value) async {
     setState(() => _subtitle = value);
     await value.save(await SharedPreferences.getInstance());
+    unawaited(MbnSync.instance.pushPreferencesThrottled());
   }
 
   Future<void> _reset() async {
@@ -171,6 +175,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _brightness = .5;
       _defaultPlayer = PlaybackPreferenceStore.askEveryTime;
       _defaultStreamer = PlaybackPreferenceStore.askEveryTime;
+      _syncSettingsEnabled = true;
       _subtitle = subtitle;
     });
     await prefs.setDouble('player_volume', 100);
@@ -187,6 +192,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       PlaybackPreferenceStore.askEveryTime,
     );
     await subtitle.save(prefs);
+    await prefs.setBool('sync_settings_enabled', true);
     if (Platform.isAndroid) await DeviceBridge.setScreenBrightness(null);
   }
 
@@ -245,6 +251,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               ),
                             ],
                           ),
+                        ),
+                        _section(
+                          icon: Icons.cloud_sync_rounded,
+                          title: 'همگام‌سازی ابری',
+                          children: [
+                            SwitchListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: const Text(
+                                'همگام‌سازی همیشگی تنظیمات برنامه با سرور',
+                              ),
+                              subtitle: const Text(
+                                'در صورت غیرفعال بودن، تنظیمات پلیر و زیرنویس فقط در این دستگاه ذخیره می‌شوند و روی سرور بازنویسی نخواهند شد.',
+                              ),
+                              value: _syncSettingsEnabled,
+                              onChanged: (value) async {
+                                setState(() => _syncSettingsEnabled = value);
+                                final prefs =
+                                    await SharedPreferences.getInstance();
+                                await prefs.setBool(
+                                  'sync_settings_enabled',
+                                  value,
+                                );
+                                if (value) {
+                                  await MbnSync.instance.pushPreferences();
+                                }
+                              },
+                            ),
+                          ],
                         ),
                         _section(
                           icon: Icons.translate_rounded,
