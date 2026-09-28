@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import '../services/accessibility_service.dart';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -276,6 +278,345 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 if (value) {
                                   await MbnSync.instance.pushPreferences();
                                 }
+                              },
+                            ),
+                          ],
+                        ),
+                        _section(
+                          icon: Icons.accessibility_new_rounded,
+                          title: 'دسترسی‌پذیری و مقیاس نمایش (Accessibility)',
+                          children: [
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 14),
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: MovieColors.surfaceHigh.withValues(alpha: 0.6),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: MovieColors.cyan.withValues(alpha: 0.3),
+                                ),
+                              ),
+                              child: const Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Icon(
+                                    Icons.sync_alt_rounded,
+                                    color: MovieColors.cyan,
+                                    size: 22,
+                                  ),
+                                  SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      '📱💻 همگام‌سازی ابری تفکیک‌شده: تنظیمات ابعاد و مقیاس برای گوشی و کامپیوتر به‌صورت جداگانه در سرور ذخیره می‌شوند تا تغییر سایز گوشی روی مانیتور کامپیوتر اثری نداشته باشد.',
+                                      style: TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 12.5,
+                                        height: 1.5,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            ListenableBuilder(
+                              listenable: AccessibilityService.instance,
+                              builder: (context, _) {
+                                final access = AccessibilityService.instance;
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    // UI Scale
+                                    Row(
+                                      children: [
+                                        const Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                'مقیاس کلی برنامه (اندازه همهٔ بخش‌ها و آیکون‌ها)',
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 13.5,
+                                                ),
+                                              ),
+                                              SizedBox(height: 2),
+                                              Text(
+                                                'اگر عناصر در گوشی خیلی بزرگ هستند، مقدار فشرده (۸۰٪ یا ۸۵٪) را انتخاب کنید.',
+                                                style: TextStyle(
+                                                  color: MovieColors.muted,
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 4,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: MovieColors.orange.withValues(
+                                              alpha: 0.15,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
+                                            border: Border.all(
+                                              color: MovieColors.orange.withValues(
+                                                alpha: 0.4,
+                                              ),
+                                            ),
+                                          ),
+                                          child: Text(
+                                            '${(access.uiScale * 100).round()}٪',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: MovieColors.orange,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.zoom_out_rounded,
+                                          size: 20,
+                                          color: MovieColors.muted,
+                                        ),
+                                        Expanded(
+                                          child: Slider(
+                                            value: access.uiScale,
+                                            min: 0.70,
+                                            max: 1.30,
+                                            divisions: 12,
+                                            label:
+                                                '${(access.uiScale * 100).round()}٪',
+                                            onChanged: (val) =>
+                                                access.setUiScale(val),
+                                          ),
+                                        ),
+                                        const Icon(
+                                          Icons.zoom_in_rounded,
+                                          size: 20,
+                                          color: MovieColors.muted,
+                                        ),
+                                      ],
+                                    ),
+                                    Wrap(
+                                      spacing: 6,
+                                      runSpacing: 6,
+                                      children: [
+                                        _ScaleChip(
+                                          label: '۸۰٪ بسیار فشرده',
+                                          value: 0.80,
+                                          current: access.uiScale,
+                                          onSelect: access.setUiScale,
+                                        ),
+                                        _ScaleChip(
+                                          label: '۸۵٪ بهینه گوشی',
+                                          value: 0.85,
+                                          current: access.uiScale,
+                                          onSelect: access.setUiScale,
+                                        ),
+                                        _ScaleChip(
+                                          label: '۹۰٪ کمی فشرده',
+                                          value: 0.90,
+                                          current: access.uiScale,
+                                          onSelect: access.setUiScale,
+                                        ),
+                                        _ScaleChip(
+                                          label: '۱۰۰٪ استاندارد',
+                                          value: 1.00,
+                                          current: access.uiScale,
+                                          onSelect: access.setUiScale,
+                                        ),
+                                        _ScaleChip(
+                                          label: '۱۱۰٪ بزرگ',
+                                          value: 1.10,
+                                          current: access.uiScale,
+                                          onSelect: access.setUiScale,
+                                        ),
+                                        _ScaleChip(
+                                          label: '۱۲۰٪ خیلی بزرگ',
+                                          value: 1.20,
+                                          current: access.uiScale,
+                                          onSelect: access.setUiScale,
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 18),
+
+                                    // Text Scale
+                                    Row(
+                                      children: [
+                                        const Expanded(
+                                          child: Text(
+                                            'اندازه متون و قلم‌ها',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 13.5,
+                                            ),
+                                          ),
+                                        ),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 4,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white10,
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                          ),
+                                          child: Text(
+                                            '${(access.textScale * 100).round()}٪',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.text_fields_rounded,
+                                          size: 20,
+                                          color: MovieColors.muted,
+                                        ),
+                                        Expanded(
+                                          child: Slider(
+                                            value: access.textScale,
+                                            min: 0.80,
+                                            max: 1.40,
+                                            divisions: 12,
+                                            label:
+                                                '${(access.textScale * 100).round()}٪',
+                                            onChanged: (val) =>
+                                                access.setTextScale(val),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 14),
+
+                                    // Density
+                                    DropdownButtonFormField<DensityMode>(
+                                      initialValue: access.densityMode,
+                                      isExpanded: true,
+                                      decoration: const InputDecoration(
+                                        labelText:
+                                            'تراکم چیدمان و فاصله‌ها (Density)',
+                                        helperText:
+                                            'تنظیم فاصله بین ردیف‌ها و حاشیه‌های کلیدها',
+                                      ),
+                                      items: DensityMode.values
+                                          .map(
+                                            (mode) => DropdownMenuItem(
+                                              value: mode,
+                                              child: Text(mode.label),
+                                            ),
+                                          )
+                                          .toList(),
+                                      onChanged: (mode) {
+                                        if (mode != null) access.setDensity(mode);
+                                      },
+                                    ),
+                                    const SizedBox(height: 14),
+
+                                    // Switches
+                                    SwitchListTile(
+                                      contentPadding: EdgeInsets.zero,
+                                      title: const Text(
+                                        'کاهش انیمیشن‌ها و افکت‌های حرکتی (Reduce Motion)',
+                                      ),
+                                      subtitle: const Text(
+                                        'ساده‌سازی ترنزیشن‌ها برای سرعت بالاتر و افراد حساس به حرکت',
+                                      ),
+                                      value: access.reduceMotion,
+                                      onChanged: (val) =>
+                                          access.setReduceMotion(val),
+                                    ),
+                                    SwitchListTile(
+                                      contentPadding: EdgeInsets.zero,
+                                      title: const Text(
+                                        'افزایش کنتراست و خطوط تم تیره (High Contrast)',
+                                      ),
+                                      subtitle: const Text(
+                                        'پررنگ‌تر کردن مرزها و کارت‌ها جهت دید بهتر',
+                                      ),
+                                      value: access.highContrast,
+                                      onChanged: (val) =>
+                                          access.setHighContrast(val),
+                                    ),
+                                    SwitchListTile(
+                                      contentPadding: EdgeInsets.zero,
+                                      title: const Text(
+                                        'نمایش متون پررنگ (Bold Text)',
+                                      ),
+                                      subtitle: const Text(
+                                        'افزایش ضخامت نوشته‌ها برای سهولت در خواندن',
+                                      ),
+                                      value: access.boldText,
+                                      onChanged: (val) =>
+                                          access.setBoldText(val),
+                                    ),
+                                    SwitchListTile(
+                                      contentPadding: EdgeInsets.zero,
+                                      title: const Text(
+                                        'بازخورد لرزشی کلیدها (Haptic Feedback)',
+                                      ),
+                                      subtitle: const Text(
+                                        'لرزش بسیار خفیف هنگام لمس بخش‌ها',
+                                      ),
+                                      value: access.haptics,
+                                      onChanged: (val) => access.setHaptics(val),
+                                    ),
+                                    SwitchListTile(
+                                      contentPadding: EdgeInsets.zero,
+                                      title: const Text(
+                                        'زیرنویس درشت با پس‌زمینه تیره در پلیر',
+                                      ),
+                                      subtitle: const Text(
+                                        'افزایش اندازه زیرنویس و ایجاد پس‌زمینه مشکی برای دید حداکثری',
+                                      ),
+                                      value: access.largeSubtitles,
+                                      onChanged: (val) =>
+                                          access.setLargeSubtitles(val),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: OutlinedButton.icon(
+                                        icon: const Icon(
+                                          Icons.restart_alt_rounded,
+                                          size: 18,
+                                        ),
+                                        label: const Text(
+                                          'بازنشانی دسترسی‌پذیری به مقادیر پیش‌فرض',
+                                        ),
+                                        onPressed: () async {
+                                          await access.resetToDefaults();
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              const SnackBar(
+                                                content: Text(
+                                                  'تنظیمات دسترسی‌پذیری بازنشانی شدند.',
+                                                ),
+                                              ),
+                                            );
+                                          }
+                                        },
+                                      ),
+                                    ),
+                                  ],
+                                );
                               },
                             ),
                           ],
@@ -805,3 +1146,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ),
   );
 }
+
+class _ScaleChip extends StatelessWidget {
+  const _ScaleChip({
+    required this.label,
+    required this.value,
+    required this.current,
+    required this.onSelect,
+  });
+
+  final String label;
+  final double value;
+  final double current;
+  final ValueChanged<double> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = (current - value).abs() < 0.01;
+    return ChoiceChip(
+      label: Text(label, style: const TextStyle(fontSize: 11.5)),
+      selected: selected,
+      onSelected: (_) => onSelect(value),
+      selectedColor: MovieColors.orange.withValues(alpha: 0.25),
+      labelStyle: TextStyle(
+        color: selected ? MovieColors.orange : Colors.white70,
+        fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+      ),
+    );
+  }
+}
+

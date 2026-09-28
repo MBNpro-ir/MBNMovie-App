@@ -8,6 +8,7 @@ import 'package:window_manager/window_manager.dart';
 import 'app.dart';
 import 'core/platform_ui.dart';
 import 'screens/update_screen.dart';
+import 'services/accessibility_service.dart';
 import 'services/app_links.dart';
 import 'services/download_manager.dart';
 import 'services/device_bridge.dart';
@@ -17,6 +18,7 @@ Future<void> main() async {
   MediaKit.ensureInitialized();
   DeviceBridge.initialize();
   await initializeDeviceLayout();
+  await AccessibilityService.instance.initialize();
   if (isAndroidTv) {
     FocusManager.instance.highlightStrategy =
         FocusHighlightStrategy.alwaysTraditional;

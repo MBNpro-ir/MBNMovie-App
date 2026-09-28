@@ -18,6 +18,7 @@ import 'services/mbn_auth.dart';
 import 'services/mbn_sync.dart';
 import 'services/movie_api.dart';
 import 'services/auth_handoff.dart';
+import 'services/accessibility_service.dart';
 import 'services/app_links.dart';
 import 'services/app_updater.dart';
 import 'services/cross_app_auth.dart';
@@ -413,39 +414,47 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      navigatorKey: appNavigatorKey,
-      scaffoldMessengerKey: appMessengerKey,
-      debugShowCheckedModeBanner: false,
-      title: 'MBNMovie',
-      theme: isAndroidTv
-          ? MovieTheme.dark.copyWith(
-              visualDensity: VisualDensity.standard,
-              focusColor: MovieColors.cyan.withValues(alpha: .4),
-              hoverColor: MovieColors.cyan.withValues(alpha: .15),
-            )
-          : MovieTheme.dark,
-      locale: const Locale('fa', 'IR'),
-      // Actually localize framework-provided strings (back-button tooltips,
-      // selection menus, accessibility labels): a bare `locale` + forced
-      // RTL only affects app-authored text/layout, leaving Flutter's own
-      // controls in English without delegates + supportedLocales.
-      supportedLocales: const [Locale('fa', 'IR'), Locale('en')],
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      builder: (context, child) => DesktopWindowFrame(
-        child: Directionality(
-          textDirection: TextDirection.rtl,
-          child: MandatoryUpdateGate(
-            child: TvNavigation(
-              child: ServerStatusGate(child: child!),
+    return ListenableBuilder(
+      listenable: AccessibilityService.instance,
+      builder: (context, _) {
+        final access = AccessibilityService.instance;
+        return MaterialApp(
+          navigatorKey: appNavigatorKey,
+          scaffoldMessengerKey: appMessengerKey,
+          debugShowCheckedModeBanner: false,
+          title: 'MBNMovie',
+          theme: isAndroidTv
+              ? MovieTheme.dark.copyWith(
+                  visualDensity: VisualDensity.standard,
+                  focusColor: MovieColors.cyan.withValues(alpha: .4),
+                  hoverColor: MovieColors.cyan.withValues(alpha: .15),
+                )
+              : MovieTheme.dark.copyWith(
+                  visualDensity: access.visualDensity,
+                ),
+          locale: const Locale('fa', 'IR'),
+          // Actually localize framework-provided strings (back-button tooltips,
+          // selection menus, accessibility labels): a bare `locale` + forced
+          // RTL only affects app-authored text/layout, leaving Flutter's own
+          // controls in English without delegates + supportedLocales.
+          supportedLocales: const [Locale('fa', 'IR'), Locale('en')],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          builder: (context, child) => DesktopWindowFrame(
+            child: Directionality(
+              textDirection: TextDirection.rtl,
+              child: MandatoryUpdateGate(
+                child: TvNavigation(
+                  child: ServerStatusGate(
+                    child: AccessibilityAppWrapper(child: child!),
+                  ),
+                ),
+              ),
             ),
           ),
-        ),
-      ),
       home: AnimatedSwitcher(
         duration: const Duration(milliseconds: 650),
         switchInCurve: Curves.easeOutCubic,
@@ -508,5 +517,70 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
               ),
       ),
     );
+      },
+    );
   }
 }
+
+class AccessibilityAppWrapper extends StatelessWidget {
+  const AccessibilityAppWrapper({super.key, required this.child});
+  final Widget child;
+
+  static EdgeInsets _scaleInsets(EdgeInsets insets, double scale) {
+    if (scale <= 0) return insets;
+    return EdgeInsets.fromLTRB(
+      insets.left / scale,
+      insets.top / scale,
+      insets.right / scale,
+      insets.bottom / scale,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: AccessibilityService.instance,
+      builder: (context, _) {
+        final access = AccessibilityService.instance;
+        final uiScale = access.uiScale;
+        final textScale = access.textScale;
+
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final media = MediaQuery.of(context).copyWith(
+              textScaler: TextScaler.linear(textScale),
+              boldText: access.boldText,
+              disableAnimations: access.reduceMotion,
+            );
+
+            if ((uiScale - 1.0).abs() < 0.01) {
+              return MediaQuery(data: media, child: child);
+            }
+
+            final scaledWidth = constraints.maxWidth / uiScale;
+            final scaledHeight = constraints.maxHeight / uiScale;
+
+            return Transform.scale(
+              scale: uiScale,
+              alignment: Alignment.topCenter,
+              child: SizedBox(
+                width: scaledWidth,
+                height: scaledHeight,
+                child: MediaQuery(
+                  data: media.copyWith(
+                    size: Size(scaledWidth, scaledHeight),
+                    padding: _scaleInsets(media.padding, uiScale),
+                    viewPadding: _scaleInsets(media.viewPadding, uiScale),
+                    viewInsets: _scaleInsets(media.viewInsets, uiScale),
+                  ),
+                  child: child,
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+

@@ -39,8 +39,8 @@ class BrandMark extends StatelessWidget {
             boxShadow: [
               BoxShadow(
                 color: accent.withValues(alpha: .28),
-                blurRadius: 24,
-                spreadRadius: 2,
+                blurRadius: (size * 0.45).clamp(8.0, 24.0),
+                spreadRadius: 1,
               ),
             ],
           ),
@@ -51,19 +51,23 @@ class BrandMark extends StatelessWidget {
           ),
         ),
         if (showWordmark) ...[
-          const SizedBox(width: 12),
+          SizedBox(width: (size * 0.22).clamp(5.0, 12.0)),
           Text.rich(
             TextSpan(
               children: [
                 TextSpan(
                   text: 'MBN',
-                  style: Theme.of(context).textTheme.titleLarge,
+                  style: (Theme.of(context).textTheme.titleLarge ?? const TextStyle()).copyWith(
+                    fontSize: (size * 0.52).clamp(13.0, 22.0),
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 TextSpan(
                   text: 'Movie',
                   style: TextStyle(
                     color: accent,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w800,
+                    fontSize: (size * 0.52).clamp(13.0, 22.0),
                   ),
                 ),
               ],

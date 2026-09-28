@@ -511,11 +511,13 @@ class _AppSwitchButton extends StatefulWidget {
     required this.gradient,
     required this.icon,
     required this.onTap,
+    this.size = 40,
   });
   final String tooltip;
   final List<Color> gradient;
   final IconData icon;
   final VoidCallback onTap;
+  final double size;
   @override
   State<_AppSwitchButton> createState() => _AppSwitchButtonState();
 }
@@ -541,15 +543,15 @@ class _AppSwitchButtonState extends State<_AppSwitchButton>
       builder: (context, child) {
         final pulse = Curves.easeInOut.transform(_controller.value);
         return Container(
-          width: 40,
-          height: 40,
+          width: widget.size,
+          height: widget.size,
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topRight,
               end: Alignment.bottomLeft,
               colors: widget.gradient,
             ),
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(widget.size * 0.35),
             boxShadow: [
               BoxShadow(
                 color: widget.gradient.first.withValues(
@@ -565,8 +567,8 @@ class _AppSwitchButtonState extends State<_AppSwitchButton>
       },
       child: InkWell(
         onTap: widget.onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Icon(widget.icon, color: Colors.white, size: 22),
+        borderRadius: BorderRadius.circular(widget.size * 0.35),
+        child: Icon(widget.icon, color: Colors.white, size: widget.size * 0.55),
       ),
     ),
   );
@@ -595,13 +597,14 @@ class _TopBar extends StatelessWidget {
     required VoidCallback onPressed,
     required IconData icon,
     double iconSize = 24,
+    double buttonSize = 40,
   }) => SizedBox(
-    width: 40,
-    height: 40,
+    width: buttonSize,
+    height: buttonSize,
     child: IconButton(
       tooltip: tooltip,
       padding: EdgeInsets.zero,
-      constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+      constraints: BoxConstraints(minWidth: buttonSize, minHeight: buttonSize),
       iconSize: iconSize,
       onPressed: onPressed,
       icon: Icon(icon),
@@ -609,37 +612,66 @@ class _TopBar extends StatelessWidget {
   );
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
-    child: SizedBox(
-      height: 54,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Row(
-            children: [
-              IconButton(
-                tooltip: 'منوی اصلی',
-                onPressed: Scaffold.of(context).openDrawer,
-                icon: const Icon(Icons.menu_rounded, size: 30),
-              ),
-              if (showPhoneWarning)
-                TweenAnimationBuilder<double>(
-                  tween: Tween(begin: .75, end: 1),
-                  duration: const Duration(milliseconds: 1000),
-                  curve: Curves.easeInOut,
-                  builder: (context, value, child) => Transform.scale(
-                    scale: value,
-                    child: child,
-                  ),
+  Widget build(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    final isCompact = width < 600;
+
+    return Padding(
+      padding: EdgeInsets.symmetric(
+        horizontal: isCompact ? 8 : 12,
+        vertical: isCompact ? 4 : 8,
+      ),
+      child: SizedBox(
+        height: isCompact ? 46 : 54,
+        child: Row(
+          children: [
+            // Drawer button
+            _actionButton(
+              tooltip: 'منوی اصلی',
+              onPressed: Scaffold.of(context).openDrawer,
+              icon: Icons.menu_rounded,
+              iconSize: isCompact ? 26 : 28,
+              buttonSize: isCompact ? 38 : 42,
+            ),
+            if (showPhoneWarning) ...[
+              const SizedBox(width: 2),
+              TweenAnimationBuilder<double>(
+                tween: Tween(begin: .75, end: 1),
+                duration: const Duration(milliseconds: 1000),
+                curve: Curves.easeInOut,
+                builder: (context, value, child) => Transform.scale(
+                  scale: value,
+                  child: child,
+                ),
+                child: SizedBox(
+                  width: isCompact ? 36 : 40,
+                  height: isCompact ? 36 : 40,
                   child: IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: BoxConstraints(
+                      minWidth: isCompact ? 36 : 40,
+                      minHeight: isCompact ? 36 : 40,
+                    ),
                     tooltip: 'شمارهٔ موبایل تأیید نشده؛ تکمیل حساب',
                     onPressed: onPhoneWarning,
-                    icon: const Icon(Icons.warning_rounded,
-                        color: Colors.redAccent, size: 28),
+                    icon: Icon(
+                      Icons.warning_rounded,
+                      color: Colors.redAccent,
+                      size: isCompact ? 22 : 26,
+                    ),
                   ),
                 ),
-              const Spacer(),
+              ),
+            ],
+            const Spacer(),
+            // Centered BrandMark with no stack collision
+            BrandMark(
+              size: isCompact ? 28 : 38,
+              showWordmark: true,
+            ),
+            const Spacer(),
+            // Wide-screen actions (favorites/history are on bottom nav for phone)
+            if (!isCompact) ...[
               _actionButton(
                 tooltip: 'علاقه‌مندی‌ها',
                 onPressed: favorites,
@@ -651,51 +683,37 @@ class _TopBar extends StatelessWidget {
                 onPressed: history,
                 icon: Icons.history_rounded,
               ),
-              if (MediaQuery.sizeOf(context).width >= 600) ...[
-                const SizedBox(width: 4),
-                _actionButton(
-                  tooltip: 'جست‌وجوی بازیگران',
-                  onPressed: actors,
-                  icon: Icons.people_alt_rounded,
-                  iconSize: 22,
-                ),
-              ],
               const SizedBox(width: 4),
               _actionButton(
-                tooltip: 'جست‌وجو',
-                onPressed: search,
-                icon: Icons.search_rounded,
-                iconSize: 26,
+                tooltip: 'جست‌وجوی بازیگران',
+                onPressed: actors,
+                icon: Icons.people_alt_rounded,
+                iconSize: 22,
               ),
               const SizedBox(width: 4),
-              _AppSwitchButton(
-                tooltip: 'رفتن به MBNime',
-                gradient: const [Color(0xFFFF7A1A), Color(0xFFFF4F6D)],
-                icon: Icons.animation_rounded,
-                onTap: switchApp,
-              ),
             ],
-          ),
-          IgnorePointer(
-            child: Align(
-              alignment: MediaQuery.sizeOf(context).width < 600
-                  ? Alignment.centerRight
-                  : Alignment.center,
-              child: Padding(
-                padding: EdgeInsets.only(
-                  right: MediaQuery.sizeOf(context).width < 600
-                      ? (showPhoneWarning ? 116 : 66) : 0,
-                ),
-                child: BrandMark(
-                  size: MediaQuery.sizeOf(context).width < 600 ? 34 : 42,
-                ),
-              ),
+            // Search button
+            _actionButton(
+              tooltip: 'جست‌وجو',
+              onPressed: search,
+              icon: Icons.search_rounded,
+              iconSize: isCompact ? 22 : 24,
+              buttonSize: isCompact ? 38 : 40,
             ),
-          ),
-        ],
+            const SizedBox(width: 4),
+            // Switch App button
+            _AppSwitchButton(
+              tooltip: 'رفتن به MBNime',
+              gradient: const [Color(0xFFFF7A1A), Color(0xFFFF4F6D)],
+              icon: Icons.animation_rounded,
+              onTap: switchApp,
+              size: isCompact ? 34 : 40,
+            ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _MenuDrawer extends StatelessWidget {

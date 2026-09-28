@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/library_store.dart';
 import '../core/playlist_store.dart';
 import '../models/movie_content.dart';
+import 'accessibility_service.dart';
 import 'mbn_auth.dart';
 
 /// Server sync for favorites / playlists / history / watch progress.
@@ -72,6 +73,7 @@ class MbnSync {
 
   static bool _isPreferenceKey(String key) =>
       key.startsWith('sub_') ||
+      key.startsWith('access_') ||
       key == 'player_volume' ||
       key == 'player_rate' ||
       key == 'player_fit_cover' ||
@@ -415,6 +417,9 @@ class MbnSync {
         await prefs.setString(key, value);
       }
     }
+    try {
+      await AccessibilityService.instance.reloadFromStore();
+    } catch (_) {}
   }
 
   Future<void> _restorePlaylists(PlaylistStore lists, Object? payload) async {
