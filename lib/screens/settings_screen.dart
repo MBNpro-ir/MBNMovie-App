@@ -20,7 +20,8 @@ class SettingsScreen extends StatefulWidget {
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends State<SettingsScreen>
+    with WidgetsBindingObserver {
   final _scrollController = ScrollController();
   static const _streamers = <String, String>{
     PlaybackPreferenceStore.askEveryTime: 'هر بار از من بپرس',
@@ -106,11 +107,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _load();
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _scrollController.dispose();
     super.dispose();
   }
@@ -125,7 +135,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
     setState(() {
       _volume = (prefs.getDouble('player_volume') ?? 100).clamp(0, 100);
-      _rate = (prefs.getDouble('player_rate') ?? 1).clamp(.5, 2);
+      _rate = (prefs.getDouble('player_rate') ?? 1).clamp(.5, 4.0);
       _fitCover = prefs.getBool('player_fit_cover') ?? false;
       _englishTitles = prefs.getBool(TitleLanguage.preferenceKey) ?? false;
       _customBrightness = brightness != null;
@@ -576,18 +586,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                       value: access.haptics,
                                       onChanged: (val) => access.setHaptics(val),
                                     ),
-                                    SwitchListTile(
-                                      contentPadding: EdgeInsets.zero,
-                                      title: const Text(
-                                        'زیرنویس درشت با پس‌زمینه تیره در پلیر',
-                                      ),
-                                      subtitle: const Text(
-                                        'افزایش اندازه زیرنویس و ایجاد پس‌زمینه مشکی برای دید حداکثری',
-                                      ),
-                                      value: access.largeSubtitles,
-                                      onChanged: (val) =>
-                                          access.setLargeSubtitles(val),
-                                    ),
                                     const SizedBox(height: 10),
                                     Align(
                                       alignment: Alignment.centerLeft,
@@ -711,15 +709,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ),
                             _slider(
                               label: 'سرعت پخش',
-                              value: _rate,
+                              value: _rate.clamp(.5, 4.0),
                               min: .5,
-                              max: 2,
-                              divisions: 30,
+                              max: 4.0,
+                              divisions: 70,
                               suffix: '${_rate.toStringAsFixed(2)}×',
                               onChanged: (value) {
-                                setState(() => _rate = value);
+                                setState(() => _rate = (value * 100).round() / 100.0);
                                 _savePlayer();
                               },
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: Wrap(
+                                spacing: 8,
+                                runSpacing: 6,
+                                children: [
+                                  for (final speed in [0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0])
+                                    ChoiceChip(
+                                      label: Text('${speed.toStringAsFixed(speed % 1 == 0 ? 0 : 2)}×'),
+                                      selected: (_rate - speed).abs() < 0.04,
+                                      onSelected: (selected) {
+                                        if (selected) {
+                                          setState(() => _rate = speed);
+                                          _savePlayer();
+                                        }
+                                      },
+                                    ),
+                                ],
+                              ),
                             ),
                             SwitchListTile(
                               contentPadding: EdgeInsets.zero,

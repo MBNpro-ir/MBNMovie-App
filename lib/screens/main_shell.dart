@@ -13,6 +13,7 @@ import '../core/search_direction.dart';
 import '../core/theme.dart';
 import '../core/watch_progress.dart';
 import '../models/movie_content.dart';
+import '../services/accessibility_service.dart';
 import '../services/mbn_sync.dart';
 import '../services/mbn_auth.dart';
 import '../services/movie_api.dart';
@@ -527,7 +528,27 @@ class _AppSwitchButtonState extends State<_AppSwitchButton>
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1400),
-  )..repeat(reverse: true);
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (!AccessibilityService.instance.reduceMotion) {
+      _controller.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduce = AccessibilityService.instance.reduceMotion;
+    if (reduce && _controller.isAnimating) {
+      _controller.stop();
+      _controller.value = 0;
+    } else if (!reduce && !_controller.isAnimating) {
+      _controller.repeat(reverse: true);
+    }
+  }
 
   @override
   void dispose() {
@@ -541,7 +562,8 @@ class _AppSwitchButtonState extends State<_AppSwitchButton>
     child: AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
-        final pulse = Curves.easeInOut.transform(_controller.value);
+        final reduce = AccessibilityService.instance.reduceMotion;
+        final pulse = reduce ? 0.0 : Curves.easeInOut.transform(_controller.value);
         return Container(
           width: widget.size,
           height: widget.size,
@@ -562,7 +584,7 @@ class _AppSwitchButtonState extends State<_AppSwitchButton>
               ),
             ],
           ),
-          child: Transform.scale(scale: 1 + .07 * pulse, child: child),
+          child: reduce ? child : Transform.scale(scale: 1 + .07 * pulse, child: child),
         );
       },
       child: InkWell(
@@ -615,6 +637,26 @@ class _TopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
     final isCompact = width < 600;
+    final reduceMotion = AccessibilityService.instance.reduceMotion;
+
+    final warningButton = SizedBox(
+      width: isCompact ? 36 : 40,
+      height: isCompact ? 36 : 40,
+      child: IconButton(
+        padding: EdgeInsets.zero,
+        constraints: BoxConstraints(
+          minWidth: isCompact ? 36 : 40,
+          minHeight: isCompact ? 36 : 40,
+        ),
+        tooltip: 'شمارهٔ موبایل تأیید نشده؛ تکمیل حساب',
+        onPressed: onPhoneWarning,
+        icon: Icon(
+          Icons.warning_rounded,
+          color: Colors.redAccent,
+          size: isCompact ? 22 : 26,
+        ),
+      ),
+    );
 
     return Padding(
       padding: EdgeInsets.symmetric(
@@ -635,33 +677,19 @@ class _TopBar extends StatelessWidget {
             ),
             if (showPhoneWarning) ...[
               const SizedBox(width: 2),
-              TweenAnimationBuilder<double>(
-                tween: Tween(begin: .75, end: 1),
-                duration: const Duration(milliseconds: 1000),
-                curve: Curves.easeInOut,
-                builder: (context, value, child) => Transform.scale(
-                  scale: value,
-                  child: child,
-                ),
-                child: SizedBox(
-                  width: isCompact ? 36 : 40,
-                  height: isCompact ? 36 : 40,
-                  child: IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: BoxConstraints(
-                      minWidth: isCompact ? 36 : 40,
-                      minHeight: isCompact ? 36 : 40,
-                    ),
-                    tooltip: 'شمارهٔ موبایل تأیید نشده؛ تکمیل حساب',
-                    onPressed: onPhoneWarning,
-                    icon: Icon(
-                      Icons.warning_rounded,
-                      color: Colors.redAccent,
-                      size: isCompact ? 22 : 26,
-                    ),
+              if (reduceMotion)
+                warningButton
+              else
+                TweenAnimationBuilder<double>(
+                  tween: Tween(begin: .75, end: 1),
+                  duration: const Duration(milliseconds: 1000),
+                  curve: Curves.easeInOut,
+                  builder: (context, value, child) => Transform.scale(
+                    scale: value,
+                    child: child,
                   ),
+                  child: warningButton,
                 ),
-              ),
             ],
             const Spacer(),
             // Centered BrandMark with no stack collision

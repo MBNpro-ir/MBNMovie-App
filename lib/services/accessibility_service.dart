@@ -40,7 +40,6 @@ class AccessibilityService extends ChangeNotifier {
   static const String keyHighContrast = 'access_high_contrast';
   static const String keyBoldText = 'access_bold_text';
   static const String keyHaptics = 'access_haptic_feedback';
-  static const String keyLargeSubtitles = 'access_large_subtitles';
 
   static bool get isPhoneDevice => Platform.isAndroid && !isAndroidTv;
 
@@ -51,7 +50,6 @@ class AccessibilityService extends ChangeNotifier {
   bool _highContrast = false;
   bool _boldText = false;
   bool _haptics = true;
-  bool _largeSubtitles = false;
   bool _initialized = false;
 
   double get uiScale => _uiScale;
@@ -62,7 +60,6 @@ class AccessibilityService extends ChangeNotifier {
   bool get highContrast => _highContrast;
   bool get boldText => _boldText;
   bool get haptics => _haptics;
-  bool get largeSubtitles => _largeSubtitles;
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -81,7 +78,6 @@ class AccessibilityService extends ChangeNotifier {
     _highContrast = prefs.getBool(keyHighContrast) ?? false;
     _boldText = prefs.getBool(keyBoldText) ?? false;
     _haptics = prefs.getBool(keyHaptics) ?? true;
-    _largeSubtitles = prefs.getBool(keyLargeSubtitles) ?? false;
   }
 
   Future<void> reloadFromStore() async {
@@ -164,16 +160,6 @@ class AccessibilityService extends ChangeNotifier {
     unawaited(MbnSync.instance.pushPreferencesThrottled());
   }
 
-  Future<void> setLargeSubtitles(bool value) async {
-    if (_largeSubtitles == value) return;
-    _largeSubtitles = value;
-    notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(keyLargeSubtitles, value);
-    hapticFeedback();
-    unawaited(MbnSync.instance.pushPreferencesThrottled());
-  }
-
   Future<void> resetToDefaults() async {
     final defaultScale = isPhoneDevice ? 0.85 : 1.0;
     _uiScale = defaultScale;
@@ -183,7 +169,6 @@ class AccessibilityService extends ChangeNotifier {
     _highContrast = false;
     _boldText = false;
     _haptics = true;
-    _largeSubtitles = false;
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(keyUiScale);
@@ -193,7 +178,6 @@ class AccessibilityService extends ChangeNotifier {
     await prefs.remove(keyHighContrast);
     await prefs.remove(keyBoldText);
     await prefs.remove(keyHaptics);
-    await prefs.remove(keyLargeSubtitles);
     hapticFeedback();
     unawaited(MbnSync.instance.pushPreferencesThrottled());
   }

@@ -6069,8 +6069,12 @@ class _AnimeSubtitles extends StatelessWidget {
         if (line.trim().isNotEmpty) normalizePersianSubtitle(line.trim()),
     ].join('\n');
     if (text.isEmpty) return const SizedBox.shrink();
-    return Positioned.fill(
-      child: LayoutBuilder(
+    return MediaQuery(
+      data: MediaQuery.of(context).copyWith(
+        textScaler: TextScaler.noScaling,
+      ),
+      child: Positioned.fill(
+        child: LayoutBuilder(
         builder: (context, constraints) {
           final layout = SubtitleLayout.resolve(
             viewport: constraints.biggest,
@@ -6143,8 +6147,9 @@ class _AnimeSubtitles extends StatelessWidget {
           );
         },
       ),
-    );
-  }
+    ),
+  );
+}
 }
 
 class _PlayerError extends StatelessWidget {

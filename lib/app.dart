@@ -423,15 +423,14 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
           scaffoldMessengerKey: appMessengerKey,
           debugShowCheckedModeBanner: false,
           title: 'MBNMovie',
-          theme: isAndroidTv
-              ? MovieTheme.dark.copyWith(
-                  visualDensity: VisualDensity.standard,
-                  focusColor: MovieColors.cyan.withValues(alpha: .4),
-                  hoverColor: MovieColors.cyan.withValues(alpha: .15),
-                )
-              : MovieTheme.dark.copyWith(
-                  visualDensity: access.visualDensity,
-                ),
+          theme: MovieTheme.buildTheme(
+            highContrast: access.highContrast,
+            visualDensity: isAndroidTv ? VisualDensity.standard : access.visualDensity,
+            reduceMotion: access.reduceMotion,
+            boldText: access.boldText,
+            focusColor: isAndroidTv ? MovieColors.cyan.withValues(alpha: .4) : null,
+            hoverColor: isAndroidTv ? MovieColors.cyan.withValues(alpha: .15) : null,
+          ),
           locale: const Locale('fa', 'IR'),
           // Actually localize framework-provided strings (back-button tooltips,
           // selection menus, accessibility labels): a bare `locale` + forced
@@ -456,16 +455,18 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
             ),
           ),
       home: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 650),
+        duration: access.reduceMotion ? Duration.zero : const Duration(milliseconds: 650),
         switchInCurve: Curves.easeOutCubic,
         switchOutCurve: Curves.easeInCubic,
-        transitionBuilder: (child, animation) => FadeTransition(
-          opacity: animation,
-          child: ScaleTransition(
-            scale: Tween<double>(begin: .985, end: 1).animate(animation),
-            child: child,
-          ),
-        ),
+        transitionBuilder: (child, animation) => access.reduceMotion
+            ? child
+            : FadeTransition(
+                opacity: animation,
+                child: ScaleTransition(
+                  scale: Tween<double>(begin: .985, end: 1).animate(animation),
+                  child: child,
+                ),
+              ),
         child: _restoring
             ? const SplashScreen(key: ValueKey('splash'))
             : _loggedIn
@@ -526,16 +527,6 @@ class AccessibilityAppWrapper extends StatelessWidget {
   const AccessibilityAppWrapper({super.key, required this.child});
   final Widget child;
 
-  static EdgeInsets _scaleInsets(EdgeInsets insets, double scale) {
-    if (scale <= 0) return insets;
-    return EdgeInsets.fromLTRB(
-      insets.left / scale,
-      insets.top / scale,
-      insets.right / scale,
-      insets.bottom / scale,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -545,39 +536,63 @@ class AccessibilityAppWrapper extends StatelessWidget {
         final uiScale = access.uiScale;
         final textScale = access.textScale;
 
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            final media = MediaQuery.of(context).copyWith(
-              textScaler: TextScaler.linear(textScale),
-              boldText: access.boldText,
-              disableAnimations: access.reduceMotion,
-            );
+        final rawMedia = MediaQuery.of(context);
+        final baseMedia = rawMedia.copyWith(
+          textScaler: TextScaler.linear(textScale),
+          boldText: access.boldText,
+          disableAnimations: access.reduceMotion,
+        );
 
-            if ((uiScale - 1.0).abs() < 0.01) {
-              return MediaQuery(data: media, child: child);
-            }
+        if (rawMedia.size.isEmpty ||
+            rawMedia.size.width <= 0 ||
+            rawMedia.size.height <= 0 ||
+            (uiScale - 1.0).abs() < 0.005) {
+          return MediaQuery(
+            data: baseMedia,
+            child: child,
+          );
+        }
 
-            final scaledWidth = constraints.maxWidth / uiScale;
-            final scaledHeight = constraints.maxHeight / uiScale;
+        final targetWidth = rawMedia.size.width / uiScale;
+        final targetHeight = rawMedia.size.height / uiScale;
 
-            return Transform.scale(
-              scale: uiScale,
-              alignment: Alignment.topCenter,
-              child: SizedBox(
-                width: scaledWidth,
-                height: scaledHeight,
-                child: MediaQuery(
-                  data: media.copyWith(
-                    size: Size(scaledWidth, scaledHeight),
-                    padding: _scaleInsets(media.padding, uiScale),
-                    viewPadding: _scaleInsets(media.viewPadding, uiScale),
-                    viewInsets: _scaleInsets(media.viewInsets, uiScale),
-                  ),
-                  child: child,
-                ),
+        final scaledMedia = baseMedia.copyWith(
+          size: Size(targetWidth, targetHeight),
+          padding: EdgeInsets.fromLTRB(
+            rawMedia.padding.left / uiScale,
+            rawMedia.padding.top / uiScale,
+            rawMedia.padding.right / uiScale,
+            rawMedia.padding.bottom / uiScale,
+          ),
+          viewPadding: EdgeInsets.fromLTRB(
+            rawMedia.viewPadding.left / uiScale,
+            rawMedia.viewPadding.top / uiScale,
+            rawMedia.viewPadding.right / uiScale,
+            rawMedia.viewPadding.bottom / uiScale,
+          ),
+          viewInsets: EdgeInsets.fromLTRB(
+            rawMedia.viewInsets.left / uiScale,
+            rawMedia.viewInsets.top / uiScale,
+            rawMedia.viewInsets.right / uiScale,
+            rawMedia.viewInsets.bottom / uiScale,
+          ),
+        );
+
+        return SizedBox(
+          width: rawMedia.size.width,
+          height: rawMedia.size.height,
+          child: FittedBox(
+            fit: BoxFit.fill,
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: targetWidth,
+              height: targetHeight,
+              child: MediaQuery(
+                data: scaledMedia,
+                child: child,
               ),
-            );
-          },
+            ),
+          ),
         );
       },
     );
