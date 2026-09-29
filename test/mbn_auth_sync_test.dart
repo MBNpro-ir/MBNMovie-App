@@ -132,4 +132,53 @@ void main() {
     await MbnSync.instance.syncAll();
     MbnSync.instance.clear();
   });
+
+  test('pullAndApplyPreferences restores cross-platform preferences with correct double types', () async {
+    final serverState = {
+      'preferences': {
+        'payload': {
+          'windows': {
+            'player_volume': 85,
+            'player_rate': 2,
+            'sub_font': 'Vazirmatn',
+            'sub_size': 24,
+            'sub_color': 4294967295,
+            'access_text_scale': 1,
+            'access_reduce_motion': true,
+          },
+        },
+        'updated_at': 5000,
+      },
+    };
+    final profile = {
+      'id': 7, 'name': 'کاربر', 'email': 'user@test.local',
+      'mobile': '', 'role': 'user', 'is_active': true,
+      'subscription_expires_at': 9999999999, 'has_animeon_link': false,
+    };
+    final client = _server(routes: (path) {
+      if (path == '/api/sync') {
+        return {'status': 200, 'body': serverState};
+      }
+      if (path == '/api/me') {
+        return {'status': 200, 'body': {'user': profile}};
+      }
+      return {'status': 404, 'body': {'error': 'x'}};
+    });
+    final auth = MbnAuth(client: client, baseUrl: 'https://login.test');
+    await auth.loginWithToken('tok');
+    MbnSync.instance.configure(auth: auth);
+
+    final success = await MbnSync.instance.pullAndApplyPreferences(force: true);
+    expect(success, isTrue);
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getDouble('player_volume'), 85.0);
+    expect(prefs.getDouble('player_rate'), 2.0);
+    expect(prefs.getDouble('sub_size'), 24.0);
+    expect(prefs.getString('sub_font'), 'Vazirmatn');
+    expect(prefs.getInt('sub_color'), 4294967295);
+    expect(prefs.getBool('access_reduce_motion'), isTrue);
+
+    MbnSync.instance.clear();
+  });
 }

@@ -81,6 +81,23 @@ class MbnSync {
       key == 'default_streamer' ||
       key == 'preferred_stream_quality';
 
+  static bool _isDoublePreferenceKey(String key) =>
+      key == 'player_volume' ||
+      key == 'player_rate' ||
+      key == 'sub_size' ||
+      key == 'sub_height' ||
+      key == 'sub_bg' ||
+      key == 'sub_radius' ||
+      key == 'sub_bottom' ||
+      key == 'sub_delay' ||
+      key == 'sub_timing_scale' ||
+      key == 'access_ui_scale' ||
+      key == 'access_text_scale';
+
+  static bool _isIntPreferenceKey(String key) =>
+      key == 'sub_color' ||
+      key == 'sub_bg_color';
+
   static String _tsKey(String category) => '$_tsPrefix$category';
 
   Future<int> _localTs(String category) async {
@@ -317,13 +334,64 @@ class MbnSync {
           ),
         );
         if (accepted == true) {
-          await _restorePreferences(res['settings']);
-          await _touchLocal('preferences');
-          await pushPreferencesThrottled();
+          final ok = await _restorePreferences(res['settings']);
+          if (ok) {
+            await _touchLocal('preferences');
+            unawaited(pushPreferencesThrottled());
+            try {
+              await AccessibilityService.instance.reloadFromStore();
+            } catch (_) {}
+          }
         }
       }
       await prefs.setBool(promptKey, true);
     } catch (_) {}
+  }
+
+  /// Pulls preferences from server (current app, and if empty/unconfigured, other app)
+  /// and applies them immediately to local store.
+  Future<bool> pullAndApplyPreferences({bool force = false}) async {
+    final auth = _auth;
+    if (auth?.token == null) return false;
+    try {
+      bool restored = false;
+      // 1. Try pulling preferences from this app's sync endpoint
+      final server = await auth!.getJson('/api/sync', query: {'app': _app});
+      final row = (server['preferences'] as Map?)?.cast<String, dynamic>();
+      final payload = row?['payload'];
+      if (payload is Map && payload.isNotEmpty) {
+        restored = await _restorePreferences(payload);
+        if (restored) {
+          final ts = (row?['updated_at'] as num?)?.toInt() ?? 0;
+          if (ts > 0) await _setLocalTs('preferences', ts);
+        }
+      }
+
+      // 2. If current app had no settings or nothing restored, fallback to checking other app's settings
+      if (!restored) {
+        final platformKey = Platform.isWindows ? 'windows' : (Platform.isAndroid ? 'android' : 'other');
+        final otherRes = await auth.getJson(
+          '/api/sync/other-settings',
+          query: {'platform': platformKey},
+        );
+        if (otherRes['has_settings'] == true && otherRes['settings'] is Map) {
+          restored = await _restorePreferences(otherRes['settings']);
+          if (restored) {
+            await _touchLocal('preferences');
+            unawaited(pushPreferencesThrottled());
+          }
+        }
+      }
+
+      if (restored) {
+        try {
+          await AccessibilityService.instance.reloadFromStore();
+        } catch (_) {}
+      }
+      return restored;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> pushAll() => _pushCategories(_categories);
@@ -386,40 +454,76 @@ class MbnSync {
     return out;
   }
 
-  Future<void> _restorePreferences(Object? payload) async {
-    if (payload is! Map) return;
+  Future<bool> _restorePreferences(Object? payload) async {
+    if (payload is! Map) return false;
     final prefs = await SharedPreferences.getInstance();
-    if (!(prefs.getBool('sync_settings_enabled') ?? true)) return;
+    if (!(prefs.getBool('sync_settings_enabled') ?? true)) return false;
+
     final platformKey = Platform.isWindows ? 'windows' : (Platform.isAndroid ? 'android' : 'other');
-    Map targetPayload;
-    if (payload.containsKey(platformKey) && payload[platformKey] is Map) {
+    Map? targetPayload;
+    bool isCrossPlatformFallback = false;
+
+    if (payload.containsKey(platformKey) && payload[platformKey] is Map && (payload[platformKey] as Map).isNotEmpty) {
       targetPayload = payload[platformKey] as Map;
-    } else if (!payload.containsKey('windows') && !payload.containsKey('android')) {
+    } else if (payload.containsKey('windows') && payload['windows'] is Map && (payload['windows'] as Map).isNotEmpty) {
+      targetPayload = payload['windows'] as Map;
+      isCrossPlatformFallback = (platformKey != 'windows');
+    } else if (payload.containsKey('android') && payload['android'] is Map && (payload['android'] as Map).isNotEmpty) {
+      targetPayload = payload['android'] as Map;
+      isCrossPlatformFallback = (platformKey != 'android');
+    } else if (payload.containsKey('other') && payload['other'] is Map && (payload['other'] as Map).isNotEmpty) {
+      targetPayload = payload['other'] as Map;
+      isCrossPlatformFallback = (platformKey != 'other');
+    } else if (!payload.containsKey('windows') && !payload.containsKey('android') && !payload.containsKey('other')) {
       targetPayload = payload;
-    } else {
-      return;
     }
-    final received = targetPayload.keys.map((key) => '$key').where(_isPreferenceKey).toSet();
-    for (final key in prefs.getKeys().where(_isPreferenceKey).toList()) {
-      if (!received.contains(key)) await prefs.remove(key);
-    }
+
+    if (targetPayload == null || targetPayload.isEmpty) return false;
+
     for (final entry in targetPayload.entries) {
       final key = '${entry.key}';
       if (!_isPreferenceKey(key)) continue;
+      // Do not overwrite UI scale when falling back from a different platform
+      if (isCrossPlatformFallback && key == 'access_ui_scale') continue;
       final value = entry.value;
-      if (value is int) {
-        await prefs.setInt(key, value);
-      } else if (value is double) {
-        await prefs.setDouble(key, value);
+      if (value == null) continue;
+
+      if (_isDoublePreferenceKey(key)) {
+        double? d;
+        if (value is num) {
+          d = value.toDouble();
+        } else if (value is String) {
+          d = double.tryParse(value);
+        }
+        if (d != null) {
+          await prefs.remove(key);
+          await prefs.setDouble(key, d);
+        }
+      } else if (_isIntPreferenceKey(key)) {
+        int? i;
+        if (value is num) {
+          i = value.toInt();
+        } else if (value is String) {
+          i = int.tryParse(value);
+        }
+        if (i != null) {
+          await prefs.remove(key);
+          await prefs.setInt(key, i);
+        }
       } else if (value is bool) {
+        await prefs.remove(key);
         await prefs.setBool(key, value);
       } else if (value is String) {
+        await prefs.remove(key);
         await prefs.setString(key, value);
       }
     }
+
     try {
       await AccessibilityService.instance.reloadFromStore();
     } catch (_) {}
+
+    return true;
   }
 
   Future<void> _restorePlaylists(PlaylistStore lists, Object? payload) async {

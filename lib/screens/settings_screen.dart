@@ -84,6 +84,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   };
 
   bool _loading = true;
+  bool _syncingFromServer = false;
   bool _syncSettingsEnabled = true;
   double _volume = 100;
   double _rate = 1;
@@ -208,11 +209,56 @@ class _SettingsScreenState extends State<SettingsScreen>
     if (Platform.isAndroid) await DeviceBridge.setScreenBrightness(null);
   }
 
+  Future<void> _pullFromServer() async {
+    setState(() => _syncingFromServer = true);
+    try {
+      final success = await MbnSync.instance.pullAndApplyPreferences(force: true);
+      if (!mounted) return;
+      if (success) {
+        await _load();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تنظیمات با موفقیت از سرور دریافت و اعمال شدند.'),
+            backgroundColor: Color(0xFF2E7D32),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تنظیمات جدیدی در سرور یافت نشد یا اینترنت متصل نیست.'),
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('خطا در دریافت تنظیمات از سرور.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _syncingFromServer = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
       title: const Text('تنظیمات'),
       actions: [
+        IconButton(
+          onPressed: _loading || _syncingFromServer ? null : _pullFromServer,
+          icon: _syncingFromServer
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.cloud_download_rounded),
+          tooltip: 'دریافت تنظیمات از سرور',
+        ),
         IconButton(
           onPressed: _loading ? null : _reset,
           icon: const Icon(Icons.restart_alt_rounded),
@@ -242,6 +288,76 @@ class _SettingsScreenState extends State<SettingsScreen>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 16),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            decoration: BoxDecoration(
+                              color: MovieColors.surfaceHigh.withValues(alpha: 0.5),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: MovieColors.orange.withValues(alpha: 0.25),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: MovieColors.orange.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: const Icon(
+                                    Icons.cloud_sync_rounded,
+                                    color: MovieColors.orange,
+                                    size: 22,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                const Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'همگام‌سازی ابری تنظیمات',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13.5,
+                                        ),
+                                      ),
+                                      SizedBox(height: 2),
+                                      Text(
+                                        'اگر تنظیمات شما از سرور اعمال نشده، می‌توانید همین حالا دوباره دریافت کنید.',
+                                        style: TextStyle(
+                                          color: MovieColors.muted,
+                                          fontSize: 11.5,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                FilledButton.icon(
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: MovieColors.orange,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                  ),
+                                  onPressed: _loading || _syncingFromServer ? null : _pullFromServer,
+                                  icon: _syncingFromServer
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white,
+                                          ),
+                                        )
+                                      : const Icon(Icons.cloud_download_rounded, size: 18),
+                                  label: const Text('دریافت از سرور'),
+                                ),
+                              ],
+                            ),
+                          ),
                           // 1. پخش و انتقال پیش‌فرض
                           _section(
                             icon: Icons.route_rounded,
