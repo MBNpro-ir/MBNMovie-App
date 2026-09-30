@@ -2257,9 +2257,15 @@ class _SearchPageState extends State<_SearchPage> {
   final yearToController = TextEditingController();
   final scroll = ScrollController();
   Timer? debounce;
+  Timer? _yearDebounce;
   List<MovieContent> results = [];
   bool loading = false;
   bool advanced = false;
+  // True once a search actually ran for the current query; while false the
+  // empty area shows a hint instead of a bogus "nothing found".
+  bool _hasSearched = false;
+  // Advanced-filter collapse state (auto-opened when presets exist).
+  bool _advancedExpanded = false;
   int _advPage = 0;
   bool _advMore = true;
   bool _advLoadingMore = false;
@@ -2369,6 +2375,9 @@ class _SearchPageState extends State<_SearchPage> {
     type = widget.initialType;
     genre = widget.initialGenre;
     country = widget.initialCountry;
+    // If the page opened with preset filters, show the advanced section open.
+    _advancedExpanded =
+        type.isNotEmpty || genre != null || country != null;
     scroll.addListener(() {
       if (_advMore &&
           !_advLoadingMore &&
@@ -2407,6 +2416,7 @@ class _SearchPageState extends State<_SearchPage> {
   @override
   void dispose() {
     debounce?.cancel();
+    _yearDebounce?.cancel();
     controller.dispose();
     yearFromController.dispose();
     yearToController.dispose();
@@ -2419,8 +2429,12 @@ class _SearchPageState extends State<_SearchPage> {
     _searchGeneration++;
     setState(() {
       error = null;
+      // Never leave the buttons locked: typing during a request cancels it
+      // and returns the page to the pre-search hint state.
+      loading = false;
       advanced = false;
-      if (value.trim().length < 2) results = [];
+      results = [];
+      _hasSearched = false;
     });
   }
 
@@ -2447,6 +2461,7 @@ class _SearchPageState extends State<_SearchPage> {
       loading = true;
       error = null;
       advanced = false;
+      _hasSearched = true;
     });
     try {
       final found = await widget.api.search(
@@ -2519,6 +2534,7 @@ class _SearchPageState extends State<_SearchPage> {
       loading = true;
       error = null;
       advanced = true;
+      _hasSearched = true;
       _advPage = 0;
       _advMore = true;
     });
@@ -2645,12 +2661,43 @@ class _SearchPageState extends State<_SearchPage> {
   void clearSearch() {
     _searchGeneration++;
     debounce?.cancel();
+    _yearDebounce?.cancel();
     controller.clear();
     setState(() {
       results = [];
       error = null;
       loading = false;
       advanced = false;
+      _hasSearched = false;
+    });
+  }
+
+  /// Number of active advanced filters (for the collapse subtitle).
+  int get _activeFilterCount {
+    var n = 0;
+    if (exact) n++;
+    if (type.isNotEmpty) n++;
+    if (dub.isNotEmpty) n++;
+    if (stateSerie.isNotEmpty) n++;
+    if (genre != null) n++;
+    if (country != null) n++;
+    if (imdb.isNotEmpty) n++;
+    if (sortBy != 'NewMovie') n++;
+    if (_year(yearFromController).isNotEmpty) n++;
+    if (_year(yearToController).isNotEmpty) n++;
+    return n;
+  }
+
+  static String _faDigits(int value) => '$value'.replaceAllMapped(
+    RegExp(r'\d'),
+    (match) => '۰۱۲۳۴۵۶۷۸۹'[int.parse(match.group(0)!)],
+  );
+
+  /// Year inputs apply automatically (debounced) instead of needing a button.
+  void _onYearChanged() {
+    _yearDebounce?.cancel();
+    _yearDebounce = Timer(const Duration(milliseconds: 700), () {
+      if (mounted) unawaited(runAdvanced());
     });
   }
 
@@ -2706,11 +2753,14 @@ class _SearchPageState extends State<_SearchPage> {
         for (final group in _genres) MapEntry(group.id, group.name),
       ],
       current: genre?.id ?? '',
-      onPick: (value) => setState(
-        () => genre = value.isEmpty
-            ? null
-            : _genres.firstWhere((group) => group.id == value),
-      ),
+      onPick: (value) {
+        setState(
+          () => genre = value.isEmpty
+              ? null
+              : _genres.firstWhere((group) => group.id == value),
+        );
+        unawaited(runAdvanced());
+      },
     );
   }
 
@@ -2731,11 +2781,14 @@ class _SearchPageState extends State<_SearchPage> {
         for (final group in _countries) MapEntry(group.id, group.name),
       ],
       current: country?.id ?? '',
-      onPick: (value) => setState(
-        () => country = value.isEmpty
-            ? null
-            : _countries.firstWhere((group) => group.id == value),
-      ),
+      onPick: (value) {
+        setState(
+          () => country = value.isEmpty
+              ? null
+              : _countries.firstWhere((group) => group.id == value),
+        );
+        unawaited(runAdvanced());
+      },
     );
   }
 
@@ -2789,8 +2842,19 @@ class _SearchPageState extends State<_SearchPage> {
                             borderRadius: BorderRadius.circular(28),
                           ),
                         ),
-                        onPressed: loading ? null : search,
-                        icon: const Icon(Icons.search_rounded),
+                        // Never locked: a new tap cancels the in-flight
+                        // request (generation guard) so the user can always
+                        // edit and re-search.
+                        onPressed: search,
+                        icon: loading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                ),
+                              )
+                            : const Icon(Icons.search_rounded),
                         label: const Text('جست‌وجو کن'),
                       ),
                     ],
@@ -2886,14 +2950,35 @@ class _SearchPageState extends State<_SearchPage> {
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
                   child: Card(
                 color: MovieColors.surfaceHigh,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 4, 8, 12),
-                  child: Column(
+                child: ExpansionTile(
+                  initiallyExpanded: _advancedExpanded,
+                  onExpansionChanged: (open) =>
+                      setState(() => _advancedExpanded = open),
+                  leading: const Icon(
+                    Icons.tune_rounded,
+                    color: MovieColors.orange,
+                  ),
+                  title: const Text(
+                    'جستجوی پیشرفته',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  subtitle: _activeFilterCount == 0
+                      ? const Text('فیلترها: همه')
+                      : Text(
+                          '${_faDigits(_activeFilterCount)} فیلتر فعال — برای اعمال، «جست‌وجو کن»',
+                        ),
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
+                      child: Column(
                     children: [
                       SwitchListTile(
                         title: const Text('جست‌وجوی دقیق نام فیلم'),
                         value: exact,
-                        onChanged: (value) => setState(() => exact = value),
+                        onChanged: (value) {
+                          setState(() => exact = value);
+                          unawaited(runAdvanced());
+                        },
                       ),
                       const Divider(height: 8),
                       _filterRow(
@@ -2904,7 +2989,10 @@ class _SearchPageState extends State<_SearchPage> {
                           title: 'دسته',
                           options: _typeOptions,
                           current: type,
-                          onPick: (value) => setState(() => type = value),
+                          onPick: (value) {
+                            setState(() => type = value);
+                            unawaited(runAdvanced());
+                          },
                         ),
                       ),
                       _filterRow(
@@ -2915,7 +3003,10 @@ class _SearchPageState extends State<_SearchPage> {
                           title: 'محتوا',
                           options: _dubOptions,
                           current: dub,
-                          onPick: (value) => setState(() => dub = value),
+                          onPick: (value) {
+                            setState(() => dub = value);
+                            unawaited(runAdvanced());
+                          },
                         ),
                       ),
                       _filterRow(
@@ -2926,7 +3017,10 @@ class _SearchPageState extends State<_SearchPage> {
                           title: 'وضعیت پخش',
                           options: _stateOptions,
                           current: stateSerie,
-                          onPick: (value) => setState(() => stateSerie = value),
+                          onPick: (value) {
+                            setState(() => stateSerie = value);
+                            unawaited(runAdvanced());
+                          },
                         ),
                       ),
                       _filterRow(
@@ -2949,7 +3043,10 @@ class _SearchPageState extends State<_SearchPage> {
                           title: 'امتیاز imdb',
                           options: _imdbOptions,
                           current: imdb,
-                          onPick: (value) => setState(() => imdb = value),
+                          onPick: (value) {
+                            setState(() => imdb = value);
+                            unawaited(runAdvanced());
+                          },
                         ),
                       ),
                       Padding(
@@ -2971,6 +3068,9 @@ class _SearchPageState extends State<_SearchPage> {
                                 decoration: const InputDecoration(
                                   hintText: 'از',
                                 ),
+                                onChanged: (_) => _onYearChanged(),
+                                onSubmitted: (_) =>
+                                    unawaited(runAdvanced()),
                               ),
                             ),
                             const SizedBox(width: 8),
@@ -2982,6 +3082,9 @@ class _SearchPageState extends State<_SearchPage> {
                                 decoration: const InputDecoration(
                                   hintText: 'تا',
                                 ),
+                                onChanged: (_) => _onYearChanged(),
+                                onSubmitted: (_) =>
+                                    unawaited(runAdvanced()),
                               ),
                             ),
                           ],
@@ -2995,21 +3098,17 @@ class _SearchPageState extends State<_SearchPage> {
                           title: 'ترتیب بر اساس',
                           options: _sortOptions,
                           current: sortBy,
-                          onPick: (value) => setState(() => sortBy = value),
+                          onPick: (value) {
+                            setState(() => sortBy = value);
+                            unawaited(runAdvanced());
+                          },
                         ),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
-                        child: SizedBox(
-                          width: double.infinity,
-                          child: FilledButton(
-                            onPressed: loading ? null : runAdvanced,
-                            child: const Text('جست‌وجو کن'),
-                          ),
-                        ),
-                      ),
+                      const SizedBox(height: 6),
                     ],
-                  ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -3036,11 +3135,13 @@ class _SearchPageState extends State<_SearchPage> {
               child: SizedBox(
                 height: 220,
                 child: _EmptyState(
-                  icon: controller.text.trim().length < 2 && !advanced
+                  // Before any search ran, show a hint — never a bogus
+                  // "nothing found" while the user is still typing.
+                  icon: !_hasSearched
                       ? Icons.manage_search_rounded
                       : Icons.search_off_rounded,
-                  message: controller.text.trim().length < 2 && !advanced
-                      ? 'نام را بنویس یا فیلتر بزن و «جست‌وجو کن»'
+                  message: !_hasSearched
+                      ? 'نام را بنویس و «جست‌وجو کن»'
                       : 'نتیجه‌ای پیدا نشد',
                 ),
               ),

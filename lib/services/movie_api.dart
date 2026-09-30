@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:html/parser.dart' as html;
 import 'package:http/http.dart' as http;
 
+import '../core/title_language.dart';
 import '../models/movie_content.dart';
 
 class MovieApiException implements Exception {
@@ -1022,7 +1023,17 @@ class MovieApi implements ContentApi {
       final indexed = results[1];
 
       if (primary.isEmpty && indexed.isEmpty) {
-        return await _catalogScanSearch(
+        final scanned = await _catalogScanSearch(
+          trimmed,
+          page: page,
+          onPartial: onPartial,
+          isCanceled: isCanceled,
+        );
+        if (scanned.isNotEmpty) return scanned;
+        // Upstream only matches Persian text, so a Latin query for a title
+        // missing from the bundled index (e.g. "the perks") would otherwise
+        // always come back empty. Last resort: compare live "نام اصلی".
+        return await _latinOriginalTitleScan(
           trimmed,
           page: page,
           onPartial: onPartial,
@@ -1179,7 +1190,17 @@ class MovieApi implements ContentApi {
     final matches = <MovieContent>[];
     void absorb(List<MovieContent> items) {
       for (final item in items) {
-        if (_normalizeQuery(item.title).contains(needle) &&
+        // Catalog rows from the server carry Persian titles only, so a Latin
+        // query (e.g. "the perks") must also match the offline English alias
+        // from the bundled catalog index — otherwise English search silently
+        // finds nothing even though the title exists.
+        final original = TitleLanguage.originalTitleFor(item.id);
+        final names = [
+          item.title,
+          ...item.alternateTitles,
+          if (original != null && original.isNotEmpty) original,
+        ].map(_normalizeQuery);
+        if (names.any((name) => name.contains(needle)) &&
             !matches.any((old) => old.id == item.id)) {
           matches.add(item);
         }
@@ -1207,16 +1228,99 @@ class MovieApi implements ContentApi {
     return matches.skip(start).take(pageSize).toList();
   }
 
+  /// Last-resort Latin search. The upstream endpoint only matches Persian
+  /// text and the bundled index can miss titles, so for a Latin query with
+  /// zero matches we read live catalog pages and compare each item's detail
+  /// "نام اصلی" (original title). Bounded (first pages only), batched,
+  /// cancelable and partial-streaming — same pattern as _catalogScanGroup.
+  Future<List<MovieContent>> _latinOriginalTitleScan(
+    String query, {
+    int page = 1,
+    void Function(List<MovieContent>)? onPartial,
+    bool Function()? isCanceled,
+  }) async {
+    final needle = _normalizeQuery(query);
+    if (needle.length < 3 || !RegExp(r'[A-Za-z]').hasMatch(query)) {
+      return const [];
+    }
+    const pageSize = 24;
+    const maxCatalogPages = 8;
+    const detailBatch = 8;
+    final matches = <MovieContent>[];
+    final seen = <String>{};
+
+    Future<String?> originalOf(MovieContent item) async {
+      try {
+        final data = await _detailData(item.id);
+        final detail = _map(_list(data['detiles']).firstOrNull);
+        final original = _splitBiography(
+          _plainDescription(detail['description']),
+        ).$2;
+        if (original != null && original.isNotEmpty) {
+          TitleLanguage.noteOriginalTitle(item.id, original);
+          return original;
+        }
+      } catch (_) {}
+      return null;
+    }
+
+    for (var catalogPage = 1;
+        catalogPage <= maxCatalogPages &&
+            matches.length < page * pageSize;
+        catalogPage++) {
+      if (isCanceled?.call() ?? false) return const [];
+      List<MovieContent> items;
+      try {
+        final pages = await Future.wait([
+          _catalogPage(ContentKind.movie, catalogPage),
+          _catalogPage(ContentKind.series, catalogPage),
+        ]);
+        items = [...pages[0], ...pages[1]];
+      } catch (_) {
+        items = const [];
+      }
+      if (items.isEmpty) break;
+      for (var offset = 0;
+          offset < items.length && matches.length < page * pageSize;
+          offset += detailBatch) {
+        if (isCanceled?.call() ?? false) return const [];
+        final batch = items.skip(offset).take(detailBatch).toList();
+        final originals = await Future.wait(batch.map(originalOf));
+        for (var i = 0; i < batch.length; i++) {
+          final original = originals[i];
+          if (original == null) continue;
+          if (_normalizeQuery(original).contains(needle) &&
+              seen.add(batch[i].id)) {
+            matches.add(batch[i]);
+          }
+        }
+        if (matches.isNotEmpty) {
+          onPartial?.call(matches.take(page * pageSize).toList());
+        }
+      }
+    }
+    final start = (page - 1) * pageSize;
+    if (start >= matches.length) return const [];
+    return matches.skip(start).take(pageSize).toList();
+  }
+
   Future<Map<String, dynamic>> _detailData(String id) =>
       _request('detials', {'id': id, 'is_mobile': '1'});
 
   /// متن توضیحات سرویس ترکیبی است: «نام اصلی : X … خلاصه: SUMMARY».
   /// نام اصلی جدا و خلاصه تمیز برمی‌گردد تا صفحه جزئیات کامل باشد.
+  /// برخی توضیحات به‌جای «خلاصه:» از «خلاصه داستان» بدون دونقطه استفاده
+  /// می‌کنند؛ در آن حالت هم نام اصلی از بلوک ابتدایی استخراج می‌شود.
   static (String summary, String? originalTitle) _splitBiography(String raw) {
-    final summaryAt = RegExp(r'خلاصه\s*:').firstMatch(raw);
-    if (summaryAt == null) return (raw, null);
-    final summary = raw.substring(summaryAt.end).trim();
-    final head = raw.substring(0, summaryAt.start);
+    final summaryAt =
+        RegExp(r'خلاصه(\s+داستان)?\s*:').firstMatch(raw) ??
+        RegExp(r'خلاصه\s+داستان').firstMatch(raw);
+    final head = summaryAt == null
+        ? (raw.length > 400 ? raw.substring(0, 400) : raw)
+        : raw.substring(0, summaryAt.start);
+    final summary = summaryAt == null
+        ? raw
+        : raw.substring(summaryAt.end).trim();
     var original = RegExp(
       r'نام اصلی\s*:\s*(.+)',
       multiLine: true,

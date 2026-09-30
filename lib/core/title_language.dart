@@ -15,6 +15,21 @@ class TitleLanguage {
   static bool english = false;
   static final Map<String, String> _originalById = {};
 
+  /// Offline English/original title for [id], if the bundled catalog knows it.
+  /// Used by search so Latin queries match even when the server only sends
+  /// Persian rows (no network needed).
+  static String? originalTitleFor(String id) => _originalById[id];
+
+  /// Remembers an original title learned at runtime (e.g. from a detail
+  /// page's "نام اصلی") for the rest of this session, so later searches and
+  /// English-title views can use it without another request.
+  static void noteOriginalTitle(String id, String title) {
+    final clean = title.trim();
+    if (id.isEmpty || clean.isEmpty || _originalById.containsKey(id)) return;
+    _originalById[id] = clean;
+    revision.value++;
+  }
+
   static Future<void> initialize() async {
     final prefs = await SharedPreferences.getInstance();
     english = prefs.getBool(preferenceKey) ?? false;
