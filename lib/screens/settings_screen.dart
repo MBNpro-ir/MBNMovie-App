@@ -94,7 +94,8 @@ class _SettingsScreenState extends State<SettingsScreen>
   double _brightness = .5;
   String _defaultPlayer = PlaybackPreferenceStore.askEveryTime;
   String _defaultStreamer = PlaybackPreferenceStore.askEveryTime;
-  SubtitlePreferences _subtitle = const SubtitlePreferences();
+  SubtitlePreferences _subtitle =
+      SubtitlePreferences.withPlatformDefaults();
 
   Map<String, String> get _players => {
     PlaybackPreferenceStore.askEveryTime: 'هر بار از من بپرس',
@@ -178,7 +179,7 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   Future<void> _reset() async {
     final prefs = await SharedPreferences.getInstance();
-    const subtitle = SubtitlePreferences();
+    final subtitle = SubtitlePreferences.withPlatformDefaults();
     setState(() {
       _volume = 100;
       _rate = 1;
@@ -1273,12 +1274,12 @@ class _SettingsScreenState extends State<SettingsScreen>
           ),
         ],
       ),
+      // Same global M3 slider as Accessibility (no custom thin theme).
       Slider(
         value: value.clamp(min, max),
         min: min,
         max: max,
         divisions: divisions,
-        activeColor: activeColor,
         onChanged: onChanged,
       ),
     ],
@@ -1348,13 +1349,13 @@ class _SettingsScreenState extends State<SettingsScreen>
           ),
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final previewScale = (constraints.maxWidth / 700)
-                  .clamp(.52, 1.0)
-                  .toDouble();
-              final bottom = (_subtitle.bottomPadding * previewScale).clamp(
-                10.0,
-                constraints.maxHeight * .42,
-              );
+              // Map bottomPadding (0..1000) linearly onto the preview height so
+              // the full slider travel is visible, exactly like the player
+              // (which uses the raw pixel offset from the video bottom).
+              final travel = (constraints.maxHeight * .62).clamp(40.0, 220.0);
+              const minBottom = 10.0;
+              final fraction = (_subtitle.bottomPadding / 1000).clamp(0.0, 1.0);
+              final bottom = minBottom + fraction * travel;
               return Stack(
                 fit: StackFit.expand,
                 children: [
@@ -1371,16 +1372,16 @@ class _SettingsScreenState extends State<SettingsScreen>
                     bottom: bottom,
                     child: Center(
                       child: Container(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 14 * previewScale,
-                          vertical: 7 * previewScale,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 7,
                         ),
                         decoration: BoxDecoration(
                           color: _subtitle.backgroundColor.withValues(
                             alpha: _subtitle.backgroundOpacity,
                           ),
                           borderRadius: BorderRadius.circular(
-                            _subtitle.cornerRadius * previewScale,
+                            _subtitle.cornerRadius,
                           ),
                         ),
                         child: Text(
@@ -1390,9 +1391,10 @@ class _SettingsScreenState extends State<SettingsScreen>
                           overflow: TextOverflow.ellipsis,
                           textAlign: TextAlign.center,
                           textDirection: TextDirection.rtl,
+                          textScaler: TextScaler.noScaling,
                           style: TextStyle(
                             fontFamily: _subtitle.fontFamily,
-                            fontSize: _subtitle.size * previewScale,
+                            fontSize: _subtitle.size,
                             height: _subtitle.lineHeight,
                             fontWeight: _subtitle.bold
                                 ? FontWeight.w700

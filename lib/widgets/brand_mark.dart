@@ -18,8 +18,11 @@ class BrandMark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Logo order is always LTR (icon then wordmark) even inside RTL screens,
+    // so the in-app centered title matches the Windows caption.
     return Row(
       mainAxisSize: MainAxisSize.min,
+      textDirection: TextDirection.ltr,
       children: [
         Container(
           width: size,
@@ -66,8 +69,9 @@ class BrandMark extends StatelessWidget {
                   text: 'Movie',
                   style: TextStyle(
                     color: accent,
-                    fontWeight: FontWeight.w800,
-                    fontSize: (size * 0.52).clamp(13.0, 22.0),
+                    fontWeight: FontWeight.w700,
+                    // Suffix is intentionally much smaller than MBN.
+                    fontSize: (size * 0.30).clamp(8.0, 13.0),
                   ),
                 ),
               ],

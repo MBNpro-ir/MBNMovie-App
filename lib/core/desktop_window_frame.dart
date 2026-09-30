@@ -139,19 +139,36 @@ class _DesktopTitleBarState extends State<_DesktopTitleBar>
                         const SizedBox(width: 8),
                         Opacity(
                           opacity: _active ? 1 : 0.55,
-                          child: const Text(
-                            'MBNMovie',
+                          child: Text.rich(
+                            const TextSpan(
+                              children: [
+                                TextSpan(
+                                  text: 'MBN',
+                                  style: TextStyle(
+                                    fontFamily: 'Vazirmatn',
+                                    fontSize: 13,
+                                    height: 1.2,
+                                    letterSpacing: 0.3,
+                                    fontWeight: FontWeight.w600,
+                                    color: MovieColors.text,
+                                  ),
+                                ),
+                                TextSpan(
+                                  text: 'Movie',
+                                  style: TextStyle(
+                                    fontFamily: 'Vazirmatn',
+                                    fontSize: 8,
+                                    height: 1.2,
+                                    letterSpacing: 0.3,
+                                    fontWeight: FontWeight.w700,
+                                    color: MovieColors.orange,
+                                  ),
+                                ),
+                              ],
+                            ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             textDirection: TextDirection.ltr,
-                            style: TextStyle(
-                              fontFamily: 'Vazirmatn',
-                              fontSize: 13,
-                              height: 1.2,
-                              letterSpacing: 0.3,
-                              fontWeight: FontWeight.w600,
-                              color: MovieColors.text,
-                            ),
                           ),
                         ),
                       ],

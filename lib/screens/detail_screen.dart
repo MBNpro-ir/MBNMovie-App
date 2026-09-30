@@ -2346,7 +2346,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   List<String> _subtitles = const [];
   Tracks _tracks = const Tracks();
   Track _track = const Track();
-  SubtitlePreferences _subtitle = const SubtitlePreferences();
+  SubtitlePreferences _subtitle =
+      SubtitlePreferences.withPlatformDefaults();
   String? _error;
   Duration _positionAtLastError = Duration.zero;
 
@@ -3930,17 +3931,36 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   }
 
   void _seekBy(int seconds, {bool showControls = true}) {
-    _onSeekStateChanged(true);
+    if (showControls) {
+      _onSeekStateChanged(true);
+      _player.seek(
+        playerSeekTarget(_player.state.position, _player.state.duration, seconds),
+      );
+      _showControls();
+      _showFeedback(
+        seconds < 0
+            ? PlayerFeedbackKind.seekBack
+            : PlayerFeedbackKind.seekForward,
+      );
+      _onSeekStateChanged(false);
+      return;
+    }
+    // Keyboard / double-tap seek: keep player chrome hidden, only show the
+    // center feedback square (no control buttons).
+    _hideTimer?.cancel();
+    _seekDebounceTimer?.cancel();
+    _isSeeking = false;
+    if (_controlsVisible && mounted) {
+      setState(() => _controlsVisible = false);
+    }
     _player.seek(
       playerSeekTarget(_player.state.position, _player.state.duration, seconds),
     );
-    if (showControls) _showControls();
     _showFeedback(
       seconds < 0
           ? PlayerFeedbackKind.seekBack
           : PlayerFeedbackKind.seekForward,
     );
-    _onSeekStateChanged(false);
   }
 
   void _keyboardCommand(PlayerCommand command) {
@@ -4379,14 +4399,19 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
               final target = Duration(
                 milliseconds: (_duration.inMilliseconds * fraction).round(),
               );
-              _onSeekStateChanged(true);
+              // Digit-key seek (0-9): keep chrome hidden, only center feedback.
+              _hideTimer?.cancel();
+              _seekDebounceTimer?.cancel();
+              _isSeeking = false;
+              if (_controlsVisible && mounted) {
+                setState(() => _controlsVisible = false);
+              }
               unawaited(_player.seek(target));
               _showFeedback(
                 target < _position
                     ? PlayerFeedbackKind.seekBack
                     : PlayerFeedbackKind.seekForward,
               );
-              _onSeekStateChanged(false);
             }
           },
           onFocus: _pokeCursor,
@@ -5249,26 +5274,45 @@ class _SubtitleTimingState extends State<_SubtitleTiming> {
   late double rate = widget.initialRate;
 
   @override
-  Widget build(BuildContext context) => SafeArea(
-    top: false,
-    child: SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.sync_alt_rounded, color: MovieColors.orange),
-              const SizedBox(width: 10),
-              Text('تنظیم سرعت', style: Theme.of(context).textTheme.titleLarge),
-            ],
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'برای زیرنویس‌های جدا از تصویر؛ زیرنویس چسبیده داخل خود ویدیو قابل تغییر نیست.',
-            style: TextStyle(color: Colors.white60, fontSize: 12),
-          ),
-          const SizedBox(height: 16),
+  Widget build(BuildContext context) {
+    final isCompact = MediaQuery.sizeOf(context).width < 600;
+    return SafeArea(
+      top: false,
+      child: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(
+          isCompact ? 12 : 18,
+          0,
+          isCompact ? 12 : 18,
+          isCompact ? 12 : 18,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.sync_alt_rounded,
+                  color: MovieColors.orange,
+                  size: isCompact ? 20 : 24,
+                ),
+                SizedBox(width: isCompact ? 8 : 10),
+                Text(
+                  'تنظیم سرعت',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontSize: isCompact ? 16 : 20,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: isCompact ? 6 : 8),
+            Text(
+              'برای زیرنویس‌های جدا از تصویر؛ زیرنویس چسبیده داخل خود ویدیو قابل تغییر نیست.',
+              style: TextStyle(
+                color: Colors.white60,
+                fontSize: isCompact ? 11 : 12,
+              ),
+            ),
+            SizedBox(height: isCompact ? 10 : 16),
           _TimingCard(
             icon: Icons.speed_rounded,
             title: 'سرعت ویدیو',
@@ -5284,7 +5328,7 @@ class _SubtitleTimingState extends State<_SubtitleTiming> {
             onPlus: () =>
                 setState(() => rate = (rate + .05).clamp(.5, 4).toDouble()),
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: isCompact ? 8 : 12),
           _TimingCard(
             icon: Icons.swap_horiz_rounded,
             title: 'جابه‌جایی زمان زیرنویس',
@@ -5308,7 +5352,7 @@ class _SubtitleTimingState extends State<_SubtitleTiming> {
               ),
             ),
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: isCompact ? 8 : 12),
           _TimingCard(
             icon: Icons.compress_rounded,
             title: 'فاصلهٔ زمانی بین زیرنویس‌ها',
@@ -5332,7 +5376,7 @@ class _SubtitleTimingState extends State<_SubtitleTiming> {
               ),
             ),
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: isCompact ? 10 : 16),
           Row(
             children: [
               Expanded(
@@ -5359,7 +5403,8 @@ class _SubtitleTimingState extends State<_SubtitleTiming> {
         ],
       ),
     ),
-  );
+    );
+  }
 }
 
 class _TimingCard extends StatelessWidget {
@@ -5389,71 +5434,103 @@ class _TimingCard extends StatelessWidget {
   final VoidCallback onPlus;
 
   @override
-  Widget build(BuildContext context) => DecoratedBox(
-    decoration: BoxDecoration(
-      color: MovieColors.surfaceHigh,
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: Colors.white12),
-    ),
-    child: Padding(
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Icon(icon, color: MovieColors.orange),
-              const SizedBox(width: 9),
-              Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(fontWeight: FontWeight.w800),
-                ),
-              ),
-              Text(
-                valueLabel,
-                textDirection: TextDirection.ltr,
-                style: const TextStyle(
-                  color: MovieColors.orange,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            description,
-            style: const TextStyle(color: Colors.white60, fontSize: 11),
-          ),
-          Row(
-            children: [
-              _StepButton(icon: Icons.remove_rounded, onTap: onMinus),
-              Expanded(
-                child: Slider(
-                  value: value.clamp(min, max),
-                  min: min,
-                  max: max,
-                  divisions: divisions,
-                  onChanged: onChanged,
-                ),
-              ),
-              _StepButton(icon: Icons.add_rounded, onTap: onPlus),
-            ],
-          ),
-        ],
+  Widget build(BuildContext context) {
+    final isCompact = MediaQuery.sizeOf(context).width < 600;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: MovieColors.surfaceHigh,
+        borderRadius: BorderRadius.circular(isCompact ? 16 : 20),
+        border: Border.all(color: Colors.white12),
       ),
-    ),
-  );
+      child: Padding(
+        padding: EdgeInsets.all(isCompact ? 10 : 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  icon,
+                  color: MovieColors.orange,
+                  size: isCompact ? 18 : 24,
+                ),
+                SizedBox(width: isCompact ? 6 : 9),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: isCompact ? 13 : 15,
+                    ),
+                  ),
+                ),
+                Text(
+                  valueLabel,
+                  textDirection: TextDirection.ltr,
+                  style: TextStyle(
+                    color: MovieColors.orange,
+                    fontWeight: FontWeight.w800,
+                    fontSize: isCompact ? 12 : 14,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: isCompact ? 2 : 4),
+            Text(
+              description,
+              style: const TextStyle(color: Colors.white60, fontSize: 11),
+            ),
+            SizedBox(height: isCompact ? 2 : 4),
+            Row(
+              children: [
+                _StepButton(
+                  icon: Icons.remove_rounded,
+                  onTap: onMinus,
+                  compact: isCompact,
+                ),
+                Expanded(
+                  child: Slider(
+                    value: value.clamp(min, max),
+                    min: min,
+                    max: max,
+                    divisions: divisions,
+                    onChanged: onChanged,
+                  ),
+                ),
+                _StepButton(
+                  icon: Icons.add_rounded,
+                  onTap: onPlus,
+                  compact: isCompact,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _StepButton extends StatelessWidget {
-  const _StepButton({required this.icon, required this.onTap});
+  const _StepButton({
+    required this.icon,
+    required this.onTap,
+    this.compact = false,
+  });
   final IconData icon;
   final VoidCallback onTap;
+  final bool compact;
 
   @override
-  Widget build(BuildContext context) =>
-      IconButton.filledTonal(onPressed: onTap, icon: Icon(icon));
+  Widget build(BuildContext context) => IconButton.filledTonal(
+    onPressed: onTap,
+    icon: Icon(icon, size: compact ? 18 : 24),
+    style: IconButton.styleFrom(
+      minimumSize: Size(compact ? 36 : 48, compact ? 36 : 48),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      padding: EdgeInsets.zero,
+    ),
+  );
 }
 
 class _TopSubtitleSettings extends StatefulWidget {

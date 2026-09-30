@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/mbn_sync.dart';
@@ -17,6 +19,16 @@ class SubtitlePreferences {
     this.delay = 0,
     this.timingScale = 1,
   });
+
+  /// First-run default subtitle size: 14 on phones, 24 on Windows.
+  /// Server just mirrors whatever the app pushes per platform
+  /// (windows/android buckets), so fixing the app default is enough.
+  static double get platformDefaultSize =>
+      Platform.isWindows ? 24.0 : 14.0;
+
+  /// Non-const constructor for first-run / reset values.
+  factory SubtitlePreferences.withPlatformDefaults() =>
+      SubtitlePreferences(size: platformDefaultSize);
 
   final String fontFamily;
   final double size;
@@ -62,7 +74,7 @@ class SubtitlePreferences {
   factory SubtitlePreferences.fromStore(SharedPreferences prefs) =>
       SubtitlePreferences(
         fontFamily: prefs.getString('sub_font') ?? 'Vazirmatn',
-        size: prefs.getDouble('sub_size') ?? 14,
+        size: prefs.getDouble('sub_size') ?? platformDefaultSize,
         lineHeight: prefs.getDouble('sub_height') ?? 1.45,
         backgroundColor: Color(
           prefs.getInt('sub_bg_color') ?? Colors.black.toARGB32(),

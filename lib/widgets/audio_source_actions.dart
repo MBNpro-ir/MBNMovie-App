@@ -105,27 +105,25 @@ class _AudioSourceActionsState extends State<AudioSourceActions> {
       children: [
         if (_error != null) Text(_error!, textAlign: TextAlign.center),
         if (_loading) const LinearProgressIndicator(),
-        Wrap(
-          spacing: 10,
-          runSpacing: 8,
+        // Same equal-width layout as the subtitle file/link buttons.
+        Row(
           children: [
-            FilledButton.tonalIcon(
-              onPressed: _busy ? null : () => _load(true),
-              icon: const Icon(Icons.audio_file_rounded),
-              label: const Text('فایل صدا'),
+            Expanded(
+              child: FilledButton.tonalIcon(
+                onPressed: _busy ? null : () => _load(true),
+                icon: const Icon(Icons.audio_file_rounded),
+                label: const Text('فایل صدا'),
+              ),
             ),
-            FilledButton.tonalIcon(
-              onPressed: _busy ? null : () => _load(false),
-              icon: const Icon(Icons.link_rounded),
-              label: const Text('لینک صدا'),
+            const SizedBox(width: 10),
+            Expanded(
+              child: FilledButton.tonalIcon(
+                onPressed: _busy ? null : () => _load(false),
+                icon: const Icon(Icons.link_rounded),
+                label: const Text('لینک صدا'),
+              ),
             ),
           ],
-        ),
-        const SizedBox(height: 6),
-        const Text(
-          'صدا برای همین ویدئو اضافه می‌شود؛ فایل یا لینک مستقیم صوت را انتخاب کن.',
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 11),
         ),
       ],
     ),
