@@ -1,0 +1,41 @@
+name: Test Android TV 6
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  television:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.32.8'
+          cache: true
+          pub-cache: true
+      - name: Prepare TV media and acceleration
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+          sudo chmod a+rw /dev/kvm
+          mkdir -p "$RUNNER_TEMP/mbn-media"
+          ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc2=size=320x180:rate=24 \
+            -f lavfi -i sine=frequency=440:sample_rate=44100 -t 6 -c:v libx264 \
+            -profile:v baseline -pix_fmt yuv420p -c:a aac -b:a 64k -movflags +faststart \
+            "$RUNNER_TEMP/mbn-media/mbn-compatibility.mp4"
+          python3 tools/serve_compatibility_media.py "$RUNNER_TEMP/mbn-media" > "$RUNNER_TEMP/media-server.log" 2>&1 &
+      - name: Run on Android TV API 23
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 23
+          target: android-tv
+          arch: x86
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot-save
+          script: flutter test integration_test/android_compatibility_test.dart -d emulator-5554 --dart-define=MBN_QA_EXPECT_SDK=23 --dart-define=MBN_QA_EXPECT_TV=true
