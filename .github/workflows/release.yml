@@ -180,6 +180,8 @@ jobs:
           pub-cache: true
       - name: Prepare emulator acceleration
         run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
           sudo chmod a+rw /dev/kvm
           mkdir -p "$RUNNER_TEMP/mbn-media"
           ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc2=size=320x180:rate=24 \
