@@ -7,6 +7,8 @@ import 'package:mbnmovie/widgets/pressable.dart';
 import 'package:mbnmovie/widgets/player_keyboard.dart';
 import 'package:mbnmovie/widgets/tv_navigation.dart';
 import 'package:mbnmovie/screens/episode_picker_screen.dart';
+import 'package:mbnmovie/screens/login_screen.dart';
+import 'package:mbnmovie/services/mbn_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'episode_picker_test.dart' as fixtures;
 
@@ -36,7 +38,7 @@ void main() {
         ),
       ),
     );
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await tester.pump();
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     expect(opened, 1);
@@ -86,6 +88,60 @@ void main() {
       expect(activated, 1);
     },
   );
+
+  testWidgets('TV remote submits login and dismisses a dialog', (tester) async {
+    var submissions = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: MovieTheme.dark,
+        builder: (context, child) => TvNavigation(child: child!),
+        home: LoginScreen(
+          auth: MbnAuth(),
+          onAuthenticated: (_, _) async {},
+          onLogin: (email, password) async {
+            expect(email, 'tvuser');
+            expect(password, 'testpass');
+            submissions++;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final fields = find.byType(TextFormField);
+    await tester.enterText(fields.at(0), 'tvuser');
+    await tester.enterText(fields.at(1), 'testpass');
+    final button = find.byType(FilledButton).first;
+    await tester.ensureVisible(button);
+    final buttonContext = tester.element(button);
+    final focus = Focus.of(
+      tester.element(
+        find.descendant(of: button, matching: find.byType(Text)).first,
+      ),
+    );
+    focus.requestFocus();
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    expect(submissions, 1);
+    showDialog<void>(
+      context: buttonContext,
+      builder: (context) => AlertDialog(
+        title: const Text('TV dialog'),
+        actions: [
+          TextButton(
+            autofocus: true,
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    expect(find.text('TV dialog'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 
   for (final size in [const Size(960, 540), const Size(1280, 720)]) {
     testWidgets('TV episode picker fits $size with readable text', (

@@ -1,3 +1,4 @@
+import '../services/device_performance.dart';
 import 'package:flutter/material.dart';
 import '../core/platform_ui.dart';
 import '../core/theme.dart';
@@ -42,7 +43,9 @@ class _PressableState extends State<Pressable> {
         Scrollable.ensureVisible(
           context,
           alignment: .5,
-          duration: const Duration(milliseconds: 160),
+          duration: Duration(
+            milliseconds: DevicePerformance.lightweight ? 100 : 160,
+          ),
         );
       }
     },
@@ -75,7 +78,9 @@ class _PressableState extends State<Pressable> {
           onTapUp: (_) => _setPressed(false),
           onTapCancel: () => _setPressed(false),
           child: AnimatedScale(
-            scale: _pressed ? widget.scale : 1,
+            scale: _pressed
+                ? (DevicePerformance.lightweight ? .985 : widget.scale)
+                : 1,
             duration: Duration(milliseconds: _pressed ? 65 : 150),
             curve: Curves.easeOutCubic,
             child: widget.child,

@@ -50,6 +50,16 @@ class DeviceBridge(
     fun handle(call: MethodCall, result: MethodChannel.Result) {
         try {
             when (call.method) {
+                "performanceInfo" -> {
+                    val manager = activity.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+                    val uiMode = activity.getSystemService(Context.UI_MODE_SERVICE) as android.app.UiModeManager
+                    result.success(mapOf(
+                        "sdk" to Build.VERSION.SDK_INT,
+                        "lowRam" to manager.isLowRamDevice,
+                        "television" to (uiMode.currentModeType == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION ||
+                            activity.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)),
+                    ))
+                }
                 "isTelevision" -> {
                     val manager = activity.getSystemService(Context.UI_MODE_SERVICE) as android.app.UiModeManager
                     result.success(manager.currentModeType == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION ||

@@ -94,8 +94,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   double _brightness = .5;
   String _defaultPlayer = PlaybackPreferenceStore.askEveryTime;
   String _defaultStreamer = PlaybackPreferenceStore.askEveryTime;
-  SubtitlePreferences _subtitle =
-      SubtitlePreferences.withPlatformDefaults();
+  SubtitlePreferences _subtitle = SubtitlePreferences.withPlatformDefaults();
 
   Map<String, String> get _players => {
     PlaybackPreferenceStore.askEveryTime: 'هر بار از من بپرس',
@@ -213,7 +212,9 @@ class _SettingsScreenState extends State<SettingsScreen>
   Future<void> _pullFromServer() async {
     setState(() => _syncingFromServer = true);
     try {
-      final success = await MbnSync.instance.pullAndApplyPreferences(force: true);
+      final success = await MbnSync.instance.pullAndApplyPreferences(
+        force: true,
+      );
       if (!mounted) return;
       if (success) {
         await _load();
@@ -227,16 +228,16 @@ class _SettingsScreenState extends State<SettingsScreen>
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('تنظیمات جدیدی در سرور یافت نشد یا اینترنت متصل نیست.'),
+            content: Text(
+              'تنظیمات جدیدی در سرور یافت نشد یا اینترنت متصل نیست.',
+            ),
           ),
         );
       }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('خطا در دریافت تنظیمات از سرور.'),
-          ),
+          const SnackBar(content: Text('خطا در دریافت تنظیمات از سرور.')),
         );
       }
     } finally {
@@ -271,7 +272,9 @@ class _SettingsScreenState extends State<SettingsScreen>
         ? const Center(child: CircularProgressIndicator())
         : LayoutBuilder(
             builder: (context, constraints) => ScrollConfiguration(
-              behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+              behavior: ScrollConfiguration.of(
+                context,
+              ).copyWith(scrollbars: false),
               child: Scrollbar(
                 controller: _scrollController,
                 thumbVisibility: true,
@@ -291,12 +294,19 @@ class _SettingsScreenState extends State<SettingsScreen>
                         children: [
                           Container(
                             margin: const EdgeInsets.only(bottom: 16),
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
                             decoration: BoxDecoration(
-                              color: MovieColors.surfaceHigh.withValues(alpha: 0.5),
+                              color: MovieColors.surfaceHigh.withValues(
+                                alpha: 0.5,
+                              ),
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
-                                color: MovieColors.orange.withValues(alpha: 0.25),
+                                color: MovieColors.orange.withValues(
+                                  alpha: 0.25,
+                                ),
                               ),
                             ),
                             child: Row(
@@ -304,7 +314,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                                 Container(
                                   padding: const EdgeInsets.all(8),
                                   decoration: BoxDecoration(
-                                    color: MovieColors.orange.withValues(alpha: 0.15),
+                                    color: MovieColors.orange.withValues(
+                                      alpha: 0.15,
+                                    ),
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                   child: const Icon(
@@ -316,7 +328,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                                 const SizedBox(width: 12),
                                 const Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         'همگام‌سازی ابری تنظیمات',
@@ -341,9 +354,14 @@ class _SettingsScreenState extends State<SettingsScreen>
                                   style: FilledButton.styleFrom(
                                     backgroundColor: MovieColors.orange,
                                     foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 14,
+                                      vertical: 10,
+                                    ),
                                   ),
-                                  onPressed: _loading || _syncingFromServer ? null : _pullFromServer,
+                                  onPressed: _loading || _syncingFromServer
+                                      ? null
+                                      : _pullFromServer,
                                   icon: _syncingFromServer
                                       ? const SizedBox(
                                           width: 16,
@@ -353,7 +371,10 @@ class _SettingsScreenState extends State<SettingsScreen>
                                             color: Colors.white,
                                           ),
                                         )
-                                      : const Icon(Icons.cloud_download_rounded, size: 18),
+                                      : const Icon(
+                                          Icons.cloud_download_rounded,
+                                          size: 18,
+                                        ),
                                   label: const Text('دریافت از سرور'),
                                 ),
                               ],
@@ -363,12 +384,13 @@ class _SettingsScreenState extends State<SettingsScreen>
                           _section(
                             icon: Icons.route_rounded,
                             title: 'پخش و انتقال پیش‌فرض',
-                            subtitle: 'انتخاب پلیر داخلی یا خارجی و روش ارسال تصویر به تلویزیون',
+                            subtitle:
+                                'انتخاب پلیر داخلی یا خارجی و روش ارسال تصویر به تلویزیون',
                             children: [
                               _responsiveRow(
                                 first: DropdownButtonFormField<String>(
                                   key: const Key('default-player-setting'),
-                                  initialValue: _defaultPlayer,
+                                  value: _defaultPlayer,
                                   isExpanded: true,
                                   decoration: const InputDecoration(
                                     labelText: 'پخش‌کنندهٔ پیش‌فرض',
@@ -392,7 +414,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                                 ),
                                 second: DropdownButtonFormField<String>(
                                   key: const Key('default-streamer-setting'),
-                                  initialValue: _defaultStreamer,
+                                  value: _defaultStreamer,
                                   isExpanded: true,
                                   decoration: const InputDecoration(
                                     labelText: 'روش انتقال تصویر پیش‌فرض',
@@ -437,7 +459,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                                   },
                                 ),
                                 second: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
                                   children: [
                                     _slider(
                                       label: 'سرعت پخش',
@@ -447,7 +470,10 @@ class _SettingsScreenState extends State<SettingsScreen>
                                       divisions: 70,
                                       suffix: '${_rate.toStringAsFixed(2)}×',
                                       onChanged: (value) {
-                                        setState(() => _rate = (value * 100).round() / 100.0);
+                                        setState(
+                                          () => _rate =
+                                              (value * 100).round() / 100.0,
+                                        );
                                         _savePlayer();
                                       },
                                     ),
@@ -456,10 +482,23 @@ class _SettingsScreenState extends State<SettingsScreen>
                                       spacing: 6,
                                       runSpacing: 6,
                                       children: [
-                                        for (final speed in [0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0])
+                                        for (final speed in [
+                                          0.75,
+                                          1.0,
+                                          1.25,
+                                          1.5,
+                                          1.75,
+                                          2.0,
+                                          2.5,
+                                          3.0,
+                                          4.0,
+                                        ])
                                           ChoiceChip(
-                                            label: Text('${speed.toStringAsFixed(speed % 1 == 0 ? 0 : 2)}×'),
-                                            selected: (_rate - speed).abs() < 0.04,
+                                            label: Text(
+                                              '${speed.toStringAsFixed(speed % 1 == 0 ? 0 : 2)}×',
+                                            ),
+                                            selected:
+                                                (_rate - speed).abs() < 0.04,
                                             onSelected: (selected) {
                                               if (selected) {
                                                 setState(() => _rate = speed);
@@ -519,13 +558,14 @@ class _SettingsScreenState extends State<SettingsScreen>
                           _section(
                             icon: Icons.closed_caption_rounded,
                             title: 'زیرنویس',
-                            subtitle: 'شخصی‌سازی ظاهر، فونت، اندازه و موقعیت زیرنویس',
+                            subtitle:
+                                'شخصی‌سازی ظاهر، فونت، اندازه و موقعیت زیرنویس',
                             children: [
                               _subtitlePreview(),
                               const SizedBox(height: 18),
                               _responsiveRow(
                                 first: DropdownButtonFormField<String>(
-                                  initialValue: _subtitle.fontFamily,
+                                  value: _subtitle.fontFamily,
                                   isExpanded: true,
                                   decoration: const InputDecoration(
                                     labelText: 'فونت زیرنویس',
@@ -563,7 +603,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                                   value: _subtitle.lineHeight,
                                   min: 1,
                                   max: 2,
-                                  suffix: _subtitle.lineHeight.toStringAsFixed(2),
+                                  suffix: _subtitle.lineHeight.toStringAsFixed(
+                                    2,
+                                  ),
                                   onChanged: (value) => _saveSubtitle(
                                     _subtitle.copyWith(lineHeight: value),
                                   ),
@@ -573,7 +615,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                                   value: _subtitle.bottomPadding,
                                   min: 0,
                                   max: 1000,
-                                  suffix: _subtitle.bottomPadding.round().toString(),
+                                  suffix: _subtitle.bottomPadding
+                                      .round()
+                                      .toString(),
                                   onChanged: (value) => _saveSubtitle(
                                     _subtitle.copyWith(bottomPadding: value),
                                   ),
@@ -586,9 +630,12 @@ class _SettingsScreenState extends State<SettingsScreen>
                                   value: _subtitle.backgroundOpacity,
                                   min: 0,
                                   max: 1,
-                                  suffix: '${(_subtitle.backgroundOpacity * 100).round()}٪',
+                                  suffix:
+                                      '${(_subtitle.backgroundOpacity * 100).round()}٪',
                                   onChanged: (value) => _saveSubtitle(
-                                    _subtitle.copyWith(backgroundOpacity: value),
+                                    _subtitle.copyWith(
+                                      backgroundOpacity: value,
+                                    ),
                                   ),
                                 ),
                                 second: _slider(
@@ -596,7 +643,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                                   value: _subtitle.cornerRadius,
                                   min: 0,
                                   max: 24,
-                                  suffix: _subtitle.cornerRadius.round().toString(),
+                                  suffix: _subtitle.cornerRadius
+                                      .round()
+                                      .toString(),
                                   onChanged: (value) => _saveSubtitle(
                                     _subtitle.copyWith(cornerRadius: value),
                                   ),
@@ -610,7 +659,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                                   min: -10,
                                   max: 10,
                                   divisions: 80,
-                                  suffix: '${_subtitle.delay.toStringAsFixed(2)}s',
+                                  suffix:
+                                      '${_subtitle.delay.toStringAsFixed(2)}s',
                                   onChanged: (value) => _saveSubtitle(
                                     _subtitle.copyWith(delay: value),
                                   ),
@@ -621,7 +671,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                                   min: .8,
                                   max: 1.2,
                                   divisions: 80,
-                                  suffix: '${_subtitle.timingScale.toStringAsFixed(3)}×',
+                                  suffix:
+                                      '${_subtitle.timingScale.toStringAsFixed(3)}×',
                                   onChanged: (value) => _saveSubtitle(
                                     _subtitle.copyWith(timingScale: value),
                                   ),
@@ -639,7 +690,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                                 ),
                                 second: SwitchListTile(
                                   contentPadding: EdgeInsets.zero,
-                                  title: const Text('سایه و حاشیه برای خوانایی'),
+                                  title: const Text(
+                                    'سایه و حاشیه برای خوانایی',
+                                  ),
                                   value: _subtitle.shadow,
                                   onChanged: (value) => _saveSubtitle(
                                     _subtitle.copyWith(shadow: value),
@@ -671,16 +724,21 @@ class _SettingsScreenState extends State<SettingsScreen>
                           _section(
                             icon: Icons.accessibility_new_rounded,
                             title: 'دسترسی‌پذیری و مقیاس نمایش (Accessibility)',
-                            subtitle: 'تنظیم ابعاد کل برنامه، اندازه فونت‌ها و گزینه‌های دیداری',
+                            subtitle:
+                                'تنظیم ابعاد کل برنامه، اندازه فونت‌ها و گزینه‌های دیداری',
                             children: [
                               Container(
                                 margin: const EdgeInsets.only(bottom: 16),
                                 padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
-                                  color: MovieColors.surfaceHigh.withValues(alpha: 0.6),
+                                  color: MovieColors.surfaceHigh.withValues(
+                                    alpha: 0.6,
+                                  ),
                                   borderRadius: BorderRadius.circular(14),
                                   border: Border.all(
-                                    color: MovieColors.cyan.withValues(alpha: 0.3),
+                                    color: MovieColors.cyan.withValues(
+                                      alpha: 0.3,
+                                    ),
                                   ),
                                 ),
                                 child: const Row(
@@ -710,7 +768,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                                 builder: (context, _) {
                                   final access = AccessibilityService.instance;
                                   return Column(
-                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
                                     children: [
                                       // UI Scale
                                       Row(
@@ -744,16 +803,13 @@ class _SettingsScreenState extends State<SettingsScreen>
                                               vertical: 4,
                                             ),
                                             decoration: BoxDecoration(
-                                              color: MovieColors.orange.withValues(
-                                                alpha: 0.15,
-                                              ),
-                                              borderRadius: BorderRadius.circular(
-                                                8,
-                                              ),
+                                              color: MovieColors.orange
+                                                  .withValues(alpha: 0.15),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
                                               border: Border.all(
-                                                color: MovieColors.orange.withValues(
-                                                  alpha: 0.4,
-                                                ),
+                                                color: MovieColors.orange
+                                                    .withValues(alpha: 0.4),
                                               ),
                                             ),
                                             child: Text(
@@ -937,7 +993,7 @@ class _SettingsScreenState extends State<SettingsScreen>
 
                                       // Density
                                       DropdownButtonFormField<DensityMode>(
-                                        initialValue: access.densityMode,
+                                        value: access.densityMode,
                                         isExpanded: true,
                                         decoration: const InputDecoration(
                                           labelText:
@@ -954,7 +1010,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                                             )
                                             .toList(),
                                         onChanged: (mode) {
-                                          if (mode != null) access.setDensity(mode);
+                                          if (mode != null) {
+                                            access.setDensity(mode);
+                                          }
                                         },
                                       ),
                                       const SizedBox(height: 16),
@@ -962,33 +1020,44 @@ class _SettingsScreenState extends State<SettingsScreen>
                                       // Accessibility toggle cards
                                       _responsiveRow(
                                         first: _toggleCard(
-                                          title: 'کاهش انیمیشن‌ها (Reduce Motion)',
-                                          subtitle: 'ساده‌سازی ترنزیشن‌ها برای سرعت بالاتر',
+                                          title:
+                                              'کاهش انیمیشن‌ها (Reduce Motion)',
+                                          subtitle:
+                                              'ساده‌سازی ترنزیشن‌ها برای سرعت بالاتر',
                                           value: access.reduceMotion,
-                                          onChanged: (val) => access.setReduceMotion(val),
+                                          onChanged: (val) =>
+                                              access.setReduceMotion(val),
                                           icon: Icons.motion_photos_off_rounded,
                                         ),
                                         second: _toggleCard(
-                                          title: 'افزایش کنتراست (High Contrast)',
-                                          subtitle: 'پررنگ‌تر کردن مرزها و کارت‌ها جهت دید بهتر',
+                                          title:
+                                              'افزایش کنتراست (High Contrast)',
+                                          subtitle:
+                                              'پررنگ‌تر کردن مرزها و کارت‌ها جهت دید بهتر',
                                           value: access.highContrast,
-                                          onChanged: (val) => access.setHighContrast(val),
+                                          onChanged: (val) =>
+                                              access.setHighContrast(val),
                                           icon: Icons.contrast_rounded,
                                         ),
                                       ),
                                       _responsiveRow(
                                         first: _toggleCard(
                                           title: 'نمایش متون پررنگ (Bold Text)',
-                                          subtitle: 'افزایش ضخامت نوشته‌ها برای سهولت در خواندن',
+                                          subtitle:
+                                              'افزایش ضخامت نوشته‌ها برای سهولت در خواندن',
                                           value: access.boldText,
-                                          onChanged: (val) => access.setBoldText(val),
+                                          onChanged: (val) =>
+                                              access.setBoldText(val),
                                           icon: Icons.format_bold_rounded,
                                         ),
                                         second: _toggleCard(
-                                          title: 'بازخورد لرزشی کلیدها (Haptics)',
-                                          subtitle: 'لرزش خفیف هنگام لمس بخش‌های مختلف',
+                                          title:
+                                              'بازخورد لرزشی کلیدها (Haptics)',
+                                          subtitle:
+                                              'لرزش خفیف هنگام لمس بخش‌های مختلف',
                                           value: access.haptics,
-                                          onChanged: (val) => access.setHaptics(val),
+                                          onChanged: (val) =>
+                                              access.setHaptics(val),
                                           icon: Icons.vibration_rounded,
                                         ),
                                       ),
@@ -1030,7 +1099,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                           _section(
                             icon: Icons.cloud_sync_rounded,
                             title: 'همگام‌سازی و شخصی‌سازی',
-                            subtitle: 'ذخیره‌سازی ابری روی سرور و تنظیمات عنوان‌ها',
+                            subtitle:
+                                'ذخیره‌سازی ابری روی سرور و تنظیمات عنوان‌ها',
                             children: [
                               SwitchListTile(
                                 contentPadding: EdgeInsets.zero,
@@ -1057,7 +1127,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                               const Divider(height: 20),
                               SwitchListTile(
                                 contentPadding: EdgeInsets.zero,
-                                title: const Text('نمایش عنوان‌های اصلی به انگلیسی'),
+                                title: const Text(
+                                  'نمایش عنوان‌های اصلی به انگلیسی',
+                                ),
                                 subtitle: const Text(
                                   'جست‌وجو با نام فارسی و انگلیسی در هر دو حالت کار می‌کند.',
                                 ),
@@ -1160,11 +1232,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       }
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          first,
-          const SizedBox(height: 12),
-          second,
-        ],
+        children: [first, const SizedBox(height: 12), second],
       );
     },
   );
@@ -1193,8 +1261,9 @@ class _SettingsScreenState extends State<SettingsScreen>
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: (value ? activeColor : Colors.white)
-                .withValues(alpha: value ? 0.15 : 0.05),
+            color: (value ? activeColor : Colors.white).withValues(
+              alpha: value ? 0.15 : 0.05,
+            ),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Icon(
@@ -1218,20 +1287,13 @@ class _SettingsScreenState extends State<SettingsScreen>
               const SizedBox(height: 2),
               Text(
                 subtitle,
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: MovieColors.muted,
-                ),
+                style: const TextStyle(fontSize: 11, color: MovieColors.muted),
               ),
             ],
           ),
         ),
         const SizedBox(width: 8),
-        Switch(
-          value: value,
-          activeThumbColor: activeColor,
-          onChanged: onChanged,
-        ),
+        Switch(value: value, activeColor: activeColor, onChanged: onChanged),
       ],
     ),
   );
@@ -1460,4 +1522,3 @@ class _ScaleChip extends StatelessWidget {
     );
   }
 }
-

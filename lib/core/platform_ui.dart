@@ -1,3 +1,4 @@
+import '../services/device_performance.dart';
 import 'app_platform.dart';
 import 'dart:math' as math;
 
@@ -51,6 +52,9 @@ double get bottomListGap => isLargeScreenDevice ? 28 : 110;
 /// its predictive-back transition can follow the system edge-swipe in real
 /// time; desktop keeps the custom slide/fade transition.
 PageRoute<void> slideUpRoute(Widget page, {int durationMs = 380}) {
+  if (DevicePerformance.lightweight) {
+    durationMs = DevicePerformance.routeDuration.inMilliseconds;
+  }
   if (AccessibilityService.instance.reduceMotion) {
     return PageRouteBuilder<void>(
       transitionDuration: Duration.zero,
@@ -95,7 +99,9 @@ class _MbnmovieAndroidPageRoute extends MaterialPageRoute<void> {
   Duration get transitionDuration => Duration(milliseconds: durationMs);
 
   @override
-  Duration get reverseTransitionDuration => const Duration(milliseconds: 320);
+  Duration get reverseTransitionDuration => DevicePerformance.lightweight
+      ? const Duration(milliseconds: 180)
+      : const Duration(milliseconds: 320);
 }
 
 /// Desktop-only large modal host: centered and only closable via in-page
@@ -108,8 +114,12 @@ Future<T?> showDesktopPopup<T>(BuildContext context, Widget child) {
       opaque: false,
       barrierDismissible: false,
       barrierColor: Colors.black.withValues(alpha: .72),
-      transitionDuration: reduceMotion ? Duration.zero : const Duration(milliseconds: 260),
-      reverseTransitionDuration: reduceMotion ? Duration.zero : const Duration(milliseconds: 220),
+      transitionDuration: reduceMotion
+          ? Duration.zero
+          : const Duration(milliseconds: 260),
+      reverseTransitionDuration: reduceMotion
+          ? Duration.zero
+          : const Duration(milliseconds: 220),
       pageBuilder: (_, _, _) => Dialog(
         insetPadding: const EdgeInsets.all(12),
         backgroundColor: MovieColors.background,

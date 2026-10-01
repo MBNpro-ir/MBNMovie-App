@@ -148,127 +148,143 @@ class _DownloadManagerScreenState extends State<DownloadManagerScreen> {
 
   @override
   Widget build(BuildContext context) => kIsWeb
-    ? Scaffold(appBar: AppBar(title: const Text('دانلودهای مرورگر')), body: const Center(child: Padding(padding: EdgeInsets.all(24), child: Text('فایل‌های دانلودشده را در Downloads مرورگر یا برنامه Files آیفون ببین. دانلود هر قسمت از صفحه جزئیات در دسترس است.', textAlign: TextAlign.center))))
-    : Scaffold(
-    appBar: AppBar(
-      title: const Text('مدیریت دانلود ها'),
-      actions: [
-        IconButton(
-          tooltip: 'باز کردن پوشهٔ دانلود',
-          icon: const Icon(Icons.folder_open),
-          onPressed: () => _action(() async {
-            await DeviceBridge.openFolder(await manager.rootDirectory());
-            return true;
-          }),
-        ),
-      ],
-    ),
-    body: ListenableBuilder(
-      listenable: manager,
-      builder: (context, _) {
-        final records =
-            manager.records.values
-                .where(
-                  (r) =>
-                      r.task.displayName.toLowerCase().contains(
-                        _search.toLowerCase(),
-                      ) &&
-                      (_filter == 'همه' ||
-                          _filter ==
-                              downloadStatusLabel(manager.effectiveStatus(r))),
-                )
-                .toList()
-              ..sort(
-                (a, b) => b.task.creationTime.compareTo(a.task.creationTime),
+      ? Scaffold(
+          appBar: AppBar(title: const Text('دانلودهای مرورگر')),
+          body: const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Text(
+                'فایل‌های دانلودشده را در Downloads مرورگر یا برنامه Files آیفون ببین. دانلود هر قسمت از صفحه جزئیات در دسترس است.',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+        )
+      : Scaffold(
+          appBar: AppBar(
+            title: const Text('مدیریت دانلود ها'),
+            actions: [
+              IconButton(
+                tooltip: 'باز کردن پوشهٔ دانلود',
+                icon: const Icon(Icons.folder_open),
+                onPressed: () => _action(() async {
+                  await DeviceBridge.openFolder(await manager.rootDirectory());
+                  return true;
+                }),
+              ),
+            ],
+          ),
+          body: ListenableBuilder(
+            listenable: manager,
+            builder: (context, _) {
+              final records =
+                  manager.records.values
+                      .where(
+                        (r) =>
+                            r.task.displayName.toLowerCase().contains(
+                              _search.toLowerCase(),
+                            ) &&
+                            (_filter == 'همه' ||
+                                _filter ==
+                                    downloadStatusLabel(
+                                      manager.effectiveStatus(r),
+                                    )),
+                      )
+                      .toList()
+                    ..sort(
+                      (a, b) =>
+                          b.task.creationTime.compareTo(a.task.creationTime),
+                    );
+              final allRecords = manager.records.values.toList(growable: false);
+              final bundles = groupDownloadRecords(records);
+              final fileCount = bundles.fold<int>(
+                0,
+                (sum, bundle) => sum + bundle.records.length,
               );
-        final allRecords = manager.records.values.toList(growable: false);
-        final bundles = groupDownloadRecords(records);
-        final fileCount = bundles.fold<int>(
-          0,
-          (sum, bundle) => sum + bundle.records.length,
-        );
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            final desktop = constraints.maxWidth >= 1000;
-            final horizontal = desktop ? 28.0 : 12.0;
-            return Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1280),
-                child: CustomScrollView(
-                  slivers: [
-                    SliverPadding(
-                      padding: EdgeInsets.fromLTRB(
-                        horizontal,
-                        16,
-                        horizontal,
-                        10,
-                      ),
-                      sliver: SliverToBoxAdapter(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _overview(allRecords, desktop),
-                            const SizedBox(height: 12),
-                            _controlPanel(desktop),
-                            const SizedBox(height: 14),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    'فهرست دانلودها',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.titleLarge,
-                                  ),
-                                ),
-                                Text(
-                                  '${bundles.length} باندل · $fileCount فایل',
-                                  style: const TextStyle(color: Colors.white60),
-                                ),
-                              ],
+              return LayoutBuilder(
+                builder: (context, constraints) {
+                  final desktop = constraints.maxWidth >= 1000;
+                  final horizontal = desktop ? 28.0 : 12.0;
+                  return Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1280),
+                      child: CustomScrollView(
+                        slivers: [
+                          SliverPadding(
+                            padding: EdgeInsets.fromLTRB(
+                              horizontal,
+                              16,
+                              horizontal,
+                              10,
                             ),
-                          ],
-                        ),
+                            sliver: SliverToBoxAdapter(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  _overview(allRecords, desktop),
+                                  const SizedBox(height: 12),
+                                  _controlPanel(desktop),
+                                  const SizedBox(height: 14),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          'فهرست دانلودها',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: Theme.of(
+                                            context,
+                                          ).textTheme.titleLarge,
+                                        ),
+                                      ),
+                                      Text(
+                                        '${bundles.length} باندل · $fileCount فایل',
+                                        style: const TextStyle(
+                                          color: Colors.white60,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          if (records.isEmpty)
+                            const SliverFillRemaining(
+                              hasScrollBody: false,
+                              child: _EmptyDownloads(),
+                            )
+                          else
+                            SliverPadding(
+                              padding: EdgeInsets.fromLTRB(
+                                horizontal,
+                                0,
+                                horizontal,
+                                24,
+                              ),
+                              sliver: SliverList.builder(
+                                itemCount: bundles.length,
+                                itemBuilder: (context, index) {
+                                  final bundle = bundles[index];
+                                  if (bundle.isSingle) {
+                                    return _downloadCard(
+                                      bundle.records.single,
+                                      desktop: desktop,
+                                    );
+                                  }
+                                  return _bundleCard(bundle, desktop: desktop);
+                                },
+                              ),
+                            ),
+                        ],
                       ),
                     ),
-                    if (records.isEmpty)
-                      const SliverFillRemaining(
-                        hasScrollBody: false,
-                        child: _EmptyDownloads(),
-                      )
-                    else
-                      SliverPadding(
-                        padding: EdgeInsets.fromLTRB(
-                          horizontal,
-                          0,
-                          horizontal,
-                          24,
-                        ),
-                        sliver: SliverList.builder(
-                          itemCount: bundles.length,
-                          itemBuilder: (context, index) {
-                            final bundle = bundles[index];
-                            if (bundle.isSingle) {
-                              return _downloadCard(
-                                bundle.records.single,
-                                desktop: desktop,
-                              );
-                            }
-                            return _bundleCard(bundle, desktop: desktop);
-                          },
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            );
-          },
+                  );
+                },
+              );
+            },
+          ),
         );
-      },
-    ),
-  );
 
   Widget _overview(List<TaskRecord> records, bool desktop) {
     int count(Iterable<TaskStatus> statuses) =>
@@ -433,7 +449,7 @@ class _DownloadManagerScreenState extends State<DownloadManagerScreen> {
   );
 
   Widget _filterField() => DropdownButtonFormField<String>(
-    initialValue: _filter,
+    value: _filter,
     isExpanded: true,
     decoration: const InputDecoration(
       labelText: 'وضعیت',

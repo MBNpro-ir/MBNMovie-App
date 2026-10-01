@@ -1,3 +1,4 @@
+import 'services/device_performance.dart';
 import 'dart:async';
 import 'services/session_watch.dart';
 import 'services/browser_features.dart';
@@ -235,7 +236,9 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
     }
     _sharedLoginBusy = true;
     try {
-      final token = await (widget.sharedTokenReader?.call() ?? CrossAppAuth.readSiblingToken(siblingId: 'MBNime'));
+      final token =
+          await (widget.sharedTokenReader?.call() ??
+              CrossAppAuth.readSiblingToken(siblingId: 'MBNime'));
       if (token == null) {
         final current = _auth.token;
         if (startup && current != null) {
@@ -329,7 +332,10 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
       return;
     }
     try {
-      if (!await _loginWithCapacity(() => _auth.loginWithToken(token), 'کاربر')) {
+      if (!await _loginWithCapacity(
+        () => _auth.loginWithToken(token),
+        'کاربر',
+      )) {
         return;
       }
       await _bindDelfanSession();
@@ -553,10 +559,13 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
           home: AnimatedSwitcher(
             duration: access.reduceMotion
                 ? Duration.zero
-                : const Duration(milliseconds: 650),
+                : Duration(
+                    milliseconds: DevicePerformance.lightweight ? 180 : 650,
+                  ),
             switchInCurve: Curves.easeOutCubic,
             switchOutCurve: Curves.easeInCubic,
-            transitionBuilder: (child, animation) => access.reduceMotion
+            transitionBuilder: (child, animation) =>
+                access.reduceMotion || DevicePerformance.lightweight
                 ? child
                 : FadeTransition(
                     opacity: animation,

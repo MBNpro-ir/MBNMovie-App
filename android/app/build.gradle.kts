@@ -1,5 +1,6 @@
 plugins {
     id("com.android.application")
+    id("org.jetbrains.kotlin.android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
@@ -7,7 +8,7 @@ plugins {
 android {
     namespace = "com.mbn.movie"
     compileSdk = 37
-    ndkVersion = flutter.ndkVersion
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -19,9 +20,9 @@ android {
         applicationId = "com.mbn.movie"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        // Android 7.0+ keeps the APK installable on older 32-bit and 64-bit
-        // phones. Predictive-back remains enabled only where Android supports it.
-        minSdk = flutter.minSdkVersion
+        // Android 6.0 is the supported baseline for phones and TVs.
+        // The release toolchain and every plugin must remain compatible with API 23.
+        minSdk = 23
         targetSdk = 37
         versionCode = flutter.versionCode
         versionName = flutter.versionName

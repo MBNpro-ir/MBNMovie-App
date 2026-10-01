@@ -1,3 +1,4 @@
+import '../services/device_performance.dart';
 import '../services/web_gateway.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:async';
@@ -72,7 +73,9 @@ class _MainShellState extends State<MainShell> {
     _restore();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        unawaited(AnnouncementService.checkAndShow(context, widget.auth, app: 'movie'));
+        unawaited(
+          AnnouncementService.checkAndShow(context, widget.auth, app: 'movie'),
+        );
       }
     });
   }
@@ -535,7 +538,8 @@ class _AppSwitchButtonState extends State<_AppSwitchButton>
   @override
   void initState() {
     super.initState();
-    if (!AccessibilityService.instance.reduceMotion) {
+    if (!AccessibilityService.instance.reduceMotion &&
+        !DevicePerformance.lightweight) {
       _controller.repeat(reverse: true);
     }
   }
@@ -543,7 +547,9 @@ class _AppSwitchButtonState extends State<_AppSwitchButton>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final reduce = AccessibilityService.instance.reduceMotion;
+    final reduce =
+        AccessibilityService.instance.reduceMotion ||
+        DevicePerformance.lightweight;
     if (reduce && _controller.isAnimating) {
       _controller.stop();
       _controller.value = 0;
@@ -565,7 +571,9 @@ class _AppSwitchButtonState extends State<_AppSwitchButton>
       animation: _controller,
       builder: (context, child) {
         final reduce = AccessibilityService.instance.reduceMotion;
-        final pulse = reduce ? 0.0 : Curves.easeInOut.transform(_controller.value);
+        final pulse = reduce
+            ? 0.0
+            : Curves.easeInOut.transform(_controller.value);
         return Container(
           width: widget.size,
           height: widget.size,
@@ -586,7 +594,9 @@ class _AppSwitchButtonState extends State<_AppSwitchButton>
               ),
             ],
           ),
-          child: reduce ? child : Transform.scale(scale: 1 + .07 * pulse, child: child),
+          child: reduce
+              ? child
+              : Transform.scale(scale: 1 + .07 * pulse, child: child),
         );
       },
       child: InkWell(
@@ -691,10 +701,8 @@ class _TopBar extends StatelessWidget {
                       tween: Tween(begin: .75, end: 1),
                       duration: const Duration(milliseconds: 1000),
                       curve: Curves.easeInOut,
-                      builder: (context, value, child) => Transform.scale(
-                        scale: value,
-                        child: child,
-                      ),
+                      builder: (context, value, child) =>
+                          Transform.scale(scale: value, child: child),
                       child: warningButton,
                     ),
                 ],
@@ -926,12 +934,13 @@ class _MenuDrawer extends StatelessWidget {
               tool: true,
             ),
             _tile(Icons.tune_rounded, 'تنظیمات', settings, tool: true),
-            if (!kIsWeb) _tile(
-              Icons.system_update_alt_rounded,
-              'به‌روزرسانی برنامه',
-              updates,
-              tool: true,
-            ),
+            if (!kIsWeb)
+              _tile(
+                Icons.system_update_alt_rounded,
+                'به‌روزرسانی برنامه',
+                updates,
+                tool: true,
+              ),
           ]),
         ],
       ),
@@ -1293,7 +1302,9 @@ class _HomePageState extends State<_HomePage> {
                                           actor.imageUrl == null ||
                                               actor.imageUrl!.isEmpty
                                           ? null
-                                          : NetworkImage(WebGateway.image(actor.imageUrl!)),
+                                          : NetworkImage(
+                                              WebGateway.image(actor.imageUrl!),
+                                            ),
                                       child: const Icon(Icons.person_rounded),
                                     ),
                                     const SizedBox(height: 8),
@@ -1474,7 +1485,9 @@ class _HomePageState extends State<_HomePage> {
                                                 ),
                                               )
                                             : Image.network(
-                                                WebGateway.image(collection.imageUrl!),
+                                                WebGateway.image(
+                                                  collection.imageUrl!,
+                                                ),
                                                 width: 130,
                                                 fit: BoxFit.cover,
                                                 errorBuilder: (_, _, _) =>
@@ -1637,7 +1650,9 @@ class _SectionEntranceState extends State<_SectionEntrance>
   @override
   void initState() {
     super.initState();
-    if (isDesktopWindow) {
+    if (isDesktopWindow ||
+        DevicePerformance.lightweight ||
+        AccessibilityService.instance.reduceMotion) {
       _controller.value = 1;
       return;
     }
@@ -1676,7 +1691,16 @@ class _HomeLoadingSkeletonState extends State<_HomeLoadingSkeleton>
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 900),
-  )..repeat(reverse: true);
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (!DevicePerformance.lightweight &&
+        !AccessibilityService.instance.reduceMotion) {
+      _controller.repeat(reverse: true);
+    }
+  }
 
   @override
   void dispose() {
@@ -1814,11 +1838,16 @@ class _FeaturedState extends State<_Featured> {
 
   void _restartAutoPlay() {
     _autoPlayTimer?.cancel();
-    if (_count < 2 || isAndroidTv) return;
+    if (_count < 2 ||
+        isAndroidTv ||
+        DevicePerformance.lightweight ||
+        AccessibilityService.instance.reduceMotion) {
+      return;
+    }
     _autoPlayTimer = Timer.periodic(const Duration(seconds: 6), (_) {
       if (!mounted ||
           !_controller.hasClients ||
-          !TickerMode.valuesOf(context).enabled ||
+          !TickerMode.of(context) ||
           ModalRoute.of(context)?.isCurrent == false ||
           WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
         return;
@@ -2378,8 +2407,7 @@ class _SearchPageState extends State<_SearchPage> {
     genre = widget.initialGenre;
     country = widget.initialCountry;
     // If the page opened with preset filters, show the advanced section open.
-    _advancedExpanded =
-        type.isNotEmpty || genre != null || country != null;
+    _advancedExpanded = type.isNotEmpty || genre != null || country != null;
     scroll.addListener(() {
       if (_advMore &&
           !_advLoadingMore &&
@@ -2951,172 +2979,177 @@ class _SearchPageState extends State<_SearchPage> {
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
                   child: Card(
-                color: MovieColors.surfaceHigh,
-                child: ExpansionTile(
-                  initiallyExpanded: _advancedExpanded,
-                  onExpansionChanged: (open) =>
-                      setState(() => _advancedExpanded = open),
-                  leading: const Icon(
-                    Icons.tune_rounded,
-                    color: MovieColors.orange,
-                  ),
-                  title: const Text(
-                    'جستجوی پیشرفته',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  subtitle: _activeFilterCount == 0
-                      ? const Text('فیلترها: همه')
-                      : Text(
-                          '${_faDigits(_activeFilterCount)} فیلتر فعال — برای اعمال، «جست‌وجو کن»',
-                        ),
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
-                      child: Column(
-                    children: [
-                      SwitchListTile(
-                        title: const Text('جست‌وجوی دقیق نام فیلم'),
-                        value: exact,
-                        onChanged: (value) {
-                          setState(() => exact = value);
-                          unawaited(runAdvanced());
-                        },
+                    color: MovieColors.surfaceHigh,
+                    child: ExpansionTile(
+                      initiallyExpanded: _advancedExpanded,
+                      onExpansionChanged: (open) =>
+                          setState(() => _advancedExpanded = open),
+                      leading: const Icon(
+                        Icons.tune_rounded,
+                        color: MovieColors.orange,
                       ),
-                      const Divider(height: 8),
-                      _filterRow(
-                        icon: Icons.category_rounded,
-                        label: 'دسته',
-                        value: _optionLabel(_typeOptions, type),
-                        onTap: () => _pickOption(
-                          title: 'دسته',
-                          options: _typeOptions,
-                          current: type,
-                          onPick: (value) {
-                            setState(() => type = value);
-                            unawaited(runAdvanced());
-                          },
-                        ),
+                      title: const Text(
+                        'جستجوی پیشرفته',
+                        style: TextStyle(fontWeight: FontWeight.w700),
                       ),
-                      _filterRow(
-                        icon: Icons.movie_filter_rounded,
-                        label: 'محتوا',
-                        value: _optionLabel(_dubOptions, dub),
-                        onTap: () => _pickOption(
-                          title: 'محتوا',
-                          options: _dubOptions,
-                          current: dub,
-                          onPick: (value) {
-                            setState(() => dub = value);
-                            unawaited(runAdvanced());
-                          },
-                        ),
-                      ),
-                      _filterRow(
-                        icon: Icons.play_circle_outline_rounded,
-                        label: 'وضعیت پخش',
-                        value: _optionLabel(_stateOptions, stateSerie),
-                        onTap: () => _pickOption(
-                          title: 'وضعیت پخش',
-                          options: _stateOptions,
-                          current: stateSerie,
-                          onPick: (value) {
-                            setState(() => stateSerie = value);
-                            unawaited(runAdvanced());
-                          },
-                        ),
-                      ),
-                      _filterRow(
-                        icon: Icons.tag_rounded,
-                        label: 'ژانرها',
-                        value: genre?.name ?? 'مهم نیست',
-                        onTap: _pickGenre,
-                      ),
-                      _filterRow(
-                        icon: Icons.flag_rounded,
-                        label: 'کشورها',
-                        value: country?.name ?? 'مهم نیست',
-                        onTap: _pickCountry,
-                      ),
-                      _filterRow(
-                        icon: Icons.star_rounded,
-                        label: 'امتیاز imdb',
-                        value: _optionLabel(_imdbOptions, imdb),
-                        onTap: () => _pickOption(
-                          title: 'امتیاز imdb',
-                          options: _imdbOptions,
-                          current: imdb,
-                          onPick: (value) {
-                            setState(() => imdb = value);
-                            unawaited(runAdvanced());
-                          },
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 6, 12, 2),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.calendar_month_rounded,
-                              size: 20,
-                              color: MovieColors.muted,
+                      subtitle: _activeFilterCount == 0
+                          ? const Text('فیلترها: همه')
+                          : Text(
+                              '${_faDigits(_activeFilterCount)} فیلتر فعال — برای اعمال، «جست‌وجو کن»',
                             ),
-                            const SizedBox(width: 10),
-                            const Expanded(child: Text('سال انتشار')),
-                            SizedBox(
-                              width: 84,
-                              child: TextField(
-                                controller: yearFromController,
-                                keyboardType: TextInputType.number,
-                                decoration: const InputDecoration(
-                                  hintText: 'از',
-                                ),
-                                onChanged: (_) => _onYearChanged(),
-                                onSubmitted: (_) =>
-                                    unawaited(runAdvanced()),
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
+                          child: Column(
+                            children: [
+                              SwitchListTile(
+                                title: const Text('جست‌وجوی دقیق نام فیلم'),
+                                value: exact,
+                                onChanged: (value) {
+                                  setState(() => exact = value);
+                                  unawaited(runAdvanced());
+                                },
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            SizedBox(
-                              width: 84,
-                              child: TextField(
-                                controller: yearToController,
-                                keyboardType: TextInputType.number,
-                                decoration: const InputDecoration(
-                                  hintText: 'تا',
+                              const Divider(height: 8),
+                              _filterRow(
+                                icon: Icons.category_rounded,
+                                label: 'دسته',
+                                value: _optionLabel(_typeOptions, type),
+                                onTap: () => _pickOption(
+                                  title: 'دسته',
+                                  options: _typeOptions,
+                                  current: type,
+                                  onPick: (value) {
+                                    setState(() => type = value);
+                                    unawaited(runAdvanced());
+                                  },
                                 ),
-                                onChanged: (_) => _onYearChanged(),
-                                onSubmitted: (_) =>
-                                    unawaited(runAdvanced()),
                               ),
-                            ),
-                          ],
+                              _filterRow(
+                                icon: Icons.movie_filter_rounded,
+                                label: 'محتوا',
+                                value: _optionLabel(_dubOptions, dub),
+                                onTap: () => _pickOption(
+                                  title: 'محتوا',
+                                  options: _dubOptions,
+                                  current: dub,
+                                  onPick: (value) {
+                                    setState(() => dub = value);
+                                    unawaited(runAdvanced());
+                                  },
+                                ),
+                              ),
+                              _filterRow(
+                                icon: Icons.play_circle_outline_rounded,
+                                label: 'وضعیت پخش',
+                                value: _optionLabel(_stateOptions, stateSerie),
+                                onTap: () => _pickOption(
+                                  title: 'وضعیت پخش',
+                                  options: _stateOptions,
+                                  current: stateSerie,
+                                  onPick: (value) {
+                                    setState(() => stateSerie = value);
+                                    unawaited(runAdvanced());
+                                  },
+                                ),
+                              ),
+                              _filterRow(
+                                icon: Icons.tag_rounded,
+                                label: 'ژانرها',
+                                value: genre?.name ?? 'مهم نیست',
+                                onTap: _pickGenre,
+                              ),
+                              _filterRow(
+                                icon: Icons.flag_rounded,
+                                label: 'کشورها',
+                                value: country?.name ?? 'مهم نیست',
+                                onTap: _pickCountry,
+                              ),
+                              _filterRow(
+                                icon: Icons.star_rounded,
+                                label: 'امتیاز imdb',
+                                value: _optionLabel(_imdbOptions, imdb),
+                                onTap: () => _pickOption(
+                                  title: 'امتیاز imdb',
+                                  options: _imdbOptions,
+                                  current: imdb,
+                                  onPick: (value) {
+                                    setState(() => imdb = value);
+                                    unawaited(runAdvanced());
+                                  },
+                                ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  12,
+                                  6,
+                                  12,
+                                  2,
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.calendar_month_rounded,
+                                      size: 20,
+                                      color: MovieColors.muted,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    const Expanded(child: Text('سال انتشار')),
+                                    SizedBox(
+                                      width: 84,
+                                      child: TextField(
+                                        controller: yearFromController,
+                                        keyboardType: TextInputType.number,
+                                        decoration: const InputDecoration(
+                                          hintText: 'از',
+                                        ),
+                                        onChanged: (_) => _onYearChanged(),
+                                        onSubmitted: (_) =>
+                                            unawaited(runAdvanced()),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    SizedBox(
+                                      width: 84,
+                                      child: TextField(
+                                        controller: yearToController,
+                                        keyboardType: TextInputType.number,
+                                        decoration: const InputDecoration(
+                                          hintText: 'تا',
+                                        ),
+                                        onChanged: (_) => _onYearChanged(),
+                                        onSubmitted: (_) =>
+                                            unawaited(runAdvanced()),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              _filterRow(
+                                icon: Icons.sort_rounded,
+                                label: 'ترتیب بر اساس',
+                                value: _optionLabel(_sortOptions, sortBy),
+                                onTap: () => _pickOption(
+                                  title: 'ترتیب بر اساس',
+                                  options: _sortOptions,
+                                  current: sortBy,
+                                  onPick: (value) {
+                                    setState(() => sortBy = value);
+                                    unawaited(runAdvanced());
+                                  },
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                            ],
+                          ),
                         ),
-                      ),
-                      _filterRow(
-                        icon: Icons.sort_rounded,
-                        label: 'ترتیب بر اساس',
-                        value: _optionLabel(_sortOptions, sortBy),
-                        onTap: () => _pickOption(
-                          title: 'ترتیب بر اساس',
-                          options: _sortOptions,
-                          current: sortBy,
-                          onPick: (value) {
-                            setState(() => sortBy = value);
-                            unawaited(runAdvanced());
-                          },
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                    ],
-                      ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-      ),
           if (loading)
             const SliverToBoxAdapter(
               child: LinearProgressIndicator(minHeight: 2),
@@ -3711,8 +3744,12 @@ class _AllCollectionsPage extends StatefulWidget {
 }
 
 class _AllCollectionsPageState extends State<_AllCollectionsPage> {
-  late final List<MovieCollection> _collections = List.of(widget.initialCollections);
-  late final Set<String> _seen = {for (final c in widget.initialCollections) c.id};
+  late final List<MovieCollection> _collections = List.of(
+    widget.initialCollections,
+  );
+  late final Set<String> _seen = {
+    for (final c in widget.initialCollections) c.id,
+  };
   final _scroll = ScrollController();
   int _page = 1;
   bool _loading = false;
@@ -3760,10 +3797,7 @@ class _AllCollectionsPageState extends State<_AllCollectionsPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: const Text('همه مجموعه‌ها'),
-      centerTitle: false,
-    ),
+    appBar: AppBar(title: const Text('همه مجموعه‌ها'), centerTitle: false),
     body: _collections.isEmpty && _loading
         ? const Center(child: CircularProgressIndicator())
         : _collections.isEmpty && _error != null
@@ -3771,7 +3805,11 @@ class _AllCollectionsPageState extends State<_AllCollectionsPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.error_outline_rounded, size: 48, color: MovieColors.muted),
+                const Icon(
+                  Icons.error_outline_rounded,
+                  size: 48,
+                  color: MovieColors.muted,
+                ),
                 const SizedBox(height: 12),
                 Text(_error!, style: const TextStyle(color: MovieColors.muted)),
                 const SizedBox(height: 16),
@@ -3843,7 +3881,10 @@ class _AllCollectionsPageState extends State<_AllCollectionsPage> {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ],
                 ),

@@ -1,3 +1,4 @@
+import 'services/device_performance.dart';
 import 'package:flutter/foundation.dart';
 import 'core/app_platform.dart';
 
@@ -19,6 +20,7 @@ Future<void> main() async {
   MediaKit.ensureInitialized();
   DeviceBridge.initialize();
   await initializeDeviceLayout();
+  await DevicePerformance.initialize();
   await AccessibilityService.instance.initialize();
   if (isAndroidTv) {
     FocusManager.instance.highlightStrategy =

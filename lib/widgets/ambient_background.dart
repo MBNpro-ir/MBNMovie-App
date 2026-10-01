@@ -1,3 +1,4 @@
+import '../services/device_performance.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -29,7 +30,9 @@ class _AmbientBackgroundState extends State<AmbientBackground>
       vsync: this,
       duration: const Duration(seconds: 12),
     );
-    if (widget.animate) _controller.repeat(reverse: true);
+    if (widget.animate && !DevicePerformance.lightweight) {
+      _controller.repeat(reverse: true);
+    }
   }
 
   @override
@@ -40,6 +43,9 @@ class _AmbientBackgroundState extends State<AmbientBackground>
 
   @override
   Widget build(BuildContext context) {
+    if (DevicePerformance.lightweight) {
+      return ColoredBox(color: MovieColors.background, child: widget.child);
+    }
     return ColoredBox(
       color: MovieColors.background,
       child: RepaintBoundary(

@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [string] $AndroidSerial = '7bce7cbc',
-    [switch] $SkipAndroidInstall
+    [switch] $SkipAndroidInstall,
+    [string] $FlutterSdk = $env:MBN_FLUTTER_SDK
 )
 
 Set-StrictMode -Version Latest
@@ -174,7 +175,17 @@ $androidLegacyOutput = Join-Path `
 $windowsArchive = Join-Path `
     $versionDirectory `
     "MBNMovie-Windows-x64-$version.zip"
-$flutterCommand = (Get-Command flutter -ErrorAction Stop).Source
+if ($FlutterSdk) {
+    $flutterCommand = Join-Path $FlutterSdk 'bin/flutter.bat'
+} elseif (Test-Path -LiteralPath 'C:/dev/flutter-3.32.8/bin/flutter.bat') {
+    $flutterCommand = 'C:/dev/flutter-3.32.8/bin/flutter.bat'
+} else {
+    $flutterCommand = (Get-Command flutter -ErrorAction Stop).Source
+}
+$flutterVersion = (& $flutterCommand --version --machine | Out-String | ConvertFrom-Json).frameworkVersion
+if ($flutterVersion -ne '3.32.8') {
+    throw 'Android 6 requires Flutter 3.32.8. Pass -FlutterSdk or set MBN_FLUTTER_SDK to that SDK directory.'
+}
 
 New-Item -ItemType Directory -Path $versionDirectory -Force | Out-Null
 

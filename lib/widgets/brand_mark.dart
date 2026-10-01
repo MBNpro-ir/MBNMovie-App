@@ -1,3 +1,4 @@
+import '../services/device_performance.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -40,17 +41,28 @@ class BrandMark extends StatelessWidget {
               bottomLeft: Radius.circular(size * .24),
               bottomRight: Radius.circular(size * .5),
             ),
-            boxShadow: [
-              BoxShadow(
-                color: accent.withValues(alpha: .28),
-                blurRadius: (size * 0.45).clamp(8.0, 24.0),
-                spreadRadius: 1,
-              ),
-            ],
+            boxShadow: DevicePerformance.lightweight
+                ? const []
+                : [
+                    BoxShadow(
+                      color: accent.withValues(alpha: .28),
+                      blurRadius: (size * 0.45).clamp(8.0, 24.0),
+                      spreadRadius: 1,
+                    ),
+                  ],
           ),
           child: kIsWeb
-              ? Center(child: CustomPaint(size: Size.square(size * .62), painter: const _PlayMarkPainter()))
-              : Icon(Icons.play_arrow_rounded, size: size * .62, color: Colors.white),
+              ? Center(
+                  child: CustomPaint(
+                    size: Size.square(size * .62),
+                    painter: const _PlayMarkPainter(),
+                  ),
+                )
+              : Icon(
+                  Icons.play_arrow_rounded,
+                  size: size * .62,
+                  color: Colors.white,
+                ),
         ),
         if (showWordmark) ...[
           SizedBox(width: (size * 0.22).clamp(5.0, 12.0)),
@@ -59,10 +71,13 @@ class BrandMark extends StatelessWidget {
               children: [
                 TextSpan(
                   text: 'MBN',
-                  style: (Theme.of(context).textTheme.titleLarge ?? const TextStyle()).copyWith(
-                    fontSize: (size * 0.52).clamp(13.0, 22.0),
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style:
+                      (Theme.of(context).textTheme.titleLarge ??
+                              const TextStyle())
+                          .copyWith(
+                            fontSize: (size * 0.52).clamp(13.0, 22.0),
+                            fontWeight: FontWeight.bold,
+                          ),
                 ),
                 TextSpan(
                   text: 'Movie',
@@ -89,12 +104,18 @@ class _PlayMarkPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     canvas.scale(size.width / 24, size.height / 24);
-    final path = Path()..moveTo(8, 6.5)..lineTo(8, 17.5)
-      ..quadraticBezierTo(8, 19, 9.3, 18.2)..lineTo(17.7, 12.8)
-      ..quadraticBezierTo(19, 12, 17.7, 11.2)..lineTo(9.3, 5.8)
-      ..quadraticBezierTo(8, 5, 8, 6.5)..close();
+    final path = Path()
+      ..moveTo(8, 6.5)
+      ..lineTo(8, 17.5)
+      ..quadraticBezierTo(8, 19, 9.3, 18.2)
+      ..lineTo(17.7, 12.8)
+      ..quadraticBezierTo(19, 12, 17.7, 11.2)
+      ..lineTo(9.3, 5.8)
+      ..quadraticBezierTo(8, 5, 8, 6.5)
+      ..close();
     canvas.drawPath(path, Paint()..color = Colors.white);
   }
+
   @override
   bool shouldRepaint(_PlayMarkPainter oldDelegate) => false;
 }

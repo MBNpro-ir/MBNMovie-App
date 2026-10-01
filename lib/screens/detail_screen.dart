@@ -1,3 +1,4 @@
+import '../services/device_performance.dart';
 import '../widgets/adaptive_player_header.dart';
 import 'dart:convert';
 import '../core/native_player_properties.dart';
@@ -527,7 +528,7 @@ class _DetailScreenState extends State<DetailScreen> {
                 ),
               ],
               flexibleSpace: FlexibleSpaceBar(
-                stretchModes: isDesktopWindow
+                stretchModes: isDesktopWindow || DevicePerformance.lightweight
                     ? const [StretchMode.zoomBackground]
                     : const [
                         StretchMode.zoomBackground,
@@ -538,8 +539,7 @@ class _DetailScreenState extends State<DetailScreen> {
                   children: [
                     // The backdrop remains independent from the catalog's
                     // portrait Hero, but gets its own tag for cover preview.
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
+                    Pressable(
                       onTap: () => _showCover(
                         item,
                         requestedImageUrl: backdropUrl,
@@ -2358,8 +2358,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   bool _webSubtitleVisible = true;
   Tracks _tracks = const Tracks();
   Track _track = const Track();
-  SubtitlePreferences _subtitle =
-      SubtitlePreferences.withPlatformDefaults();
+  SubtitlePreferences _subtitle = SubtitlePreferences.withPlatformDefaults();
   String? _error;
   Duration _positionAtLastError = Duration.zero;
 
@@ -2455,7 +2454,9 @@ class _PlayerScreenState extends State<PlayerScreen>
   }
 
   Future<void> _initializePictureInPicture() async {
-    final supported = kIsWeb ? BrowserFeatures.pipSupported : await _pip.initialize();
+    final supported = kIsWeb
+        ? BrowserFeatures.pipSupported
+        : await _pip.initialize();
     if (!mounted) return;
     setState(() {
       _pipSupported = supported;
@@ -2487,7 +2488,10 @@ class _PlayerScreenState extends State<PlayerScreen>
   );
 
   Future<void> _enterPictureInPicture() async {
-    if (kIsWeb) { await BrowserFeatures.pip(); return; }
+    if (kIsWeb) {
+      await BrowserFeatures.pip();
+      return;
+    }
     _hideTimer?.cancel();
     setState(() => _controlsVisible = false);
     final entered = await _pip.enter(
@@ -2535,10 +2539,15 @@ class _PlayerScreenState extends State<PlayerScreen>
 
     const headers = {'User-Agent': 'MBNMovie/1.0 Android'};
     if (kIsWeb) BrowserFeatures.clearAudio();
-    final routed = kIsWeb ? await WebGateway.media(fileUrl) : await _resolvePlaybackUrl(fileUrl, generation: generation);
+    final routed = kIsWeb
+        ? await WebGateway.media(fileUrl)
+        : await _resolvePlaybackUrl(fileUrl, generation: generation);
     requireCurrent();
     try {
-      await _player.open(Media(routed, httpHeaders: kIsWeb ? null : headers), play: play);
+      await _player.open(
+        Media(routed, httpHeaders: kIsWeb ? null : headers),
+        play: play,
+      );
     } catch (_) {
       requireCurrent();
       rethrow;
@@ -2705,7 +2714,13 @@ class _PlayerScreenState extends State<PlayerScreen>
     watchQuiet(_player.stream.position, (value) {
       _position = value;
       if (kIsWeb && _webSubtitle != null && mounted) {
-        final lines = _webSubtitleVisible ? _webSubtitle!.at(value, delay: _subtitle.delay, scale: _subtitle.timingScale) : <String>[];
+        final lines = _webSubtitleVisible
+            ? _webSubtitle!.at(
+                value,
+                delay: _subtitle.delay,
+                scale: _subtitle.timingScale,
+              )
+            : <String>[];
         if (!listEquals(lines, _subtitles)) setState(() => _subtitles = lines);
       }
       if ((_playbackErrorTimer != null || _error != null) &&
@@ -2750,7 +2765,9 @@ class _PlayerScreenState extends State<PlayerScreen>
       unawaited(_setNativeSubtitleVisibility(_nativeSubtitleRendering));
     });
     _subscriptions.add(_player.stream.error.listen(_handlePlaybackError));
-    watch(_player.stream.subtitle, (value) { if (_webSubtitle == null) _subtitles = value; });
+    watch(_player.stream.subtitle, (value) {
+      if (_webSubtitle == null) _subtitles = value;
+    });
     watchQuiet(_player.stream.videoParams, (value) {
       final aspect =
           value.aspect ??
@@ -2832,16 +2849,29 @@ class _PlayerScreenState extends State<PlayerScreen>
   Future<void> _setNativeSubtitleVisibility(bool visible) async {
     final platform = _player.platform;
     if (platform is NativePlayer) {
-      await setNativePlayerProperty(platform, 'sub-visibility', visible ? 'yes' : 'no');
+      await setNativePlayerProperty(
+        platform,
+        'sub-visibility',
+        visible ? 'yes' : 'no',
+      );
     }
   }
 
   Future<void> _applySubtitleTiming(SubtitlePreferences prefs) async {
-    if (kIsWeb && _webSubtitle != null) BrowserFeatures.subtitle(_webSubtitle!.vtt(delay: prefs.delay, scale: prefs.timingScale));
+    if (kIsWeb && _webSubtitle != null) {
+      BrowserFeatures.subtitle(
+        _webSubtitle!.vtt(delay: prefs.delay, scale: prefs.timingScale),
+      );
+    }
     final platform = _player.platform;
     if (platform is NativePlayer) {
-      await setNativePlayerProperty(platform, 'sub-delay', prefs.delay.toStringAsFixed(2));
-      await setNativePlayerProperty(platform,
+      await setNativePlayerProperty(
+        platform,
+        'sub-delay',
+        prefs.delay.toStringAsFixed(2),
+      );
+      await setNativePlayerProperty(
+        platform,
         'sub-speed',
         prefs.timingScale.toStringAsFixed(3),
       );
@@ -3821,8 +3851,10 @@ class _PlayerScreenState extends State<PlayerScreen>
     // Restore after the resized layout exists, including portrait/landscape
     // transitions and Safari browser chrome changes.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && !_playerTornDown &&
-          ModalRoute.of(context)?.isCurrent == true && !_isInPip) {
+      if (mounted &&
+          !_playerTornDown &&
+          ModalRoute.of(context)?.isCurrent == true &&
+          !_isInPip) {
         _showControls();
       }
     });
@@ -3886,7 +3918,10 @@ class _PlayerScreenState extends State<PlayerScreen>
     if (!kIsWeb) {
       SystemChrome.setPreferredOrientations(
         isAndroidTv
-            ? [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]
+            ? [
+                DeviceOrientation.landscapeLeft,
+                DeviceOrientation.landscapeRight,
+              ]
             : const [],
       );
     }
@@ -3915,10 +3950,20 @@ class _PlayerScreenState extends State<PlayerScreen>
 
   void _armHideTimer() {
     _hideTimer?.cancel();
-    if (!_playing || _isSeeking || ModalRoute.of(context)?.isCurrent != true) return;
-    _hideTimer = Timer(kIsWeb ? const Duration(seconds: 8) : playerControlsAutoHideDelay, () {
-      if (mounted && _playing && !_isSeeking && ModalRoute.of(context)?.isCurrent == true) setState(() => _controlsVisible = false);
-    });
+    if (!_playing || _isSeeking || ModalRoute.of(context)?.isCurrent != true) {
+      return;
+    }
+    _hideTimer = Timer(
+      kIsWeb ? const Duration(seconds: 8) : playerControlsAutoHideDelay,
+      () {
+        if (mounted &&
+            _playing &&
+            !_isSeeking &&
+            ModalRoute.of(context)?.isCurrent == true) {
+          setState(() => _controlsVisible = false);
+        }
+      },
+    );
   }
 
   void _showControls() {
@@ -3979,7 +4024,11 @@ class _PlayerScreenState extends State<PlayerScreen>
     if (showControls) {
       _onSeekStateChanged(true);
       _player.seek(
-        playerSeekTarget(_player.state.position, _player.state.duration, seconds),
+        playerSeekTarget(
+          _player.state.position,
+          _player.state.duration,
+          seconds,
+        ),
       );
       _showControls();
       _showFeedback(
@@ -4045,7 +4094,10 @@ class _PlayerScreenState extends State<PlayerScreen>
         unawaited(_savePlayerPrefsWith(rate: next));
       case PlayerCommand.subtitles:
         if (kIsWeb && _webSubtitle != null) {
-          setState(() { _webSubtitleVisible = !_webSubtitleVisible; if (!_webSubtitleVisible) _subtitles = []; });
+          setState(() {
+            _webSubtitleVisible = !_webSubtitleVisible;
+            if (!_webSubtitleVisible) _subtitles = [];
+          });
           break;
         }
         unawaited(
@@ -4144,16 +4196,28 @@ class _PlayerScreenState extends State<PlayerScreen>
                       Column(
                         children: [
                           Expanded(
-                            child: kIsWeb ? const Center(child: Padding(padding: EdgeInsets.all(16), child: Text('صدای اصلی ویدیو فعال است. برای صدای جداگانه، فایل یا لینک صدا را انتخاب کن.', textAlign: TextAlign.center))) : _AudioTracks(
-                              player: _player,
-                              tracks: _tracks.audio,
-                              selected: _track.audio,
-                            ),
+                            child: kIsWeb
+                                ? const Center(
+                                    child: Padding(
+                                      padding: EdgeInsets.all(16),
+                                      child: Text(
+                                        'صدای اصلی ویدیو فعال است. برای صدای جداگانه، فایل یا لینک صدا را انتخاب کن.',
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                  )
+                                : _AudioTracks(
+                                    player: _player,
+                                    tracks: _tracks.audio,
+                                    selected: _track.audio,
+                                  ),
                           ),
                           AudioSourceActions(
                             onSelected: (track) async {
                               if (kIsWeb) {
-                                final uri = track.id.startsWith('http') ? await WebGateway.externalAudio(track.id) : track.id;
+                                final uri = track.id.startsWith('http')
+                                    ? await WebGateway.externalAudio(track.id)
+                                    : track.id;
                                 await BrowserFeatures.externalAudio(uri);
                               } else {
                                 await _player.setAudioTrack(track);
@@ -4287,8 +4351,13 @@ class _PlayerScreenState extends State<PlayerScreen>
     if (kIsWeb) {
       _webSubtitle = WebSubtitleDocument.parse(await file.readAsString());
       _webSubtitleVisible = true;
-      BrowserFeatures.subtitle(_webSubtitle!.vtt(delay: _subtitle.delay, scale: _subtitle.timingScale));
-      if (mounted) { setState(() {}); Navigator.pop(context); }
+      BrowserFeatures.subtitle(
+        _webSubtitle!.vtt(delay: _subtitle.delay, scale: _subtitle.timingScale),
+      );
+      if (mounted) {
+        setState(() {});
+        Navigator.pop(context);
+      }
       return;
     }
     final track = SubtitleTrack.uri(
@@ -4345,14 +4414,28 @@ class _PlayerScreenState extends State<PlayerScreen>
       return;
     }
     if (kIsWeb) {
-      final response = await http.post(WebGateway.endpoint('/api/web/subtitle'),
-        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ${WebGateway.token}'},
-        body: jsonEncode({'url': url}));
-      if (response.statusCode != 200) throw const FormatException('زیرنویس قابل دریافت نیست.');
-      _webSubtitle = WebSubtitleDocument.parse(utf8.decode(response.bodyBytes, allowMalformed: true));
+      final response = await http.post(
+        WebGateway.endpoint('/api/web/subtitle'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${WebGateway.token}',
+        },
+        body: jsonEncode({'url': url}),
+      );
+      if (response.statusCode != 200) {
+        throw const FormatException('زیرنویس قابل دریافت نیست.');
+      }
+      _webSubtitle = WebSubtitleDocument.parse(
+        utf8.decode(response.bodyBytes, allowMalformed: true),
+      );
       _webSubtitleVisible = true;
-      BrowserFeatures.subtitle(_webSubtitle!.vtt(delay: _subtitle.delay, scale: _subtitle.timingScale));
-      if (mounted) { setState(() {}); Navigator.pop(context); }
+      BrowserFeatures.subtitle(
+        _webSubtitle!.vtt(delay: _subtitle.delay, scale: _subtitle.timingScale),
+      );
+      if (mounted) {
+        setState(() {});
+        Navigator.pop(context);
+      }
       return;
     }
     final track = SubtitleTrack.uri(
@@ -4575,13 +4658,25 @@ class _PlayerScreenState extends State<PlayerScreen>
                     ValueListenableBuilder<bool>(
                       valueListenable: WebGateway.preparingVideo,
                       builder: (_, preparing, _) => preparing
-                          ? const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-                              CircularProgressIndicator(), SizedBox(height: 16),
-                              Text('در حال آماده‌سازی پخش…', style: TextStyle(color: Colors.white)),
-                            ]))
+                          ? const Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  CircularProgressIndicator(),
+                                  SizedBox(height: 16),
+                                  Text(
+                                    'در حال آماده‌سازی پخش…',
+                                    style: TextStyle(color: Colors.white),
+                                  ),
+                                ],
+                              ),
+                            )
                           : const SizedBox.shrink(),
                     ),
-                  if (!_windowResizing && _buffering && !_touchLocked && !WebGateway.preparingVideo.value)
+                  if (!_windowResizing &&
+                      _buffering &&
+                      !_touchLocked &&
+                      !WebGateway.preparingVideo.value)
                     const Center(child: CircularProgressIndicator()),
                   if (!_windowResizing && _error != null && !_touchLocked)
                     _PlayerError(onBack: () => unawaited(_exitPlayer())),
@@ -5471,96 +5566,100 @@ class _SubtitleTimingState extends State<_SubtitleTiming> {
               ),
             ),
             SizedBox(height: isCompact ? 10 : 16),
-          _TimingCard(
-            icon: Icons.speed_rounded,
-            title: 'سرعت ویدیو',
-            description: 'سرعت پخش تصویر و صدا.',
-            valueLabel: '${rate.toStringAsFixed(2)}×',
-            min: .5,
-            max: 4,
-            divisions: 70,
-            value: rate.clamp(.5, 4),
-            onChanged: (next) => setState(() => rate = next),
-            onMinus: () =>
-                setState(() => rate = (rate - .05).clamp(.5, 4).toDouble()),
-            onPlus: () =>
-                setState(() => rate = (rate + .05).clamp(.5, 4).toDouble()),
-          ),
-          SizedBox(height: isCompact ? 8 : 12),
-          _TimingCard(
-            icon: Icons.swap_horiz_rounded,
-            title: 'جابه‌جایی زمان زیرنویس',
-            description: 'همهٔ جمله‌ها را با هم جلو یا عقب می‌برد.',
-            valueLabel:
-                '${value.delay >= 0 ? '+' : ''}${value.delay.toStringAsFixed(1)} ثانیه',
-            min: -30,
-            max: 30,
-            divisions: 600,
-            value: value.delay,
-            onChanged: (next) =>
-                setState(() => value = value.copyWith(delay: next)),
-            onMinus: () => setState(
-              () => value = value.copyWith(
-                delay: (value.delay - .1).clamp(-30, 30).toDouble(),
-              ),
+            _TimingCard(
+              icon: Icons.speed_rounded,
+              title: 'سرعت ویدیو',
+              description: 'سرعت پخش تصویر و صدا.',
+              valueLabel: '${rate.toStringAsFixed(2)}×',
+              min: .5,
+              max: 4,
+              divisions: 70,
+              value: rate.clamp(.5, 4),
+              onChanged: (next) => setState(() => rate = next),
+              onMinus: () =>
+                  setState(() => rate = (rate - .05).clamp(.5, 4).toDouble()),
+              onPlus: () =>
+                  setState(() => rate = (rate + .05).clamp(.5, 4).toDouble()),
             ),
-            onPlus: () => setState(
-              () => value = value.copyWith(
-                delay: (value.delay + .1).clamp(-30, 30).toDouble(),
-              ),
-            ),
-          ),
-          SizedBox(height: isCompact ? 8 : 12),
-          _TimingCard(
-            icon: Icons.compress_rounded,
-            title: 'فاصلهٔ زمانی بین زیرنویس‌ها',
-            description:
-                'سرعت تایم‌کدها را تغییر می‌دهد؛ برای زیرنویسی که کم‌کم از فیلم عقب می‌افتد.',
-            valueLabel: '${value.timingScale.toStringAsFixed(2)}×',
-            min: .5,
-            max: 2,
-            divisions: 150,
-            value: value.timingScale,
-            onChanged: (next) =>
-                setState(() => value = value.copyWith(timingScale: next)),
-            onMinus: () => setState(
-              () => value = value.copyWith(
-                timingScale: (value.timingScale - .01).clamp(.5, 2).toDouble(),
-              ),
-            ),
-            onPlus: () => setState(
-              () => value = value.copyWith(
-                timingScale: (value.timingScale + .01).clamp(.5, 2).toDouble(),
-              ),
-            ),
-          ),
-          SizedBox(height: isCompact ? 10 : 16),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => setState(() {
-                    rate = 1;
-                    value = value.copyWith(delay: 0, timingScale: 1);
-                  }),
-                  icon: const Icon(Icons.restart_alt_rounded),
-                  label: const Text('بازنشانی'),
+            SizedBox(height: isCompact ? 8 : 12),
+            _TimingCard(
+              icon: Icons.swap_horiz_rounded,
+              title: 'جابه‌جایی زمان زیرنویس',
+              description: 'همهٔ جمله‌ها را با هم جلو یا عقب می‌برد.',
+              valueLabel:
+                  '${value.delay >= 0 ? '+' : ''}${value.delay.toStringAsFixed(1)} ثانیه',
+              min: -30,
+              max: 30,
+              divisions: 600,
+              value: value.delay,
+              onChanged: (next) =>
+                  setState(() => value = value.copyWith(delay: next)),
+              onMinus: () => setState(
+                () => value = value.copyWith(
+                  delay: (value.delay - .1).clamp(-30, 30).toDouble(),
                 ),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                flex: 2,
-                child: FilledButton.icon(
-                  onPressed: () => Navigator.pop(context, (value, rate)),
-                  icon: const Icon(Icons.check_rounded),
-                  label: const Text('اعمال سرعت'),
+              onPlus: () => setState(
+                () => value = value.copyWith(
+                  delay: (value.delay + .1).clamp(-30, 30).toDouble(),
                 ),
               ),
-            ],
-          ),
-        ],
+            ),
+            SizedBox(height: isCompact ? 8 : 12),
+            _TimingCard(
+              icon: Icons.compress_rounded,
+              title: 'فاصلهٔ زمانی بین زیرنویس‌ها',
+              description:
+                  'سرعت تایم‌کدها را تغییر می‌دهد؛ برای زیرنویسی که کم‌کم از فیلم عقب می‌افتد.',
+              valueLabel: '${value.timingScale.toStringAsFixed(2)}×',
+              min: .5,
+              max: 2,
+              divisions: 150,
+              value: value.timingScale,
+              onChanged: (next) =>
+                  setState(() => value = value.copyWith(timingScale: next)),
+              onMinus: () => setState(
+                () => value = value.copyWith(
+                  timingScale: (value.timingScale - .01)
+                      .clamp(.5, 2)
+                      .toDouble(),
+                ),
+              ),
+              onPlus: () => setState(
+                () => value = value.copyWith(
+                  timingScale: (value.timingScale + .01)
+                      .clamp(.5, 2)
+                      .toDouble(),
+                ),
+              ),
+            ),
+            SizedBox(height: isCompact ? 10 : 16),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => setState(() {
+                      rate = 1;
+                      value = value.copyWith(delay: 0, timingScale: 1);
+                    }),
+                    icon: const Icon(Icons.restart_alt_rounded),
+                    label: const Text('بازنشانی'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 2,
+                  child: FilledButton.icon(
+                    onPressed: () => Navigator.pop(context, (value, rate)),
+                    icon: const Icon(Icons.check_rounded),
+                    label: const Text('اعمال سرعت'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
-    ),
     );
   }
 }
@@ -5753,7 +5852,7 @@ class _TopSubtitleSettingsState extends State<_TopSubtitleSettings> {
         children: [
           Expanded(
             child: DropdownButtonFormField<String>(
-              initialValue: value.fontFamily,
+              value: value.fontFamily,
               isDense: true,
               decoration: const InputDecoration(
                 labelText: 'فونت فارسی',
@@ -5782,7 +5881,7 @@ class _TopSubtitleSettingsState extends State<_TopSubtitleSettings> {
           SizedBox(
             width: 98,
             child: DropdownButtonFormField<double>(
-              initialValue: value.size.clamp(10, 52).roundToDouble(),
+              value: value.size.clamp(10, 52).roundToDouble(),
               isDense: true,
               decoration: const InputDecoration(
                 labelText: 'اندازه',
@@ -6034,7 +6133,7 @@ class _SubtitleSettingsState extends State<_SubtitleSettings> {
             ),
             const SizedBox(height: 14),
             DropdownButtonFormField<String>(
-              initialValue: value.fontFamily,
+              value: value.fontFamily,
               decoration: const InputDecoration(labelText: 'فونت فارسی'),
               items: const [
                 DropdownMenuItem(value: 'Vazirmatn', child: Text('وزیرمتن')),
@@ -6074,32 +6173,28 @@ class _SubtitleSettingsState extends State<_SubtitleSettings> {
               value: value.lineHeight,
               min: 1,
               max: 2,
-              onChanged: (v) =>
-                  _update(value.copyWith(lineHeight: v)),
+              onChanged: (v) => _update(value.copyWith(lineHeight: v)),
             ),
             _SettingSlider(
               label: 'تیرگی پس‌زمینه',
               value: value.backgroundOpacity,
               min: 0,
               max: 1,
-              onChanged: (v) =>
-                  _update(value.copyWith(backgroundOpacity: v)),
+              onChanged: (v) => _update(value.copyWith(backgroundOpacity: v)),
             ),
             _SettingSlider(
               label: 'گردی گوشه‌ها',
               value: value.cornerRadius,
               min: 0,
               max: 24,
-              onChanged: (v) =>
-                  _update(value.copyWith(cornerRadius: v)),
+              onChanged: (v) => _update(value.copyWith(cornerRadius: v)),
             ),
             _SettingSlider(
               label: 'فاصله از پایین',
               value: value.bottomPadding,
               min: 0,
               max: 1000,
-              onChanged: (v) =>
-                  _update(value.copyWith(bottomPadding: v)),
+              onChanged: (v) => _update(value.copyWith(bottomPadding: v)),
             ),
             const Text('رنگ پس‌زمینه'),
             const SizedBox(height: 8),
@@ -6177,8 +6272,7 @@ class _SubtitleSettingsState extends State<_SubtitleSettings> {
               contentPadding: EdgeInsets.zero,
               title: const Text('سایه و حاشیه برای خوانایی'),
               value: value.shadow,
-              onChanged: (v) =>
-                  _update(value.copyWith(shadow: v)),
+              onChanged: (v) => _update(value.copyWith(shadow: v)),
             ),
             const SizedBox(height: 8),
             Row(
@@ -6305,86 +6399,86 @@ class _AnimeSubtitles extends StatelessWidget {
     ].join('\n');
     if (text.isEmpty) return const SizedBox.shrink();
     return MediaQuery(
-      data: MediaQuery.of(context).copyWith(
-        textScaler: TextScaler.noScaling,
-      ),
+      data: MediaQuery.of(context).copyWith(textScaler: TextScaler.noScaling),
       child: Positioned.fill(
         child: LayoutBuilder(
-        builder: (context, constraints) {
-          final layout = SubtitleLayout.resolve(
-            viewport: constraints.biggest,
-            isPictureInPicture: isPictureInPicture,
-            preferredFontSize: prefs.size,
-            preferredBottomPadding: prefs.bottomPadding,
-            preferredCornerRadius: prefs.cornerRadius,
-          );
-          return Stack(
-            fit: StackFit.expand,
-            children: [
-              AnimatedPositioned(
-                duration: isDesktopWindow
-                    ? Duration.zero
-                    : const Duration(milliseconds: 200),
-                curve: Curves.easeOutCubic,
-                left: layout.horizontalInset,
-                right: layout.horizontalInset,
-                bottom: layout.bottomPadding,
-                child: Center(
-                  child: Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: layout.horizontalPadding,
-                      vertical: layout.verticalPadding,
-                    ),
-                    decoration: BoxDecoration(
-                      color: prefs.backgroundColor.withValues(
-                        alpha: prefs.backgroundOpacity,
+          builder: (context, constraints) {
+            final layout = SubtitleLayout.resolve(
+              viewport: constraints.biggest,
+              isPictureInPicture: isPictureInPicture,
+              preferredFontSize: prefs.size,
+              preferredBottomPadding: prefs.bottomPadding,
+              preferredCornerRadius: prefs.cornerRadius,
+            );
+            return Stack(
+              fit: StackFit.expand,
+              children: [
+                AnimatedPositioned(
+                  duration: isDesktopWindow
+                      ? Duration.zero
+                      : const Duration(milliseconds: 200),
+                  curve: Curves.easeOutCubic,
+                  left: layout.horizontalInset,
+                  right: layout.horizontalInset,
+                  bottom: layout.bottomPadding,
+                  child: Center(
+                    child: Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: layout.horizontalPadding,
+                        vertical: layout.verticalPadding,
                       ),
-                      borderRadius: BorderRadius.circular(layout.cornerRadius),
-                    ),
-                    child: Text(
-                      text,
-                      maxLines: isPictureInPicture ? 3 : null,
-                      overflow: isPictureInPicture
-                          ? TextOverflow.ellipsis
-                          : null,
-                      textScaler: TextScaler.noScaling,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontFamily: prefs.fontFamily,
-                        fontSize: layout.fontSize,
-                        height: isPictureInPicture
-                            ? prefs.lineHeight.clamp(1.0, 1.35)
-                            : prefs.lineHeight,
-                        fontWeight: prefs.bold
-                            ? FontWeight.w700
-                            : FontWeight.w500,
-                        color: prefs.color,
-                        shadows: prefs.shadow
-                            ? const [
-                                Shadow(
-                                  color: Colors.black,
-                                  blurRadius: 5,
-                                  offset: Offset(2, 2),
-                                ),
-                                Shadow(
-                                  color: Colors.black,
-                                  blurRadius: 3,
-                                  offset: Offset(-1, -1),
-                                ),
-                              ]
+                      decoration: BoxDecoration(
+                        color: prefs.backgroundColor.withValues(
+                          alpha: prefs.backgroundOpacity,
+                        ),
+                        borderRadius: BorderRadius.circular(
+                          layout.cornerRadius,
+                        ),
+                      ),
+                      child: Text(
+                        text,
+                        maxLines: isPictureInPicture ? 3 : null,
+                        overflow: isPictureInPicture
+                            ? TextOverflow.ellipsis
                             : null,
+                        textScaler: TextScaler.noScaling,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontFamily: prefs.fontFamily,
+                          fontSize: layout.fontSize,
+                          height: isPictureInPicture
+                              ? prefs.lineHeight.clamp(1.0, 1.35)
+                              : prefs.lineHeight,
+                          fontWeight: prefs.bold
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                          color: prefs.color,
+                          shadows: prefs.shadow
+                              ? const [
+                                  Shadow(
+                                    color: Colors.black,
+                                    blurRadius: 5,
+                                    offset: Offset(2, 2),
+                                  ),
+                                  Shadow(
+                                    color: Colors.black,
+                                    blurRadius: 3,
+                                    offset: Offset(-1, -1),
+                                  ),
+                                ]
+                              : null,
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            ],
-          );
-        },
+              ],
+            );
+          },
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 }
 
 class _PlayerError extends StatelessWidget {
