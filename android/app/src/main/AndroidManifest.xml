@@ -20,7 +20,7 @@
     <application
         android:banner="@drawable/tv_banner"
         android:label="${appLabel}"
-        android:name="${applicationName}"
+        android:name=".MbnApplication"
         android:enableOnBackInvokedCallback="true"
         android:usesCleartextTraffic="true"
         android:requestLegacyExternalStorage="true"

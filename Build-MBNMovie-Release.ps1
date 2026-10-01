@@ -45,6 +45,29 @@ function Invoke-Flutter {
     }
 }
 
+function Invoke-WindowsRelease {
+    $script:windowsBuildRelative = 'build/windows/x64/runner/Release'
+    try {
+        Invoke-Flutter -Arguments @('build', 'windows', '--release')
+        return
+    }
+    catch {
+        $taskVswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+        if (-not (Test-Path -LiteralPath $taskVswhere)) { throw }
+        $taskVsRoot = & $taskVswhere -latest -products '*' -version '[18.0,19.0)' -property installationPath
+        if (-not $taskVsRoot) { throw }
+        $taskCmake = Join-Path ($taskVsRoot | Select-Object -First 1) 'Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe'
+        if (-not (Test-Path -LiteralPath $taskCmake)) { throw }
+        # Flutter 3.32 writes the configuration but does not recognize VS 2026.
+        # Use a separate generated directory so earlier bundles remain intact.
+        & $taskCmake -S windows -B build/windows-sdk332/x64 -G 'Visual Studio 18 2026' -A x64 -DFLUTTER_TARGET_PLATFORM=windows-x64
+        if ($LASTEXITCODE -ne 0) { throw 'Windows CMake configuration failed.' }
+        & $taskCmake --build build/windows-sdk332/x64 --config Release --target INSTALL
+        if ($LASTEXITCODE -ne 0) { throw 'Windows compilation failed.' }
+        $script:windowsBuildRelative = 'build/windows-sdk332/x64/runner/Release'
+    }
+}
+
 function Find-SevenZip {
     $commands = @('7z.exe', '7zz.exe')
     foreach ($commandName in $commands) {
@@ -231,17 +254,17 @@ try {
     Write-Host 'Building Windows x64...' -ForegroundColor Cyan
     $legacyWindowsExecutable = Join-Path `
         $projectRoot `
-        'build\windows\x64\runner\Release\mbnmovie.exe'
+        'build\windows\x64\runner\Release\delfan.exe'
     if (Test-Path -LiteralPath $legacyWindowsExecutable -PathType Leaf) {
-        Write-Host 'Removing stale mbnmovie.exe from the Windows build...' `
+        Write-Host 'Removing stale legacy executable from the Windows build...' `
             -ForegroundColor Yellow
         Remove-Item -LiteralPath $legacyWindowsExecutable -Force
     }
-    Invoke-Flutter -Arguments @('build', 'windows', '--release')
+    Invoke-WindowsRelease
 
     $windowsBuild = Join-Path `
         $projectRoot `
-        'build\windows\x64\runner\Release'
+        $script:windowsBuildRelative
     if (-not (Test-Path -LiteralPath $windowsBuild -PathType Container)) {
         throw "Windows output was not created at $windowsBuild"
     }

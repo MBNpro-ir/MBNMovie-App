@@ -24,7 +24,8 @@ android {
         // The release toolchain and every plugin must remain compatible with API 23.
         minSdk = 23
         targetSdk = 37
-        versionCode = flutter.versionCode
+        // Upgrade earlier device builds whose codes are in the 2000 range.
+        versionCode = 2000 + flutter.versionCode
         versionName = flutter.versionName
         manifestPlaceholders["appLabel"] = "MBNMovie"
     }

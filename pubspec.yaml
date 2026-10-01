@@ -95,6 +95,7 @@ flutter:
 
   assets:
     - assets/flags/
+    - assets/certificates/
     - assets/catalog_index.json
 
   fonts:

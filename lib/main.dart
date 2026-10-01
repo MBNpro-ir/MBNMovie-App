@@ -1,4 +1,5 @@
 import 'services/device_performance.dart';
+import 'services/android_network_trust.dart';
 import 'package:flutter/foundation.dart';
 import 'core/app_platform.dart';
 
@@ -21,6 +22,7 @@ Future<void> main() async {
   DeviceBridge.initialize();
   await initializeDeviceLayout();
   await DevicePerformance.initialize();
+  await AndroidNetworkTrust.initialize();
   await AccessibilityService.instance.initialize();
   if (isAndroidTv) {
     FocusManager.instance.highlightStrategy =
