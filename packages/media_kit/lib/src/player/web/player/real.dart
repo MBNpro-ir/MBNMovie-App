@@ -59,6 +59,9 @@ class WebPlayer extends PlatformPlayer {
         ..style.width = '100%'
         ..style.height = '100%'
         ..style.border = 'none'
+        // Flutter owns playback gestures, even while its controls are hidden.
+        // An HTML platform view otherwise consumes taps before Flutter sees them.
+        ..style.pointerEvents = 'none'
         /* ..setAttribute('autoplay', 'false') */
         ..setAttribute('playsinline', 'true')
         ..pause();
