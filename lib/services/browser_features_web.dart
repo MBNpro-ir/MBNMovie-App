@@ -39,36 +39,75 @@ abstract final class BrowserFeatures {
     Timer(const Duration(seconds: 30), () => web.URL.revokeObjectURL(url));
   }
 
+  static int _fullscreenGeneration = 0;
+  static bool _fullscreenWanted = false;
+  static web.HTMLVideoElement? _fullscreenVideo;
+
+  // A requestFullscreen promise can settle after the player has closed.
+  // Check ownership after every await so that exit always wins that race.
   static Future<bool> fullscreen(bool value) async {
+    final generation = ++_fullscreenGeneration;
+    _fullscreenWanted = value;
+    if (!value) return _exitFullscreen();
+    bool current() => generation == _fullscreenGeneration;
     try {
-      if (!value) {
-        final video = _video;
-        if (video != null &&
-            video.hasProperty('webkitExitFullscreen'.toJS).toDart) {
-          video.callMethod<JSAny?>('webkitExitFullscreen'.toJS);
-        }
-        if (web.document.fullscreenElement != null) {
-          await web.document.exitFullscreen().toDart;
-        }
-        return false;
-      }
+      if (web.document.fullscreenElement != null) return true;
       if (web.document.fullscreenEnabled) {
         await web.document.documentElement!.requestFullscreen().toDart;
+        if (!current()) {
+          if (!_fullscreenWanted) await _exitFullscreen();
+          return false;
+        }
+        try {
+          await web.window.screen.orientation
+              .callMethod<JSPromise<JSAny?>>('lock'.toJS, 'landscape'.toJS)
+              .toDart;
+        } catch (_) {}
+        if (!current()) {
+          if (!_fullscreenWanted) await _exitFullscreen();
+          return false;
+        }
         return true;
       }
       final video = _video;
       if (video != null &&
           video.hasProperty('webkitEnterFullscreen'.toJS).toDart) {
+        _fullscreenVideo = video;
         if (_track != null) _track!.track.mode = 'showing';
         video.addEventListener(
           'webkitendfullscreen',
           ((web.Event e) {
             if (_track != null) _track!.track.mode = 'hidden';
           }).toJS,
+          web.AddEventListenerOptions(once: true),
         );
         video.callMethod<JSAny?>('webkitEnterFullscreen'.toJS);
         return true;
       }
+    } catch (_) {}
+    return false;
+  }
+
+  static Future<bool> _exitFullscreen() async {
+    final video = _fullscreenVideo ?? _video;
+    _fullscreenVideo = null;
+    try {
+      if (video != null &&
+          video.hasProperty('webkitDisplayingFullscreen'.toJS).toDart &&
+          video
+                  .getProperty<JSBoolean?>('webkitDisplayingFullscreen'.toJS)
+                  ?.toDart ==
+              true) {
+        video.callMethod<JSAny?>('webkitExitFullscreen'.toJS);
+      }
+    } catch (_) {}
+    try {
+      if (web.document.fullscreenElement != null) {
+        await web.document.exitFullscreen().toDart;
+      }
+    } catch (_) {}
+    try {
+      web.window.screen.orientation.callMethod<JSAny?>('unlock'.toJS);
     } catch (_) {}
     return false;
   }
@@ -113,6 +152,7 @@ abstract final class BrowserFeatures {
 
   static void stop() {
     clearAudio();
+    clearSubtitle();
     final video = _video;
     if (video != null) {
       video.pause();
@@ -122,8 +162,32 @@ abstract final class BrowserFeatures {
     unawaited(fullscreen(false));
   }
 
+  static void muteOriginal(bool value) {
+    if (_video != null) _video!.muted = value;
+  }
+
   static web.HTMLAudioElement? _audio;
+  static web.HTMLVideoElement? _audioVideo;
+  static JSFunction? _audioSync;
+  static const _audioEvents = [
+    'play',
+    'pause',
+    'seeked',
+    'ratechange',
+    'timeupdate',
+    'volumechange',
+    'waiting',
+    'playing',
+    'ended',
+  ];
   static void clearAudio() {
+    if (_audioSync != null && _audioVideo != null) {
+      for (final event in _audioEvents) {
+        _audioVideo!.removeEventListener(event, _audioSync);
+      }
+    }
+    _audioSync = null;
+    _audioVideo = null;
     _audio?.pause();
     _audio?.remove();
     _audio = null;
@@ -141,37 +205,47 @@ abstract final class BrowserFeatures {
     web.document.body!.appendChild(audio);
     audio.currentTime = video.currentTime;
     audio.playbackRate = video.playbackRate;
-    if (!video.paused) await audio.play().toDart;
+    audio.volume = video.volume;
+    try {
+      if (!video.paused) await audio.play().toDart;
+    } catch (_) {
+      if (_audio == audio) clearAudio();
+      rethrow;
+    }
+    if (_audio != audio) return;
     video.muted = true;
     void sync(web.Event _) {
       if (_audio != audio) return;
       audio.playbackRate = video.playbackRate;
+      audio.volume = video.volume;
       if ((audio.currentTime - video.currentTime).abs() > .4) {
         audio.currentTime = video.currentTime;
       }
-      if (video.paused) {
+      if (video.paused || video.ended || video.readyState < 3) {
         audio.pause();
       } else if (audio.paused) {
         audio.play().toDart.catchError((Object _) => null);
       }
     }
 
-    for (final event in [
-      'play',
-      'pause',
-      'seeked',
-      'ratechange',
-      'timeupdate',
-    ]) {
-      video.addEventListener(event, sync.toJS);
+    _audioVideo = video;
+    _audioSync = sync.toJS;
+    for (final event in _audioEvents) {
+      video.addEventListener(event, _audioSync);
     }
   }
 
   static web.HTMLTrackElement? _track;
   static String? _subtitleUrl;
-  static void subtitle(String vtt) {
+  static void clearSubtitle() {
     _track?.remove();
+    _track = null;
     if (_subtitleUrl != null) web.URL.revokeObjectURL(_subtitleUrl!);
+    _subtitleUrl = null;
+  }
+
+  static void subtitle(String vtt) {
+    clearSubtitle();
     final video = _video;
     if (video == null) return;
     _subtitleUrl = web.URL.createObjectURL(

@@ -46,6 +46,7 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
   late final EpisodeCatalog _catalog;
   int _seasonIndex = 0;
   String _selectedQuality = unknownQualityLabel;
+  final _resetting = <String>{};
   Timer? _initialContentTimer;
   late bool _contentReady;
 
@@ -453,6 +454,28 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
     ],
   );
 
+  Future<void> _resetEpisode(EpisodeGroup group) async {
+    if (!_resetting.add(group.id)) return;
+    setState(() {});
+    try {
+      final synced = await _progress.resetEpisode(
+        contentId: widget.content.id,
+        episodeIds: {group.id, ...group.variants.map((v) => v.episode.id)},
+        fileUrls: {for (final v in group.variants) v.episode.fileUrl},
+        hentai: false,
+      );
+      if (!mounted) return;
+      setState(() => _saved.remove(group.id));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        synced ? 'سابقهٔ این قسمت پاک شد.' :
+          'سابقهٔ این قسمت پاک شد؛ حذف از سرور با اتصال بعدی انجام می‌شود.',
+      )));
+    } finally {
+      _resetting.remove(group.id);
+      if (mounted) setState(() {});
+    }
+  }
+
   Widget _episodeCard(EpisodeGroup group) {
     final variant = group.variantFor(_selectedQuality);
     final showQualityBadge =
@@ -554,6 +577,18 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
                 ),
                 child: Row(
                   children: [
+                    if (saved != null && (saved.positionMs > 15000 || saved.watched))
+                      IconButton(
+                        key: Key('reset-episode-${group.id}'),
+                        tooltip: 'پاک کردن سابقهٔ این قسمت',
+                        padding: EdgeInsets.zero,
+                        visualDensity: VisualDensity.compact,
+                        constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                        iconSize: 17,
+                        color: const Color(0xFFFF5252),
+                        onPressed: _resetting.contains(group.id) ? null : () => _resetEpisode(group),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
                     Icon(statusIcon, size: 20, color: statusColor),
                     const SizedBox(width: 7),
                     Expanded(

@@ -410,16 +410,21 @@ class _DetailScreenState extends State<DetailScreen> {
     MovieEpisode episode, {
     Duration startAt = Duration.zero,
   }) async {
-    await Navigator.of(context).push(
-      slideUpRoute(
-        PlayerScreen(
-          content: content,
-          episode: episode,
-          initialPosition: startAt,
+    if (kIsWeb) unawaited(BrowserFeatures.fullscreen(true));
+    try {
+      await Navigator.of(context).push(
+        slideUpRoute(
+          PlayerScreen(
+            content: content,
+            episode: episode,
+            initialPosition: startAt,
+          ),
+          durationMs: 520,
         ),
-        durationMs: 520,
-      ),
-    );
+      );
+    } finally {
+      if (kIsWeb) await BrowserFeatures.fullscreen(false);
+    }
   }
 
   Future<void> _openRelated(MovieContent item) async {
@@ -709,7 +714,11 @@ String _fmtWatchPosition(Duration value) {
 /// Shows the «بریم ادامه‌شو ببینیم؟» confirmation popup for [last] (title +
 /// exact minute) and, on confirmation, plays it from that position.
 /// Shared by the detail-page button and the home «ادامه تماشا» shelf.
-Future<void> askAndResumeLastWatch(BuildContext context, LastWatch last) async {
+Future<void> askAndResumeLastWatch(
+  BuildContext context,
+  LastWatch last, {
+  required ContentApi api,
+}) async {
   final go = await showDialog<bool>(
     context: context,
     builder: (dialogContext) => AlertDialog(
@@ -728,7 +737,10 @@ Future<void> askAndResumeLastWatch(BuildContext context, LastWatch last) async {
           child: const Text('انصراف'),
         ),
         FilledButton.icon(
-          onPressed: () => Navigator.pop(dialogContext, true),
+          onPressed: () {
+            if (kIsWeb) unawaited(BrowserFeatures.fullscreen(true));
+            Navigator.pop(dialogContext, true);
+          },
           icon: const Icon(Icons.play_arrow_rounded),
           label: const Text('بریم ادامه‌شو ببینیم'),
         ),
@@ -736,31 +748,61 @@ Future<void> askAndResumeLastWatch(BuildContext context, LastWatch last) async {
     ),
   );
   if (go != true || !context.mounted) return;
-  await Navigator.of(context).push(
-    slideUpRoute(
-      PlayerScreen(
-        content: MovieContent(
-          id: last.contentId,
-          title: last.title,
-          subtitle: last.episodeName,
-          description: '',
-          year: 0,
-          rating: 0,
-          kind: ContentKind.movie,
-          colors: const [],
-          genres: const [],
-        ),
-        episode: MovieEpisode(
-          id: last.episodeId.isNotEmpty ? last.episodeId : last.contentId,
-          name: last.episodeName.isNotEmpty ? last.episodeName : last.title,
-          fileUrl: last.fileUrl,
-        ),
-        initialPosition: last.position,
-        progressEpisodeId: last.episodeId.isNotEmpty ? last.episodeId : null,
-      ),
-      durationMs: 520,
-    ),
+  final messenger = ScaffoldMessenger.of(context);
+  messenger.showSnackBar(
+    const SnackBar(content: Text('در حال دریافت قسمت‌ها و کیفیت‌ها…')),
   );
+  try {
+    final content = await api
+        .details(
+          MovieContent(
+            id: last.contentId,
+            title: last.title,
+            subtitle: last.episodeName,
+            description: '',
+            year: 0,
+            rating: 0,
+            kind: ContentKind.movie,
+            colors: const [],
+            genres: const [],
+          ),
+        )
+        .timeout(const Duration(seconds: 35));
+    final prefs = await SharedPreferences.getInstance();
+    final variant = EpisodeCatalog.from(content).resumeVariant(
+      episodeId: last.episodeId,
+      fileUrl: last.fileUrl,
+      preferredQuality: prefs.getString('preferred_stream_quality'),
+    );
+    if (!context.mounted) return;
+    messenger.hideCurrentSnackBar();
+    if (variant == null) {
+      throw StateError('Saved episode is no longer in the catalog');
+    }
+    await Navigator.of(context).push(
+      slideUpRoute(
+        PlayerScreen(
+          content: content,
+          episode: variant.episode,
+          initialPosition: last.position,
+        ),
+        durationMs: 520,
+      ),
+    );
+  } catch (_) {
+    if (context.mounted) {
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'دریافت اطلاعات ادامه تماشا انجام نشد؛ دوباره تلاش کن یا قسمت را انتخاب کن.',
+          ),
+        ),
+      );
+    }
+  } finally {
+    if (kIsWeb) await BrowserFeatures.fullscreen(false);
+  }
 }
 
 class _ResumeTarget {
@@ -803,6 +845,7 @@ class _ContinueWatchButtonState extends State<_ContinueWatchButton> {
   @override
   void initState() {
     super.initState();
+    WatchProgressStore.changes.addListener(_reload);
     _reload();
   }
 
@@ -812,25 +855,31 @@ class _ContinueWatchButtonState extends State<_ContinueWatchButton> {
     if (oldWidget.item.id != widget.item.id) _reload();
   }
 
+  @override
+  void dispose() {
+    WatchProgressStore.changes.removeListener(_reload);
+    super.dispose();
+  }
+
   Future<void> _reload() async {
     final generation = ++_generation;
     final catalog = EpisodeCatalog.from(widget.item);
     // 1) Exact exit point when this section's last watch is this title.
     try {
       final last = await const LastWatchStore().load();
-      if (last != null && last.contentId == widget.item.id) {
+      final resumed = last == null
+          ? null
+          : catalog.resumeVariant(
+              episodeId: last.episodeId,
+              fileUrl: last.fileUrl,
+            );
+      if (last != null && last.contentId == widget.item.id && resumed != null) {
         if (!mounted || generation != _generation) return;
         setState(
           () => _target = _ResumeTarget(
             position: last.position,
             duration: last.duration,
-            episode: MovieEpisode(
-              id: last.episodeId.isNotEmpty ? last.episodeId : widget.item.id,
-              name: last.episodeName.isNotEmpty
-                  ? last.episodeName
-                  : widget.item.title,
-              fileUrl: last.fileUrl,
-            ),
+            episode: resumed.episode,
           ),
         );
         return;
@@ -2355,6 +2404,10 @@ class _PlayerScreenState extends State<PlayerScreen>
   Offset? _doubleTapPosition;
   List<String> _subtitles = const [];
   WebSubtitleDocument? _webSubtitle;
+  int _webSubtitleSelection = 0;
+  int _webAudioSelection = 0;
+  SubtitleTrack? _webAutoSubtitle;
+  List<String> _webUnsupportedSubtitles = [];
   bool _webSubtitleVisible = true;
   Tracks _tracks = const Tracks();
   Track _track = const Track();
@@ -2365,7 +2418,14 @@ class _PlayerScreenState extends State<PlayerScreen>
   @override
   void initState() {
     super.initState();
-    if (kIsWeb) WidgetsBinding.instance.addObserver(this);
+    if (kIsWeb) {
+      WidgetsBinding.instance.addObserver(this);
+      unawaited(
+        BrowserFeatures.fullscreen(true).then((full) {
+          if (mounted) setState(() => _isFullScreen = full);
+        }),
+      );
+    }
     _episode = widget.episode;
     _episodeCatalog = EpisodeCatalog.from(widget.content);
     if (isDesktopWindow) windowManager.addListener(this);
@@ -2378,9 +2438,9 @@ class _PlayerScreenState extends State<PlayerScreen>
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _pip.addListener(_handlePipModeChanged);
     _player = Player(
-      configuration: const PlayerConfiguration(
+      configuration: PlayerConfiguration(
         title: 'MBNMovie',
-        bufferSize: 64 * 1024 * 1024,
+        bufferSize: (DevicePerformance.lightweight ? 16 : 64) * 1024 * 1024,
         logLevel: MPVLogLevel.error,
         libass: true,
         libassAndroidFont: 'assets/fonts/Vazirmatn-Regular.ttf',
@@ -2540,7 +2600,11 @@ class _PlayerScreenState extends State<PlayerScreen>
     const headers = {'User-Agent': 'MBNMovie/1.0 Android'};
     if (kIsWeb) BrowserFeatures.clearAudio();
     final routed = kIsWeb
-        ? await WebGateway.media(fileUrl)
+        ? await WebGateway.media(
+            fileUrl,
+            includeTracks: true,
+            active: () => _isCurrentMediaOp(generation),
+          )
         : await _resolvePlaybackUrl(fileUrl, generation: generation);
     requireCurrent();
     try {
@@ -2552,6 +2616,8 @@ class _PlayerScreenState extends State<PlayerScreen>
       requireCurrent();
       rethrow;
     }
+    requireCurrent();
+    if (kIsWeb) await _restoreWebTracks(fileUrl, generation);
     requireCurrent();
     // `Player.open` only issues load commands; transport/decoder failures
     // arrive later over `stream.error`. Wait for a readiness signal scoped
@@ -2758,8 +2824,11 @@ class _PlayerScreenState extends State<PlayerScreen>
     watch(_player.stream.buffering, (value) => _buffering = value);
     watch(_player.stream.volume, (value) => _volume = value);
     watch(_player.stream.rate, (value) => _rate = value);
-    watch(_player.stream.tracks, (value) => _tracks = value);
+    watch(_player.stream.tracks, (value) {
+      if (!kIsWeb) _tracks = value;
+    });
     watch(_player.stream.track, (value) {
+      if (kIsWeb) return;
       _track = value;
       _nativeSubtitleRendering = _requiresNativeSubtitle(value.subtitle);
       unawaited(_setNativeSubtitleVisibility(_nativeSubtitleRendering));
@@ -2818,6 +2887,126 @@ class _PlayerScreenState extends State<PlayerScreen>
     _windowResizeTimer?.cancel();
     _windowResizeTimer = null;
     if (mounted && _windowResizing) setState(() => _windowResizing = false);
+  }
+
+  Future<void> _restoreWebTracks(String source, int generation) async {
+    final data = WebGateway.mediaTracks[source] ?? {};
+    final audio = (data['audio'] as List? ?? []).whereType<Map>().toList();
+    final subtitle = (data['subtitle'] as List? ?? [])
+        .whereType<Map>()
+        .toList();
+    final supported = subtitle.where((s) => s['url'] != null).toList();
+    SubtitleTrack subtitleTrack(Map value) => SubtitleTrack.uri(
+      WebGateway.endpoint(
+        value['url'].toString().split('?').first,
+        Uri.parse(value['url'].toString()).queryParameters,
+      ).toString(),
+      title: value['title']?.toString(),
+      language: value['language']?.toString(),
+    );
+    final selected =
+        supported
+            .where((s) => ['fa', 'fas', 'per'].contains(s['language']))
+            .firstOrNull ??
+        supported.where((s) => s['default'] == true).firstOrNull ??
+        supported.firstOrNull;
+    if (!_isCurrentMediaOp(generation)) return;
+    setState(() {
+      _webSubtitle = null;
+      _subtitles = [];
+      _webSubtitleVisible = true;
+      _webAutoSubtitle = selected == null ? null : subtitleTrack(selected);
+      _webUnsupportedSubtitles = [
+        for (final s in subtitle.where((s) => s['unsupported'] != null))
+          '${s['title'] ?? s['language'] ?? 'زیرنویس'}: ${s['unsupported']}',
+      ];
+      _tracks = Tracks(
+        audio: [
+          AudioTrack.auto(),
+          AudioTrack.no(),
+          for (final a in audio.where((a) => a['url'] != null))
+            AudioTrack.uri(
+              Uri.base.resolve(a['url'].toString()).toString(),
+              title: a['title']?.toString(),
+              language: a['language']?.toString(),
+            ),
+        ],
+        subtitle: [
+          SubtitleTrack.auto(),
+          SubtitleTrack.no(),
+          ...supported.map(subtitleTrack),
+        ],
+      );
+      _track = Track();
+    });
+    BrowserFeatures.subtitle('WEBVTT\n\n');
+    if (_webAutoSubtitle != null) {
+      try {
+        await _selectWebSubtitle(SubtitleTrack.auto(), generation: generation);
+      } catch (_) {
+        /* The video remains usable; the user can retry the track. */
+      }
+    }
+  }
+
+  Future<void> _selectWebSubtitle(
+    SubtitleTrack track, {
+    int? generation,
+  }) async {
+    final selection = ++_webSubtitleSelection;
+    final mediaGeneration = generation ?? _mediaGeneration;
+    final source = track.id == 'auto'
+        ? _webAutoSubtitle
+        : track.id == 'no'
+        ? null
+        : track;
+    WebSubtitleDocument? document;
+    if (source != null) {
+      final response = await http
+          .get(Uri.parse(source.id))
+          .timeout(const Duration(seconds: 25));
+      if (response.statusCode != 200) throw StateError('Subtitle unavailable');
+      document = WebSubtitleDocument.parse(utf8.decode(response.bodyBytes));
+    }
+    if (!mounted || !_isCurrentMediaOp(mediaGeneration) ||
+        selection != _webSubtitleSelection) {
+      return;
+    }
+    setState(() {
+      _webSubtitle = document;
+      _webSubtitleVisible = source != null;
+      _subtitles =
+          document?.at(
+            _position,
+            delay: _subtitle.delay,
+            scale: _subtitle.timingScale,
+          ) ??
+          [];
+      _track = _track.copyWith(subtitle: track);
+      _nativeSubtitleRendering = false;
+    });
+    BrowserFeatures.subtitle(
+      document?.vtt(delay: _subtitle.delay, scale: _subtitle.timingScale) ??
+          'WEBVTT\n\n',
+    );
+  }
+
+  Future<void> _selectAudioTrack(AudioTrack track) async {
+    if (kIsWeb) {
+      final selection = ++_webAudioSelection;
+      final generation = _mediaGeneration;
+      if (track.id == 'auto' || track.id == 'no') {
+        BrowserFeatures.clearAudio();
+        BrowserFeatures.muteOriginal(track.id == 'no');
+      } else {
+        await BrowserFeatures.externalAudio(track.id);
+      }
+      if (_isCurrentMediaOp(generation) && selection == _webAudioSelection) {
+        setState(() => _track = _track.copyWith(audio: track));
+      }
+    } else {
+      await _player.setAudioTrack(track);
+    }
   }
 
   Future<void> _restoreSubtitlePrefs() async {
@@ -3632,6 +3821,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   Future<void> _exitPlayer() async {
     if (_exitingPlayer) return;
     _exitingPlayer = true;
+    if (kIsWeb) await BrowserFeatures.fullscreen(false);
     try {
       await _persistProgress();
       // Remember the exact exit point for the section-scoped «ادامه تماشا»
@@ -3862,7 +4052,12 @@ class _PlayerScreenState extends State<PlayerScreen>
 
   @override
   void dispose() {
-    if (kIsWeb) WidgetsBinding.instance.removeObserver(this);
+    if (kIsWeb) {
+      WidgetsBinding.instance.removeObserver(this);
+      unawaited(BrowserFeatures.fullscreen(false));
+      BrowserFeatures.clearAudio();
+      BrowserFeatures.clearSubtitle();
+    }
     // Invalidate every in-flight media operation first so late probe/relay
     // continuations abort before creating resources or touching the player.
     _mediaGeneration++;
@@ -4098,6 +4293,14 @@ class _PlayerScreenState extends State<PlayerScreen>
             _webSubtitleVisible = !_webSubtitleVisible;
             if (!_webSubtitleVisible) _subtitles = [];
           });
+          BrowserFeatures.subtitle(
+            _webSubtitleVisible
+                ? _webSubtitle!.vtt(
+                    delay: _subtitle.delay,
+                    scale: _subtitle.timingScale,
+                  )
+                : 'WEBVTT\n\n',
+          );
           break;
         }
         unawaited(
@@ -4148,136 +4351,170 @@ class _PlayerScreenState extends State<PlayerScreen>
       useSafeArea: true,
       backgroundColor: MovieColors.surface,
       showDragHandle: true,
-      builder: (context) => DefaultTabController(
-        length: 2,
-        child: SafeArea(
-          top: false,
-          child: SizedBox(
-            height: (MediaQuery.sizeOf(context).height * .76).clamp(0.0, 560.0),
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.tune_rounded, color: MovieColors.orange),
-                      const SizedBox(width: 10),
-                      Text(
-                        'صدا و زیرنویس',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: MovieColors.surfaceHigh,
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: const TabBar(
-                      dividerColor: Colors.transparent,
-                      indicatorSize: TabBarIndicatorSize.tab,
-                      tabs: [
-                        Tab(icon: Icon(Icons.graphic_eq_rounded), text: 'صدا'),
-                        Tab(
-                          icon: Icon(Icons.closed_caption_rounded),
-                          text: 'زیرنویس',
+      builder: (sheetContext) {
+        final body = DefaultTabController(
+          length: 2,
+          child: SafeArea(
+            top: false,
+            child: SizedBox(
+              height: (MediaQuery.sizeOf(sheetContext).height * .76).clamp(
+                0.0,
+                560.0,
+              ),
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.tune_rounded,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          'صدا و زیرنویس',
+                          style: Theme.of(context).textTheme.titleLarge,
                         ),
                       ],
                     ),
                   ),
-                ),
-                const SizedBox(height: 6),
-                Expanded(
-                  child: TabBarView(
-                    children: [
-                      Column(
-                        children: [
-                          Expanded(
-                            child: kIsWeb
-                                ? const Center(
-                                    child: Padding(
-                                      padding: EdgeInsets.all(16),
-                                      child: Text(
-                                        'صدای اصلی ویدیو فعال است. برای صدای جداگانه، فایل یا لینک صدا را انتخاب کن.',
-                                        textAlign: TextAlign.center,
-                                      ),
-                                    ),
-                                  )
-                                : _AudioTracks(
-                                    player: _player,
-                                    tracks: _tracks.audio,
-                                    selected: _track.audio,
-                                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: MovieColors.surfaceHigh,
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: const TabBar(
+                        dividerColor: Colors.transparent,
+                        indicatorSize: TabBarIndicatorSize.tab,
+                        tabs: [
+                          Tab(
+                            icon: Icon(Icons.graphic_eq_rounded),
+                            text: 'صدا',
                           ),
-                          AudioSourceActions(
-                            onSelected: (track) async {
-                              if (kIsWeb) {
-                                final uri = track.id.startsWith('http')
-                                    ? await WebGateway.externalAudio(track.id)
-                                    : track.id;
-                                await BrowserFeatures.externalAudio(uri);
-                              } else {
-                                await _player.setAudioTrack(track);
-                              }
-                              if (context.mounted) Navigator.pop(context);
-                            },
+                          Tab(
+                            icon: Icon(Icons.closed_caption_rounded),
+                            text: 'زیرنویس',
                           ),
                         ],
                       ),
-                      Column(
-                        children: [
-                          Expanded(
-                            child: _SubtitleTracks(
-                              tracks: _tracks.subtitle,
-                              selected: _track.subtitle,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Expanded(
+                    child: TabBarView(
+                      children: [
+                        Column(
+                          children: [
+                            Expanded(
+                              child: _AudioTracks(
+                                onSelected: _selectAudioTrack,
+                                tracks: _tracks.audio,
+                                selected: _track.audio,
+                              ),
+                            ),
+                            AudioSourceActions(
                               onSelected: (track) async {
-                                await _player.setSubtitleTrack(track);
-                                final native = _requiresNativeSubtitle(track);
-                                await _setNativeSubtitleVisibility(native);
-                                if (mounted && context.mounted) {
-                                  setState(
-                                    () => _nativeSubtitleRendering = native,
-                                  );
-                                  Navigator.pop(context);
+                                if (kIsWeb) {
+                                  final uri = track.id.startsWith('http')
+                                      ? await WebGateway.externalAudio(track.id)
+                                      : track.id;
+                                  await BrowserFeatures.externalAudio(uri);
+                                } else {
+                                  await _player.setAudioTrack(track);
+                                }
+                                if (sheetContext.mounted) {
+                                  Navigator.pop(sheetContext);
                                 }
                               },
                             ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: FilledButton.tonalIcon(
-                                    onPressed: _loadSubtitleFile,
-                                    icon: const Icon(Icons.folder_open_rounded),
-                                    label: const Text('فایل زیرنویس'),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: FilledButton.tonalIcon(
-                                    onPressed: _loadSubtitleUrl,
-                                    icon: const Icon(Icons.link_rounded),
-                                    label: const Text('لینک زیرنویس'),
-                                  ),
-                                ),
-                              ],
+                          ],
+                        ),
+                        Column(
+                          children: [
+                            Expanded(
+                              child: _SubtitleTracks(
+                                tracks: _tracks.subtitle,
+                                selected: _track.subtitle,
+                                onSelected: (track) async {
+                                  if (kIsWeb) {
+                                    try {
+                                      await _selectWebSubtitle(track);
+                                      if (sheetContext.mounted) {
+                                        Navigator.pop(sheetContext);
+                                      }
+                                    } catch (_) {
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                              'دریافت زیرنویس انجام نشد؛ دوباره تلاش کن.',
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    }
+                                    return;
+                                  }
+                                  await _player.setSubtitleTrack(track);
+                                  final native = _requiresNativeSubtitle(track);
+                                  await _setNativeSubtitleVisibility(native);
+                                  if (mounted && sheetContext.mounted) {
+                                    setState(
+                                      () => _nativeSubtitleRendering = native,
+                                    );
+                                    Navigator.pop(sheetContext);
+                                  }
+                                },
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ],
+                            if (kIsWeb && _webUnsupportedSubtitles.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Text(
+                                  _webUnsupportedSubtitles.join('\n'),
+                                ),
+                              ),
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: FilledButton.tonalIcon(
+                                      onPressed: _loadSubtitleFile,
+                                      icon: const Icon(
+                                        Icons.folder_open_rounded,
+                                      ),
+                                      label: const Text('فایل زیرنویس'),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: FilledButton.tonalIcon(
+                                      onPressed: _loadSubtitleUrl,
+                                      icon: const Icon(Icons.link_rounded),
+                                      label: const Text('لینک زیرنویس'),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-        ),
-      ),
+        );
+        return body;
+      },
     );
     _showControls();
   }
@@ -5402,11 +5639,11 @@ String _trackLabel(String id, String? title, String? language) {
 
 class _AudioTracks extends StatelessWidget {
   const _AudioTracks({
-    required this.player,
+    required this.onSelected,
     required this.tracks,
     required this.selected,
   });
-  final Player player;
+  final Future<void> Function(AudioTrack) onSelected;
   final List<AudioTrack> tracks;
   final AudioTrack selected;
   @override
@@ -5424,13 +5661,15 @@ class _AudioTracks extends StatelessWidget {
                     borderRadius: BorderRadius.circular(16),
                   ),
                   selected: track == selected,
-                  selectedTileColor: MovieColors.orange.withValues(alpha: .12),
+                  selectedTileColor: Theme.of(
+                    context,
+                  ).colorScheme.primary.withValues(alpha: .12),
                   leading: Icon(
                     track == selected
                         ? Icons.check_circle_rounded
                         : Icons.graphic_eq_rounded,
                     color: track == selected
-                        ? MovieColors.orange
+                        ? Theme.of(context).colorScheme.primary
                         : Colors.white60,
                   ),
                   title: Text(
@@ -5440,7 +5679,7 @@ class _AudioTracks extends StatelessWidget {
                       ? null
                       : Text('${track.codec} · ${track.channels ?? ''}'),
                   onTap: () async {
-                    await player.setAudioTrack(track);
+                    await onSelected(track);
                     if (context.mounted) Navigator.pop(context);
                   },
                 ),

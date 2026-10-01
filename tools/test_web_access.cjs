@@ -1,0 +1,16 @@
+const assert = require('node:assert/strict');
+const {classify} = require('../web/web-access.js');
+const chrome = {ua:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/140.0.0.0 Safari/537.36',vendor:'Google Inc.',platform:'Windows',brands:[{brand:'Google Chrome'}]};
+const safari = {ua:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1',vendor:'Apple Computer, Inc.'};
+assert.equal(classify(chrome),'allowed');
+assert.equal(classify({...chrome,ua:chrome.ua+' Edg/140.0'}),'blocked');
+assert.equal(classify({...chrome,brave:true}),'blocked');
+assert.equal(classify({...chrome,brands:[{brand:'Chromium'}]}),'blocked');
+assert.equal(classify({...chrome,ua:chrome.ua.replace('Windows NT 10.0','Linux'),platform:'Linux'}),'blocked');
+assert.equal(classify({...chrome,ua:chrome.ua.replace('Windows NT 10.0','Android 15'),platform:'Android'}),'blocked');
+assert.equal(classify(safari),'install');
+assert.equal(classify({...safari,standalone:true}),'allowed');
+assert.equal(classify({...safari,ua:safari.ua.replace('Version/18.0','CriOS/140.0'),standalone:true}),'blocked');
+assert.equal(classify({...safari,ua:safari.ua.replace('iPhone','iPad'),standalone:true}),'blocked');
+assert.equal(classify({...safari,ua:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148',standalone:true}),'allowed');
+console.log('Web browser/device and iPhone installed-mode policy passed');

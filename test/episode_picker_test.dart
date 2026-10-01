@@ -1,3 +1,4 @@
+import 'package:mbnmovie/core/episode_catalog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mbnmovie/core/theme.dart';
@@ -98,6 +99,24 @@ const trailerContent = MovieContent(
 );
 
 void main() {
+
+  testWidgets('reset is shown only for watched progress and clears every quality identity', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final group = EpisodeCatalog.from(content).episodes.first;
+    await WatchProgressStore().save(contentId: content.id, episodeId: group.id,
+      position: const Duration(minutes:20), duration: const Duration(minutes:40));
+    await tester.pumpWidget(MaterialApp(theme: ThemeData.dark(), home: Directionality(
+      textDirection: TextDirection.rtl,
+      child: EpisodePickerScreen(content:content, onPlay: (_,_) async {}))));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('پاک کردن سابقهٔ این قسمت'), findsOneWidget);
+    await tester.tap(find.byTooltip('پاک کردن سابقهٔ این قسمت'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('پاک کردن سابقهٔ این قسمت'), findsNothing);
+    expect(await WatchProgressStore().load(contentId:content.id,episodeId:group.id),isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('trailer season hides the unknown quality label', (tester) async {
     SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(

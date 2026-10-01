@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -41,6 +42,7 @@ class SavedWatchProgress {
 /// user can resume later. The watched marker is stored independently from the
 /// position so replaying or moving to the next episode does not erase history.
 class WatchProgressStore {
+  static final changes = ValueNotifier<int>(0);
   static String _posKey(String contentId, String episodeId) =>
       'watch_pos_${contentId}_$episodeId';
   static String _durKey(String contentId, String episodeId) =>
@@ -88,6 +90,44 @@ class WatchProgressStore {
       watched: watched,
       updatedAtMs: prefs.getInt(_timeKey(contentId, episodeId)) ?? 0,
     );
+  }
+
+  /// Clears canonical and legacy quality identities together. Other episodes
+  /// and the last-watch slot of a different episode are preserved.
+  Future<bool> resetEpisode({
+    required String contentId,
+    required Set<String> episodeIds,
+    required Set<String> fileUrls,
+    bool hentai = false,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    for (final id in episodeIds) {
+      for (final key in [
+        _posKey(contentId, id),
+        _durKey(contentId, id),
+        _watchedKey(contentId, id),
+        _timeKey(contentId, id),
+      ]) {
+        await prefs.remove(key);
+      }
+    }
+    final slot = hentai ? 'watch_last_hentai_v1' : 'watch_last_v1';
+    final raw = prefs.getString(slot);
+    if (raw != null) {
+      try {
+        final last = LastWatch.fromJson(
+          jsonDecode(raw) as Map<String, dynamic>,
+        );
+        if (last?.contentId == contentId &&
+            (episodeIds.contains(last!.episodeId) ||
+                fileUrls.contains(last.fileUrl))) {
+          await prefs.remove(slot);
+        }
+      } catch (_) {}
+    }
+    changes.value++;
+    if (hentai) return true;
+    return MbnSync.instance.resetEpisodeProgress(contentId, episodeIds);
   }
 
   Future<void> clear({
@@ -183,6 +223,7 @@ class LastWatchStore {
       'updatedAtMs': DateTime.now().millisecondsSinceEpoch,
     };
     await prefs.setString(_slot, jsonEncode(payload));
+    WatchProgressStore.changes.value++;
     unawaited(MbnSync.instance.pushProgressThrottled());
   }
 

@@ -10,7 +10,9 @@ abstract final class BrowserFeatures {
   static Future<bool> pip() async => false;
   static Future<bool> cast() async => false;
   static void subtitle(String vtt) {}
+  static void clearSubtitle() {}
   static void stop() {}
   static void clearAudio() {}
+  static void muteOriginal(bool value) {}
   static Future<void> externalAudio(String url) async {}
 }

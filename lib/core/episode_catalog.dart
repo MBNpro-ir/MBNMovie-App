@@ -129,6 +129,27 @@ class EpisodeCatalog {
     return null;
   }
 
+  /// Recover the real variant, including its raw id and quality metadata.
+  /// Older last-watch records store a logical group id instead of a raw id.
+  EpisodeVariant? resumeVariant({
+    required String episodeId,
+    required String fileUrl,
+    String? preferredQuality,
+  }) {
+    for (final group in episodes) {
+      for (final variant in group.variants) {
+        if (variant.episode.fileUrl == fileUrl) return variant;
+      }
+    }
+    for (final group in episodes) {
+      if (group.id == episodeId) return group.variantFor(preferredQuality);
+      for (final variant in group.variants) {
+        if (variant.episode.id == episodeId) return variant;
+      }
+    }
+    return null;
+  }
+
   static EpisodeCatalog from(MovieContent content) {
     if (content.seasons.isEmpty) {
       return const EpisodeCatalog(seasons: [], qualities: []);
@@ -200,9 +221,7 @@ class EpisodeCatalog {
         for (final variant in trailers)
           EpisodeGroup(
             id: 'logical:movie:trailer-${variant.episode.id}',
-            name: variant.episode.name.isEmpty
-                ? 'تیزر'
-                : variant.episode.name,
+            name: variant.episode.name.isEmpty ? 'تیزر' : variant.episode.name,
             variants: [variant],
           ),
       ];
@@ -351,7 +370,8 @@ String episodeDisplayName(String rawName) {
     return 'قسمت ${int.parse(epMatch.group(1)!)}';
   }
 
-  final bare = RegExp(r'^\*?\s*(\d+)\b').firstMatch(latin) ??
+  final bare =
+      RegExp(r'^\*?\s*(\d+)\b').firstMatch(latin) ??
       RegExp(r'\b(\d+)\s*\*?$').firstMatch(latin);
   if (bare != null) {
     return 'قسمت ${int.parse(bare.group(1)!)}';
@@ -367,7 +387,8 @@ String _formatQualityWithModifier(int pixels, String contextText) {
 
   // HD / HQ release modifier (for 1080p, indicates higher bitrate/uncompressed bluray vs standard web-dl)
   if (pixels >= 1080) {
-    final isStandAloneHd = (RegExp(r'\b(hd|hq)\b').hasMatch(lower) ||
+    final isStandAloneHd =
+        (RegExp(r'\b(hd|hq)\b').hasMatch(lower) ||
             RegExp(r'اچ\s*دی').hasMatch(lower)) &&
         !RegExp(r'\bfhd\b').hasMatch(lower) &&
         !RegExp(r'فول\s*اچ\s*دی').hasMatch(lower) &&
@@ -454,8 +475,9 @@ String formatFileSize(String raw) {
     r'^([\d.,]+)\s*(ترابایت|گیگابایت|مگابایت|کیلوبایت|بایت|گیگ|مگ|کیلو)',
   ).firstMatch(text);
   if (faUnit != null) {
-    final number =
-        double.tryParse(_trimSizeNumber(faUnit.group(1)!).replaceAll(',', ''));
+    final number = double.tryParse(
+      _trimSizeNumber(faUnit.group(1)!).replaceAll(',', ''),
+    );
     if (number == null || number <= 0) return raw.trim();
     final unit = faUnit.group(2)!;
     String fixed(int fractionDigits) =>
@@ -470,8 +492,9 @@ String formatFileSize(String raw) {
     if (unit.startsWith('کیلو')) return '${fixed(0)}KB';
     return '${fixed(0)}B';
   }
-  final withUnit =
-      RegExp(r'^([\d.,]+)\s*([kKmMgGtT])\s*[bB]$').firstMatch(text);
+  final withUnit = RegExp(
+    r'^([\d.,]+)\s*([kKmMgGtT])\s*[bB]$',
+  ).firstMatch(text);
   if (withUnit != null) {
     return '${_trimSizeNumber(withUnit.group(1)!)}'
         '${withUnit.group(2)!.toUpperCase()}B';
@@ -617,7 +640,10 @@ NormalDownloadPlan normalDownloadPlan(MovieContent content) {
     // فیلم با چند دسته‌بندی (مثلاً دوبله فارسی، زیرنویس فارسی)
     final allMains = catalog.seasons
         .where((s) => !s.isTrailerSeason)
-        .expand((s) => s.episodes.where((e) => !e.isTrailer).expand((e) => e.variants))
+        .expand(
+          (s) =>
+              s.episodes.where((e) => !e.isTrailer).expand((e) => e.variants),
+        )
         .toList(growable: false);
     if (allMains.isEmpty) {
       return const NormalDownloadPlan(isMovie: true, batches: []);
@@ -633,7 +659,8 @@ NormalDownloadPlan normalDownloadPlan(MovieContent content) {
       for (final variant in mainVariants) {
         batches.add(
           QualityDownloadBatch(
-            label: '${season.name} · کیفیت ${qualityDisplayLabel(variant.quality)}',
+            label:
+                '${season.name} · کیفیت ${qualityDisplayLabel(variant.quality)}',
             season: MovieSeason(
               id: '${season.id}-${variant.quality}',
               name: '${season.name} · ${variant.quality}',
@@ -759,7 +786,8 @@ int _qualityRank(String value) {
   if (lower.contains('4k') || lower.contains('2160')) {
     base = 2160;
   } else {
-    base = int.tryParse(RegExp(r'\d{3,4}').firstMatch(value)?.group(0) ?? '') ?? 0;
+    base =
+        int.tryParse(RegExp(r'\d{3,4}').firstMatch(value)?.group(0) ?? '') ?? 0;
   }
 
   var boost = 0;
@@ -788,14 +816,23 @@ int _categoryOrder(String key) {
 String _movieCategoryKey(String name) {
   final lower = _latinDigits(name).toLowerCase();
   if (lower.contains('دوبله') || lower.contains('farsi dub')) {
-    for (final studio in const ['گلوری', 'سورن', 'کوالیما', 'آواژه', 'فیلیمو', 'نماوا']) {
+    for (final studio in const [
+      'گلوری',
+      'سورن',
+      'کوالیما',
+      'آواژه',
+      'فیلیمو',
+      'نماوا',
+    ]) {
       if (lower.contains(studio)) {
         return 'dubbed-$studio';
       }
     }
     return 'dubbed';
   }
-  if (lower.contains('زیرنویس') || lower.contains('softsub') || lower.contains('sub')) {
+  if (lower.contains('زیرنویس') ||
+      lower.contains('softsub') ||
+      lower.contains('sub')) {
     return 'subbed';
   }
   if (lower.contains('زبان اصلی') || lower.contains('original')) {
@@ -808,7 +845,9 @@ String _movieCategoryKey(String name) {
 String _movieCategoryTitle(String key, String sampleEpisodeName) {
   if (key.startsWith('dubbed')) {
     final cleaned = _cleanQualityTokens(sampleEpisodeName);
-    if (cleaned.contains('دوبله') && cleaned.length > 5 && cleaned.length < 30) {
+    if (cleaned.contains('دوبله') &&
+        cleaned.length > 5 &&
+        cleaned.length < 30) {
       return cleaned;
     }
     if (key.contains('-')) {
@@ -820,7 +859,9 @@ String _movieCategoryTitle(String key, String sampleEpisodeName) {
   switch (key) {
     case 'subbed':
       final cleaned = _cleanQualityTokens(sampleEpisodeName);
-      if (cleaned.contains('زیرنویس') && cleaned.length > 8 && cleaned.length < 30) {
+      if (cleaned.contains('زیرنویس') &&
+          cleaned.length > 8 &&
+          cleaned.length < 30) {
         return cleaned;
       }
       return 'زیرنویس فارسی';
@@ -835,8 +876,14 @@ String _movieCategoryTitle(String key, String sampleEpisodeName) {
 
 String _cleanQualityTokens(String input) {
   var value = _latinDigits(input);
-  value = value.replaceAll(RegExp(r'\d{3,4}\s*[pP]\b', caseSensitive: false), ' ');
-  value = value.replaceAll(RegExp(r'\b(4k|uhd|fhd|hd|sd)\b', caseSensitive: false), ' ');
+  value = value.replaceAll(
+    RegExp(r'\d{3,4}\s*[pP]\b', caseSensitive: false),
+    ' ',
+  );
+  value = value.replaceAll(
+    RegExp(r'\b(4k|uhd|fhd|hd|sd)\b', caseSensitive: false),
+    ' ',
+  );
   value = value.replaceAll(RegExp(r'کیفیت\s*:?\s*\d{3,4}'), ' ');
   value = value.replaceAll(RegExp(r'\d{3,4}\s*:?\s*کیفیت'), ' ');
   value = value.replaceAll(RegExp(r'فول\s*اچ\s*دی|اچ\s*دی'), ' ');
@@ -848,7 +895,8 @@ String _seasonKey(String input, int fallbackIndex) {
   var value = _latinDigits(input).toLowerCase();
   if (isTrailerLabel(value)) return 'trailer';
 
-  final numMatch = RegExp(r'(?:فصل|season|s)\s*(\d+)').firstMatch(value) ??
+  final numMatch =
+      RegExp(r'(?:فصل|season|s)\s*(\d+)').firstMatch(value) ??
       RegExp(r'^\s*(\d+)').firstMatch(value);
   final seasonNum = numMatch != null ? int.tryParse(numMatch.group(1)!) : null;
 
@@ -872,7 +920,8 @@ String _episodeKey(String input, int fallbackIndex) {
   if (isTrailerLabel(value)) {
     return 'trailer-${fallbackIndex + 1}';
   }
-  final match = RegExp(r'(?:قسمت|episode|ep|part)\s*(\d+)').firstMatch(value) ??
+  final match =
+      RegExp(r'(?:قسمت|episode|ep|part)\s*(\d+)').firstMatch(value) ??
       RegExp(r'^\*?\s*(\d+)\b').firstMatch(value) ??
       RegExp(r'\b(\d+)\b').firstMatch(value);
   if (match != null) return 'episode-${int.parse(match.group(1)!)}';
@@ -888,7 +937,9 @@ String _seasonDisplayName(String key, String original) {
 
   var cleaned = _cleanQualityTokens(original);
 
-  final bareNumMatch = RegExp(r'^(\d+)\s*(.*)$').firstMatch(_latinDigits(cleaned));
+  final bareNumMatch = RegExp(
+    r'^(\d+)\s*(.*)$',
+  ).firstMatch(_latinDigits(cleaned));
   if (bareNumMatch != null && !cleaned.startsWith('فصل')) {
     final num = bareNumMatch.group(1)!;
     final rest = bareNumMatch.group(2)!.trim();

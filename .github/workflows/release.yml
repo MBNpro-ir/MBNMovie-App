@@ -8,7 +8,7 @@ on:
       release_tag:
         description: Stable release tag matching pubspec.yaml and Persian changelog
         required: true
-        default: v1.0.53
+        default: v1.0.54
         type: string
 
 permissions:
@@ -63,6 +63,7 @@ jobs:
           flutter pub get
           flutter analyze lib test integration_test packages/flutter_secure_storage_windows/lib
           flutter test
+          node tools/test_web_access.cjs
 
       - name: Restore dedicated Android signing key
         shell: bash
