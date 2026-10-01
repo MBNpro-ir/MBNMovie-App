@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
+import '../core/app_platform.dart';
 
 import 'package:archive/archive_io.dart';
 import 'package:crypto/crypto.dart';

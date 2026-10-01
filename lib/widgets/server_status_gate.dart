@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -105,7 +106,7 @@ class _ServerStatusGateState extends State<ServerStatusGate> {
   Future<void> _checkServer() async {
     setState(() => _retrying = true);
     try {
-      final uri = Uri.parse('${widget.baseUrl}/api/maintenance');
+      final uri = Uri.parse('${kIsWeb ? Uri.base.origin : widget.baseUrl}/api/maintenance');
       final res = await http.get(uri).timeout(const Duration(seconds: 10));
       if (!mounted) return;
       if (res.statusCode == 200 || res.statusCode == 503) {
@@ -141,7 +142,7 @@ class _ServerStatusGateState extends State<ServerStatusGate> {
 
   Future<void> _pollServer() async {
     try {
-      final uri = Uri.parse('${widget.baseUrl}/api/maintenance');
+      final uri = Uri.parse('${kIsWeb ? Uri.base.origin : widget.baseUrl}/api/maintenance');
       final res = await http.get(uri).timeout(const Duration(seconds: 5));
       if (!mounted) return;
       if (res.statusCode == 200 || res.statusCode == 503) {

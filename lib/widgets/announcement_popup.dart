@@ -1,3 +1,4 @@
+import '../services/web_gateway.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -139,7 +140,7 @@ class _AnnouncementDialogState extends State<_AnnouncementDialog> {
                       ClipRRect(
                         borderRadius: BorderRadius.circular(16),
                         child: Image.network(
-                          mediaUrl,
+                          WebGateway.image(mediaUrl),
                           fit: BoxFit.cover,
                           height: 200,
                           errorBuilder: (_, _, _) => const SizedBox.shrink(),

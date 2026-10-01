@@ -1,3 +1,4 @@
+import '../services/web_gateway.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -171,7 +172,7 @@ class _CastSearchScreenState extends State<CastSearchScreen> {
                                 person.imageUrl == null ||
                                     person.imageUrl!.isEmpty
                                 ? null
-                                : NetworkImage(person.imageUrl!),
+                                : NetworkImage(WebGateway.image(person.imageUrl!)),
                             child: const Icon(Icons.person_rounded, size: 48),
                           ),
                           const SizedBox(height: 10),
@@ -313,7 +314,7 @@ class _CastTitlesScreenState extends State<CastTitlesScreen> {
                               widget.person.imageUrl == null ||
                                   widget.person.imageUrl!.isEmpty
                               ? null
-                              : NetworkImage(widget.person.imageUrl!),
+                              : NetworkImage(WebGateway.image(widget.person.imageUrl!)),
                           child: const Icon(Icons.person_rounded),
                         ),
                         const SizedBox(width: 16),

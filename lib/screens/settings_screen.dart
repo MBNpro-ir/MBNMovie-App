@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io';
+import '../core/app_platform.dart';
 
 import '../services/accessibility_service.dart';
 

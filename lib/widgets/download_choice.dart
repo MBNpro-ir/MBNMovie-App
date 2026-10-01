@@ -1,4 +1,7 @@
-import 'dart:io';
+import '../core/app_platform.dart';
+import 'package:flutter/foundation.dart';
+import '../services/web_gateway.dart';
+import '../services/browser_features.dart';
 import 'package:flutter/material.dart';
 import '../models/movie_content.dart';
 import '../services/device_bridge.dart';
@@ -12,6 +15,23 @@ Future<void> showDownloadChoice(
   required MovieSeason season,
   required List<MovieEpisode> episodes,
 }) async {
+  if (kIsWeb) {
+    await showModalBottomSheet<void>(context: context, isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(child: SizedBox(height: 360, child: ListView(children: [
+        const ListTile(title: Text('دانلود با مرورگر'), subtitle: Text('فایل‌ها در بخش Downloads مرورگر یا برنامه Files آیفون ذخیره می‌شوند. هر فایل را جدا انتخاب کن.')),
+        for (final episode in episodes) ListTile(title: Text(episode.name), leading: const Icon(Icons.download),
+          onTap: () async {
+            try {
+              final url = Uri.parse(await WebGateway.media(episode.fileUrl));
+              final name = Uri.parse(episode.fileUrl).pathSegments.last;
+              BrowserFeatures.download(url.replace(queryParameters: {...url.queryParameters, 'download': name}).toString(), name);
+            } catch (e) {
+              if (sheetContext.mounted) ScaffoldMessenger.of(sheetContext).showSnackBar(SnackBar(content: Text(e.toString())));
+            }
+          }),
+      ]))));
+    return;
+  }
   final internal = await showModalBottomSheet<bool>(
     context: context,
     builder: (context) => SafeArea(

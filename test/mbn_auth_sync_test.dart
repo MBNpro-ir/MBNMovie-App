@@ -165,7 +165,7 @@ void main() {
       return {'status': 404, 'body': {'error': 'x'}};
     });
     final auth = MbnAuth(client: client, baseUrl: 'https://login.test');
-    await auth.loginWithToken('tok');
+    await auth.loginWithHandoff({'token': 'tok', 'user': profile}, identifier: 'user@test.local');
     MbnSync.instance.configure(auth: auth);
 
     final success = await MbnSync.instance.pullAndApplyPreferences(force: true);

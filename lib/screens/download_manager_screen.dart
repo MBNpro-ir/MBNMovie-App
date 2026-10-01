@@ -1,6 +1,7 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'dart:convert';
-import 'dart:io';
+import '../core/app_platform.dart';
 import 'package:background_downloader/background_downloader.dart';
 import 'package:flutter/material.dart';
 import '../core/download_bundles.dart';
@@ -146,7 +147,9 @@ class _DownloadManagerScreenState extends State<DownloadManagerScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) => kIsWeb
+    ? Scaffold(appBar: AppBar(title: const Text('دانلودهای مرورگر')), body: const Center(child: Padding(padding: EdgeInsets.all(24), child: Text('فایل‌های دانلودشده را در Downloads مرورگر یا برنامه Files آیفون ببین. دانلود هر قسمت از صفحه جزئیات در دسترس است.', textAlign: TextAlign.center))))
+    : Scaffold(
     appBar: AppBar(
       title: const Text('مدیریت دانلود ها'),
       actions: [

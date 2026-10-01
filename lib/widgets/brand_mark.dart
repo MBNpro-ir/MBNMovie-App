@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../core/theme.dart';
@@ -47,11 +48,9 @@ class BrandMark extends StatelessWidget {
               ),
             ],
           ),
-          child: Icon(
-            Icons.play_arrow_rounded,
-            size: size * .62,
-            color: Colors.white,
-          ),
+          child: kIsWeb
+              ? Center(child: CustomPaint(size: Size.square(size * .62), painter: const _PlayMarkPainter()))
+              : Icon(Icons.play_arrow_rounded, size: size * .62, color: Colors.white),
         ),
         if (showWordmark) ...[
           SizedBox(width: (size * 0.22).clamp(5.0, 12.0)),
@@ -82,4 +81,20 @@ class BrandMark extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Draw the brand symbol independently of the browser's icon font cache.
+class _PlayMarkPainter extends CustomPainter {
+  const _PlayMarkPainter();
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.scale(size.width / 24, size.height / 24);
+    final path = Path()..moveTo(8, 6.5)..lineTo(8, 17.5)
+      ..quadraticBezierTo(8, 19, 9.3, 18.2)..lineTo(17.7, 12.8)
+      ..quadraticBezierTo(19, 12, 17.7, 11.2)..lineTo(9.3, 5.8)
+      ..quadraticBezierTo(8, 5, 8, 6.5)..close();
+    canvas.drawPath(path, Paint()..color = Colors.white);
+  }
+  @override
+  bool shouldRepaint(_PlayMarkPainter oldDelegate) => false;
 }

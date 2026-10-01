@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'app_platform.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';

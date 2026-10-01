@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+import 'web_gateway.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -8,9 +10,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'cross_app_auth.dart';
 
 class MbnAuthException implements Exception {
-  const MbnAuthException(this.message, {this.statusCode});
+  const MbnAuthException(this.message, {this.statusCode, this.details});
   final String message;
   final int? statusCode;
+  final Map<String, dynamic>? details;
   @override
   String toString() => message;
 }
@@ -66,7 +69,7 @@ class MbnProfile {
 class MbnAuth {
   MbnAuth({http.Client? client, String? baseUrl})
     : _client = client ?? http.Client(),
-      baseUrl = baseUrl ?? defaultBaseUrl;
+      baseUrl = baseUrl ?? (kIsWeb ? Uri.base.origin : defaultBaseUrl);
 
   static const defaultBaseUrl = 'https://login.m.mbnpro.ir';
   static const _tokenKey = 'mbn_secure_token';
@@ -75,7 +78,9 @@ class MbnAuth {
 
   final http.Client _client;
   final String baseUrl;
-  String? token;
+  String? _token;
+  String? get token => _token;
+  set token(String? value) { _token = value; WebGateway.token = value; }
   MbnProfile? profile;
   String? forcedLogoutMessage;
 
@@ -146,6 +151,7 @@ class MbnAuth {
       throw MbnAuthException(
         data['error']?.toString() ?? 'خطا (کد ${response.statusCode}).',
         statusCode: response.statusCode,
+        details: data,
       );
     }
     return data;
@@ -189,7 +195,7 @@ class MbnAuth {
         if (exchanged['token'] != null) {
           token = exchanged['token'].toString();
         }
-      } catch (_) {}
+      } on MbnAuthException { rethrow; }
       final data = await getJson('/api/me');
       profile = MbnProfile.fromJson(
         (data['user'] as Map?)?.cast<String, dynamic>() ?? {},
@@ -267,6 +273,11 @@ class MbnAuth {
   }
 
   Future<void> logout() async {
+    final oldToken = token;
+    if (oldToken != null) {
+      _client.post(_uri('/api/auth/logout'), headers: {'Authorization': 'Bearer $oldToken'})
+        .timeout(const Duration(seconds: 5)).then((_) {}, onError: (Object _) {});
+    }
     token = null;
     profile = null;
     unawaited(CrossAppAuth.clearSharedToken());

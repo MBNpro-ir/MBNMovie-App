@@ -1,4 +1,4 @@
-import 'dart:io';
+import '../core/app_platform.dart';
 import 'package:flutter/material.dart';
 import '../core/player_preferences.dart';
 import '../services/external_apps.dart';

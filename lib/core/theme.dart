@@ -221,8 +221,10 @@ abstract final class MovieTheme {
         labelStyle: TextStyle(
           fontFamily: 'Vazirmatn',
           fontWeight: boldText ? FontWeight.w700 : FontWeight.normal,
-          color: highContrast ? Colors.white : null,
+          color: MovieColors.text,
         ),
+        secondaryLabelStyle: const TextStyle(color: MovieColors.text),
+        checkmarkColor: MovieColors.text,
       ),
     );
   }

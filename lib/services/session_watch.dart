@@ -1,0 +1,66 @@
+import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+
+/// A dedicated live connection; the regular account timer remains a fallback.
+class SessionWatch {
+  SessionWatch(this.onRevoked);
+  final Future<void> Function(String) onRevoked;
+  http.Client? _client;
+  Completer<void>? _abort;
+  Timer? _retry;
+  String? _token;
+  String _base = '';
+  int _generation = 0;
+  void track(String? token, String base) {
+    if (_token == token && _base == base) return;
+    _generation++;
+    if (_abort?.isCompleted == false) _abort!.complete();
+    _client?.close();
+    _retry?.cancel();
+    _token = token;
+    _base = base;
+    if (token != null) unawaited(_connect(_generation));
+  }
+  Future<void> _connect(int generation) async {
+    final client = http.Client();
+    final abort = Completer<void>();
+    _abort = abort;
+    _client = client;
+    try {
+      final request = http.AbortableRequest('GET', Uri.parse('$_base/api/auth/events'), abortTrigger: abort.future)
+        ..headers['Authorization'] = 'Bearer $_token';
+      final response = await client.send(request).timeout(const Duration(seconds: 20));
+      if (generation != _generation) return;
+      if (response.statusCode == 401 || response.statusCode == 403) {
+        await onRevoked('نشست شما پایان یافته است؛ دوباره وارد شوید.');
+        return;
+      }
+      if (response.statusCode != 200) throw StateError('stream unavailable');
+      await for (final line in response.stream.transform(utf8.decoder).transform(const LineSplitter())) {
+        if (generation != _generation) return;
+        if (line.startsWith('data: ')) {
+          final event = jsonDecode(line.substring(6)) as Map;
+          if (event['state'] != 'active') {
+            await onRevoked(event['message']?.toString() ?? 'نشست شما پایان یافت.');
+            return;
+          }
+        }
+      }
+    } catch (_) {
+      // Reconnect after network changes; do not sign out on a network failure.
+    } finally {
+      client.close();
+      if (generation == _generation && _token != null) {
+        _retry = Timer(const Duration(seconds: 2), () => unawaited(_connect(generation)));
+      }
+    }
+  }
+  void dispose() {
+    _generation++;
+    _token = null;
+    _retry?.cancel();
+    if (_abort?.isCompleted == false) _abort!.complete();
+    _client?.close();
+  }
+}

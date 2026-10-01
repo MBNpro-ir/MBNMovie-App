@@ -1,4 +1,5 @@
-import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'core/app_platform.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -56,9 +57,10 @@ Future<void> main() async {
       ),
     );
   }
-  UpdatePresentation.start();
+  if (!kIsWeb) UpdatePresentation.start();
   runApp(const MbnmovieApp());
   WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (kIsWeb) return;
     AppLinks.registerThisApp(appId: 'MBNMovie', exeName: 'mbnmovie.exe');
     DownloadManager.instance.initialize().catchError((Object error) {
       DownloadManager.instance.error = 'راه‌اندازی دانلودها انجام نشد.';

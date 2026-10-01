@@ -1,5 +1,7 @@
+import '../services/web_gateway.dart';
+import 'package:flutter/foundation.dart';
 import 'dart:async';
-import 'dart:io';
+import '../core/app_platform.dart';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -924,7 +926,7 @@ class _MenuDrawer extends StatelessWidget {
               tool: true,
             ),
             _tile(Icons.tune_rounded, 'تنظیمات', settings, tool: true),
-            _tile(
+            if (!kIsWeb) _tile(
               Icons.system_update_alt_rounded,
               'به‌روزرسانی برنامه',
               updates,
@@ -1291,7 +1293,7 @@ class _HomePageState extends State<_HomePage> {
                                           actor.imageUrl == null ||
                                               actor.imageUrl!.isEmpty
                                           ? null
-                                          : NetworkImage(actor.imageUrl!),
+                                          : NetworkImage(WebGateway.image(actor.imageUrl!)),
                                       child: const Icon(Icons.person_rounded),
                                     ),
                                     const SizedBox(height: 8),
@@ -1383,7 +1385,7 @@ class _HomePageState extends State<_HomePage> {
                                 child: Stack(
                                   children: [
                                     Image.network(
-                                      banner.imageUrl,
+                                      WebGateway.image(banner.imageUrl),
                                       width: 280,
                                       height: 150,
                                       fit: BoxFit.cover,
@@ -1472,7 +1474,7 @@ class _HomePageState extends State<_HomePage> {
                                                 ),
                                               )
                                             : Image.network(
-                                                collection.imageUrl!,
+                                                WebGateway.image(collection.imageUrl!),
                                                 width: 130,
                                                 fit: BoxFit.cover,
                                                 errorBuilder: (_, _, _) =>
@@ -3820,7 +3822,7 @@ class _AllCollectionsPageState extends State<_AllCollectionsPage> {
                                 ),
                               )
                             : Image.network(
-                                collection.imageUrl!,
+                                WebGateway.image(collection.imageUrl!),
                                 fit: BoxFit.cover,
                                 errorBuilder: (_, _, _) => const DecoratedBox(
                                   decoration: BoxDecoration(

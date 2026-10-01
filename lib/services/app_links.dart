@@ -1,4 +1,5 @@
-import 'dart:io';
+import 'package:flutter/foundation.dart';
+import '../core/app_platform.dart';
 
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
@@ -183,6 +184,10 @@ abstract final class AppLinks {
     BuildContext context,
     SiblingApp sibling,
   ) async {
+    if (kIsWeb) {
+      await launchUrl(Uri.parse(sibling.id == 'MBNMovie' ? 'https://movie.mbnpro.ir/' : 'https://anime.mbnpro.ir/'), webOnlyWindowName: '_self');
+      return;
+    }
     if (Platform.isAndroid) {
       try {
         if (await DeviceBridge.isAppInstalled(sibling.androidPackage)) {

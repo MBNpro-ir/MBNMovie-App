@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'services/session_watch.dart';
+import 'services/browser_features.dart';
+import 'widgets/session_devices_dialog.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
@@ -46,6 +49,7 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
   bool _siblingAvailable = false;
   bool _checkingAccount = false;
   bool _terminating = false;
+  late final SessionWatch _sessionWatch = SessionWatch(_forceLogout);
 
   @override
   void initState() {
@@ -70,6 +74,7 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _sessionWatch.dispose();
     _accountTimer?.cancel();
     _syncTimer?.cancel();
     _handoffTimer?.cancel();
@@ -123,6 +128,8 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
   Future<void> _forceLogout(String message) async {
     if (_terminating || !mounted) return;
     _terminating = true;
+    if (kIsWeb) BrowserFeatures.stop();
+    appNavigatorKey.currentState?.popUntil((route) => route.isFirst);
     MbnSync.instance.clear();
     _api.clearDelfanSession();
     await _auth.logout();
@@ -231,6 +238,21 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
     }
   }
 
+  Future<bool> _loginWithCapacity(Future<dynamic> Function() action, String identifier) async {
+    try {
+      await action();
+      return true;
+    } on MbnAuthException catch (error) {
+      if (error.details?['code'] != 'session_limit') rethrow;
+      final ctx = appNavigatorKey.currentContext;
+      if (ctx == null || !ctx.mounted) rethrow;
+      final result = await showSessionDevicesDialog(ctx, error.details!, _auth.postJson);
+      if (result == null) return false;
+      await _auth.loginWithHandoff(result, identifier: identifier);
+      return true;
+    }
+  }
+
   Future<void> _beginHandoff() async {
     final token = await CrossAppAuth.readSiblingToken(siblingId: 'MBNime');
     if (token == null || token.isEmpty) {
@@ -246,7 +268,7 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
       return;
     }
     try {
-      await _auth.loginWithToken(token);
+      if (!await _loginWithCapacity(() => _auth.loginWithToken(token), 'کاربر')) return;
       await _bindDelfanSession();
       MbnSync.instance.configure(auth: _auth);
       if (_auth.profile != null && _auth.profile!.id > 0) {
@@ -385,6 +407,7 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
           ) ??
           false;
       if (!useIt) return;
+      if (!await _loginWithCapacity(() async {
       final data = await AuthHandoff.consume(
         post: _auth.postJson,
         id: id,
@@ -392,6 +415,7 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
       );
       if (data == null) return;
       await _auth.loginWithHandoff(data, identifier: identifier);
+      }, identifier)) { return; }
       await _bindDelfanSession();
       if (_auth.profile != null && _auth.profile!.id > 0) {
         await MbnSync.instance.bindAccount(_auth.profile!.id);
@@ -414,6 +438,7 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    _sessionWatch.track(_auth.token, _auth.baseUrl);
     return ListenableBuilder(
       listenable: AccessibilityService.instance,
       builder: (context, _) {
@@ -505,7 +530,8 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
                 },
                 onUseOtherApp: _siblingAvailable ? _beginHandoff : null,
                 onLogin: (identifier, password) async {
-                  await _auth.login(identifier: identifier, password: password);
+                  if (!await _loginWithCapacity(
+                    () => _auth.login(identifier: identifier, password: password), identifier)) { return; }
                   await _bindDelfanSession();
                   MbnSync.instance.configure(auth: _auth);
                   if (_auth.profile != null && _auth.profile!.id > 0) {

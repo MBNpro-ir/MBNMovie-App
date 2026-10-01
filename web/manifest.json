@@ -1,0 +1,19 @@
+{
+  "name": "MBNMovie",
+  "short_name": "MBNMovie",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#080a0f",
+  "theme_color": "#080a0f",
+  "description": "MBNMovie Web",
+  "orientation": "any",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "icons/Icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

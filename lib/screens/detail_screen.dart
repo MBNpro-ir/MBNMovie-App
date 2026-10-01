@@ -1,5 +1,11 @@
+import 'dart:convert';
+import '../core/native_player_properties.dart';
+import 'package:flutter/foundation.dart';
+import '../services/web_gateway.dart';
+import '../services/browser_features.dart';
+import '../core/web_subtitles.dart';
 import 'dart:async';
-import 'dart:io';
+import '../core/app_platform.dart';
 
 import 'package:animations/animations.dart';
 import 'package:flutter/gestures.dart';
@@ -240,7 +246,7 @@ class _DetailScreenState extends State<DetailScreen> {
       throw const HttpException('Cover unavailable');
     }
     final http.Response response = await http
-        .get(Uri.parse(resolvedImageUrl))
+        .get(Uri.parse(WebGateway.image(resolvedImageUrl)))
         .timeout(const Duration(seconds: 20));
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw HttpException('HTTP ${response.statusCode}');
@@ -275,7 +281,9 @@ class _DetailScreenState extends State<DetailScreen> {
     try {
       final cover = await _coverFile(item, imageUrl: imageUrl);
       String? savedPath;
-      if (Platform.isAndroid) {
+      if (kIsWeb) {
+        BrowserFeatures.saveBytes(cover.bytes, cover.fileName, cover.mimeType);
+      } else if (Platform.isAndroid) {
         savedPath = await _downloadsChannel.invokeMethod<String>('saveImage', {
           'bytes': cover.bytes,
           'fileName': cover.fileName,
@@ -2344,6 +2352,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
       mounted && !_playerTornDown && generation == _mediaGeneration;
   Offset? _doubleTapPosition;
   List<String> _subtitles = const [];
+  WebSubtitleDocument? _webSubtitle;
+  bool _webSubtitleVisible = true;
   Tracks _tracks = const Tracks();
   Track _track = const Track();
   SubtitlePreferences _subtitle =
@@ -2440,7 +2450,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   }
 
   Future<void> _initializePictureInPicture() async {
-    final supported = await _pip.initialize();
+    final supported = kIsWeb ? BrowserFeatures.pipSupported : await _pip.initialize();
     if (!mounted) return;
     setState(() {
       _pipSupported = supported;
@@ -2472,6 +2482,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   );
 
   Future<void> _enterPictureInPicture() async {
+    if (kIsWeb) { await BrowserFeatures.pip(); return; }
     _hideTimer?.cancel();
     setState(() => _controlsVisible = false);
     final entered = await _pip.enter(
@@ -2492,7 +2503,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     try {
       final platform = _player.platform;
       if (platform is NativePlayer) {
-        await platform.setProperty('http-proxy', '');
+        await setNativePlayerProperty(platform, 'http-proxy', '');
       }
     } catch (_) {}
   }
@@ -2518,10 +2529,11 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     }
 
     const headers = {'User-Agent': 'MBNMovie/1.0 Android'};
-    final routed = await _resolvePlaybackUrl(fileUrl, generation: generation);
+    if (kIsWeb) BrowserFeatures.clearAudio();
+    final routed = kIsWeb ? await WebGateway.media(fileUrl) : await _resolvePlaybackUrl(fileUrl, generation: generation);
     requireCurrent();
     try {
-      await _player.open(Media(routed, httpHeaders: headers), play: play);
+      await _player.open(Media(routed, httpHeaders: kIsWeb ? null : headers), play: play);
     } catch (_) {
       requireCurrent();
       rethrow;
@@ -2687,6 +2699,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
 
     watchQuiet(_player.stream.position, (value) {
       _position = value;
+      if (kIsWeb && _webSubtitle != null && mounted) {
+        final lines = _webSubtitleVisible ? _webSubtitle!.at(value, delay: _subtitle.delay, scale: _subtitle.timingScale) : <String>[];
+        if (!listEquals(lines, _subtitles)) setState(() => _subtitles = lines);
+      }
       if ((_playbackErrorTimer != null || _error != null) &&
           playbackContinuedAfterError(
             position: value,
@@ -2729,7 +2745,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
       unawaited(_setNativeSubtitleVisibility(_nativeSubtitleRendering));
     });
     _subscriptions.add(_player.stream.error.listen(_handlePlaybackError));
-    watch(_player.stream.subtitle, (value) => _subtitles = value);
+    watch(_player.stream.subtitle, (value) { if (_webSubtitle == null) _subtitles = value; });
     watchQuiet(_player.stream.videoParams, (value) {
       final aspect =
           value.aspect ??
@@ -2811,15 +2827,16 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   Future<void> _setNativeSubtitleVisibility(bool visible) async {
     final platform = _player.platform;
     if (platform is NativePlayer) {
-      await platform.setProperty('sub-visibility', visible ? 'yes' : 'no');
+      await setNativePlayerProperty(platform, 'sub-visibility', visible ? 'yes' : 'no');
     }
   }
 
   Future<void> _applySubtitleTiming(SubtitlePreferences prefs) async {
+    if (kIsWeb && _webSubtitle != null) BrowserFeatures.subtitle(_webSubtitle!.vtt(delay: prefs.delay, scale: prefs.timingScale));
     final platform = _player.platform;
     if (platform is NativePlayer) {
-      await platform.setProperty('sub-delay', prefs.delay.toStringAsFixed(2));
-      await platform.setProperty(
+      await setNativePlayerProperty(platform, 'sub-delay', prefs.delay.toStringAsFixed(2));
+      await setNativePlayerProperty(platform,
         'sub-speed',
         prefs.timingScale.toStringAsFixed(3),
       );
@@ -3752,6 +3769,11 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   /// local state (no await gaps), so a back-press racing a toggle can never
   /// leave the title bar hidden: dispose() resets it the same way.
   Future<void> _toggleFullscreen() async {
+    if (kIsWeb) {
+      final full = await BrowserFeatures.fullscreen(!_isFullScreen);
+      if (mounted) setState(() => _isFullScreen = full);
+      return;
+    }
     if (!isDesktopWindow) return;
     final next = !_isFullScreen;
     _isFullScreen = next;
@@ -3871,9 +3893,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
 
   void _armHideTimer() {
     _hideTimer?.cancel();
-    if (!_playing || _isSeeking) return;
-    _hideTimer = Timer(playerControlsAutoHideDelay, () {
-      if (mounted && _playing && !_isSeeking) setState(() => _controlsVisible = false);
+    if (!_playing || _isSeeking || ModalRoute.of(context)?.isCurrent != true) return;
+    _hideTimer = Timer(kIsWeb ? const Duration(seconds: 8) : playerControlsAutoHideDelay, () {
+      if (mounted && _playing && !_isSeeking && ModalRoute.of(context)?.isCurrent == true) setState(() => _controlsVisible = false);
     });
   }
 
@@ -3999,6 +4021,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
         unawaited(_player.setRate(next));
         unawaited(_savePlayerPrefsWith(rate: next));
       case PlayerCommand.subtitles:
+        if (kIsWeb && _webSubtitle != null) {
+          setState(() { _webSubtitleVisible = !_webSubtitleVisible; if (!_webSubtitleVisible) _subtitles = []; });
+          break;
+        }
         unawaited(
           _player.setSubtitleTrack(
             _track.subtitle.id == 'no'
@@ -4093,7 +4119,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                       Column(
                         children: [
                           Expanded(
-                            child: _AudioTracks(
+                            child: kIsWeb ? const Center(child: Padding(padding: EdgeInsets.all(16), child: Text('صدای اصلی ویدیو فعال است. برای صدای جداگانه، فایل یا لینک صدا را انتخاب کن.', textAlign: TextAlign.center))) : _AudioTracks(
                               player: _player,
                               tracks: _tracks.audio,
                               selected: _track.audio,
@@ -4101,7 +4127,12 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                           ),
                           AudioSourceActions(
                             onSelected: (track) async {
-                              await _player.setAudioTrack(track);
+                              if (kIsWeb) {
+                                final uri = track.id.startsWith('http') ? await WebGateway.externalAudio(track.id) : track.id;
+                                await BrowserFeatures.externalAudio(uri);
+                              } else {
+                                await _player.setAudioTrack(track);
+                              }
                               if (context.mounted) Navigator.pop(context);
                             },
                           ),
@@ -4228,6 +4259,13 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     );
     final file = await openFile(acceptedTypeGroups: const [subtitleFiles]);
     if (file == null) return;
+    if (kIsWeb) {
+      _webSubtitle = WebSubtitleDocument.parse(await file.readAsString());
+      _webSubtitleVisible = true;
+      BrowserFeatures.subtitle(_webSubtitle!.vtt(delay: _subtitle.delay, scale: _subtitle.timingScale));
+      if (mounted) { setState(() {}); Navigator.pop(context); }
+      return;
+    }
     final track = SubtitleTrack.uri(
       file.path,
       title: file.name,
@@ -4279,6 +4317,17 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
           const SnackBar(content: Text('لینک زیرنویس معتبر نیست.')),
         );
       }
+      return;
+    }
+    if (kIsWeb) {
+      final response = await http.post(WebGateway.endpoint('/api/web/subtitle'),
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ${WebGateway.token}'},
+        body: jsonEncode({'url': url}));
+      if (response.statusCode != 200) throw const FormatException('زیرنویس قابل دریافت نیست.');
+      _webSubtitle = WebSubtitleDocument.parse(utf8.decode(response.bodyBytes, allowMalformed: true));
+      _webSubtitleVisible = true;
+      BrowserFeatures.subtitle(_webSubtitle!.vtt(delay: _subtitle.delay, scale: _subtitle.timingScale));
+      if (mounted) { setState(() {}); Navigator.pop(context); }
       return;
     }
     final track = SubtitleTrack.uri(
@@ -4389,6 +4438,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
       backgroundColor: Colors.black,
       body: Listener(
         onPointerSignal: _handlePointerSignal,
+        onPointerDown: kIsWeb ? (_) => _hideTimer?.cancel() : null,
+        onPointerUp: kIsWeb ? (_) => _armHideTimer() : null,
         child: PlayerKeyboard(
           isTelevision: isAndroidTv,
           controlsVisible: _controlsVisible,
@@ -4421,7 +4472,11 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                 : SystemMouseCursors.basic,
             onHover: (_) {
               _pokeCursor();
-              if (!_touchLocked && !_controlsVisible) _showControls();
+              if (!_touchLocked && !_controlsVisible) {
+                _showControls();
+              } else if (kIsWeb) {
+                _armHideTimer();
+              }
             },
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -4431,9 +4486,14 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                   _showUnlockButton();
                   return;
                 }
-                _controlsVisible
-                    ? setState(() => _controlsVisible = false)
-                    : _showControls();
+                // Hover can reveal controls just before the browser click.
+                if (kIsWeb) {
+                  _showControls();
+                } else {
+                  _controlsVisible
+                      ? setState(() => _controlsVisible = false)
+                      : _showControls();
+                }
               },
               onVerticalDragStart: (details) => _startVerticalGesture(
                 details,
@@ -4479,7 +4539,17 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                       prefs: _subtitle,
                       isPictureInPicture: _isInPip,
                     ),
-                  if (!_windowResizing && _buffering && !_touchLocked)
+                  if (kIsWeb)
+                    ValueListenableBuilder<bool>(
+                      valueListenable: WebGateway.preparingVideo,
+                      builder: (_, preparing, _) => preparing
+                          ? const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                              CircularProgressIndicator(), SizedBox(height: 16),
+                              Text('در حال آماده‌سازی پخش…', style: TextStyle(color: Colors.white)),
+                            ]))
+                          : const SizedBox.shrink(),
+                    ),
+                  if (!_windowResizing && _buffering && !_touchLocked && !WebGateway.preparingVideo.value)
                     const Center(child: CircularProgressIndicator()),
                   if (!_windowResizing && _error != null && !_touchLocked)
                     _PlayerError(onBack: () => unawaited(_exitPlayer())),
@@ -4511,8 +4581,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                   top: 6,
                                   right: 12,
                                   left: 12,
-                                  child: Row(
-                                    children: [
+                                  child: LayoutBuilder(builder: (context, constraints) {
+                                    final children = <Widget>[
                                       _RoundControl(
                                         icon: Icons.arrow_forward_rounded,
                                         tooltip: 'بازگشت',
@@ -4567,7 +4637,18 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                         tooltip: 'اندازهٔ تصویر (V)',
                                         onTap: _toggleFit,
                                       ),
-                                      if (isDesktopWindow) ...[
+                                      if (kIsWeb) ...[
+                                        const SizedBox(width: 8),
+                                        _RoundControl(icon: Icons.cast_rounded, tooltip: 'AirPlay / ارسال تصویر',
+                                          onTap: () async {
+                                            final shown = await BrowserFeatures.cast();
+                                            if (!shown && context.mounted) {
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                const SnackBar(content: Text('این مرورگر یا دستگاه ارسال تصویر را پشتیبانی نمی‌کند.')));
+                                            }
+                                          }),
+                                      ],
+                                      if (isDesktopWindow || kIsWeb) ...[
                                         const SizedBox(width: 8),
                                         _RoundControl(
                                           icon: _isFullScreen
@@ -4602,8 +4683,17 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                           onTap: _lockTouch,
                                         ),
                                       ],
-                                    ],
-                                  ),
+                                    ];
+                                    if (kIsWeb && constraints.maxWidth < 700) {
+                                      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                                        Row(children: children.take(3).toList()),
+                                        const SizedBox(height: 10),
+                                        Wrap(alignment: WrapAlignment.end, spacing: 8, runSpacing: 8,
+                                          children: children.skip(3).where((child) => child is! SizedBox).toList()),
+                                      ]);
+                                    }
+                                    return Row(children: children);
+                                  }),
                                 ),
                                 Center(
                                   child: Row(
@@ -5046,7 +5136,7 @@ class _InstantPlayerTapState extends State<_InstantPlayerTap> {
   void _press(PointerDownEvent event) {
     if (_pressed || event.buttons != kPrimaryButton) return;
     setState(() => _pressed = true);
-    widget.onTap();
+    if (!kIsWeb) widget.onTap();
   }
 
   void _release(PointerEvent _) {
@@ -5068,7 +5158,8 @@ class _InstantPlayerTapState extends State<_InstantPlayerTap> {
           onPointerCancel: _release,
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: () {},
+            excludeFromSemantics: true,
+            onTap: kIsWeb ? widget.onTap : () {},
             // Control taps must not trigger the video's double-tap gesture.
             onDoubleTap: () {},
             child: AnimatedScale(

@@ -1,5 +1,6 @@
 import 'dart:async';
-import 'dart:io';
+import 'package:flutter/foundation.dart';
+import '../core/app_platform.dart';
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -247,6 +248,7 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
   }
 
   Future<void> _showPlayback(EpisodeGroup group) async {
+    if (kIsWeb) { await _tapEpisode(group, group.variantFor(_selectedQuality)); return; }
     final variant = group.variantFor(_selectedQuality);
     final allowedPlayers = <String>{
       PlaybackPreferenceStore.internalPlayer,

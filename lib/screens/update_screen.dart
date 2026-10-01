@@ -1,5 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'dart:async';
-import 'dart:io';
+import '../core/app_platform.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../core/theme.dart';
@@ -81,7 +82,7 @@ class UpdatePresentation {
     );
   }
 
-  static void checkNow() => unawaited(AppUpdater.instance.check());
+  static void checkNow() { if (!kIsWeb) unawaited(AppUpdater.instance.check()); }
 
   static void _installStatusChanged() {
     AppUpdater.instance.handleNativeInstallStatus(

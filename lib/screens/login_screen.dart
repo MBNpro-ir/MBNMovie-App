@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../core/theme.dart';
 import '../services/mbn_auth.dart';
 import '../widgets/ambient_background.dart';
+import '../widgets/session_devices_dialog.dart';
 import '../widgets/brand_mark.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -126,7 +127,10 @@ class _LoginScreenState extends State<LoginScreen> {
         await widget.onLogin(_email.text, _password.text);
       }
     } on MbnAuthException catch (error) {
-      if (mounted) {
+      if (mounted && error.details?['code'] == 'session_limit') {
+        final result = await showSessionDevicesDialog(context, error.details!, widget.auth.postJson);
+        if (result != null) await widget.onAuthenticated(result, _mobile.text.trim());
+      } else if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(error.message)));

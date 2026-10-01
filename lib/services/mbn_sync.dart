@@ -1,5 +1,6 @@
 import 'dart:async';
-import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart';
+import '../core/app_platform.dart' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -305,7 +306,7 @@ class MbnSync {
     if (prefs.getBool(promptKey) ?? false) return;
 
     try {
-      final platformKey = Platform.isWindows ? 'windows' : (Platform.isAndroid ? 'android' : 'other');
+      final platformKey = kIsWeb ? 'web' : (Platform.isWindows ? 'windows' : (Platform.isAndroid ? 'android' : 'other'));
       final res = await auth!.getJson('/api/sync/other-settings', query: {'platform': platformKey});
       if (res['has_settings'] == true && res['settings'] is Map) {
         final otherName = res['other_app_name']?.toString() ?? 'برنامه دیگر';
@@ -369,7 +370,7 @@ class MbnSync {
 
       // 2. If current app had no settings or nothing restored, fallback to checking other app's settings
       if (!restored) {
-        final platformKey = Platform.isWindows ? 'windows' : (Platform.isAndroid ? 'android' : 'other');
+        final platformKey = kIsWeb ? 'web' : (Platform.isWindows ? 'windows' : (Platform.isAndroid ? 'android' : 'other'));
         final otherRes = await auth.getJson(
           '/api/sync/other-settings',
           query: {'platform': platformKey},
@@ -420,7 +421,7 @@ class MbnSync {
         final prefs = await SharedPreferences.getInstance();
         if (!(prefs.getBool('sync_settings_enabled') ?? true)) return null;
         final raw = await _readPreferenceKeys();
-        final platformKey = Platform.isWindows ? 'windows' : (Platform.isAndroid ? 'android' : 'other');
+        final platformKey = kIsWeb ? 'web' : (Platform.isWindows ? 'windows' : (Platform.isAndroid ? 'android' : 'other'));
         return {platformKey: raw};
     }
     return null;
@@ -459,7 +460,7 @@ class MbnSync {
     final prefs = await SharedPreferences.getInstance();
     if (!(prefs.getBool('sync_settings_enabled') ?? true)) return false;
 
-    final platformKey = Platform.isWindows ? 'windows' : (Platform.isAndroid ? 'android' : 'other');
+    final platformKey = kIsWeb ? 'web' : (Platform.isWindows ? 'windows' : (Platform.isAndroid ? 'android' : 'other'));
     Map? targetPayload;
     bool isCrossPlatformFallback = false;
 
