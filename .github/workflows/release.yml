@@ -61,7 +61,7 @@ jobs:
       - name: Analyze and test both device layouts
         run: |
           flutter pub get
-          flutter analyze lib test
+          flutter analyze lib test integration_test packages/flutter_secure_storage_windows/lib
           flutter test
 
       - name: Restore dedicated Android signing key
@@ -127,6 +127,11 @@ jobs:
           channel: stable
           cache: true
           pub-cache: true
+
+      - name: Test Windows encrypted storage
+        run: |
+          flutter pub get
+          flutter test packages/flutter_secure_storage_windows/test/unit_test.dart
 
       - name: Build Windows release
         env:

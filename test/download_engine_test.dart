@@ -67,7 +67,11 @@ class TestDownloadStorage implements PersistentStorage {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   HttpOverrides.global = null;
-  debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+  // Match the real filesystem host: Windows root paths contain a drive,
+  // while Linux CI requires the leading slash in /tmp.
+  debugDefaultTargetPlatformOverride = Platform.isWindows
+      ? TargetPlatform.windows
+      : TargetPlatform.linux;
   final storage = TestDownloadStorage();
   final downloader = FileDownloader(persistentStorage: storage);
   final updates = downloader.updates.asBroadcastStream();
@@ -76,7 +80,9 @@ void main() {
   final payload = List.generate(2 * 1024 * 1024, (index) => index % 251);
   var rangeRequests = 0;
   setUpAll(() async {
-    directory = await Directory.systemTemp.createTemp('mbnmovie-download-test-');
+    directory = await Directory.systemTemp.createTemp(
+      'mbnmovie-download-test-',
+    );
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
           const MethodChannel('plugins.flutter.io/path_provider'),
@@ -132,6 +138,7 @@ void main() {
     downloader.destroy();
     await server.close(force: true);
     await directory.delete(recursive: true);
+    debugDefaultTargetPlatformOverride = null;
   });
   DownloadTask task(String name, {String path = '/file'}) => DownloadTask(
     url: 'http://127.0.0.1:${server.port}$path',

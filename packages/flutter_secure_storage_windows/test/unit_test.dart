@@ -15,16 +15,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
-import 'package:path_provider_windows/path_provider_windows.dart';
 import 'package:win32/win32.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  // Register the Windows path_provider FFI implementation so that
-  // getApplicationSupportDirectory() works in flutter test without a
-  // full app plugin registrant.
-  PathProviderPlatform.instance = PathProviderWindows();
+  // Every encryption test uses its own directory, never installed app data.
+  final testDirectory = Directory.systemTemp.createTempSync('mbn-dpapi-qa-');
+  PathProviderPlatform.instance = _QaPathProvider(testDirectory.path);
+  tearDownAll(() async => testDirectory.delete(recursive: true));
 
   FutureOr<void> cleanUpFiles() async {
     // Clean up current & legacy files.
@@ -1401,15 +1400,16 @@ Uint8List _dpApiEncrypt(Uint8List data) {
 
     final encBlob =
         alloc.allocate<CRYPT_INTEGER_BLOB>(sizeOf<CRYPT_INTEGER_BLOB>());
-    final Win32Result(value: isProtected) = CryptProtectData(
+    final isProtected = CryptProtectData(
       plainBlob,
-      null,
-      null,
-      null,
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
       0,
       encBlob,
     );
-    if (!isProtected) {
+    if (isProtected == 0) {
       throw StateError('_dpApiEncrypt: CryptProtectData failed');
     }
 
@@ -1418,7 +1418,7 @@ Uint8List _dpApiEncrypt(Uint8List data) {
         encBlob.ref.pbData.asTypedList(encBlob.ref.cbData),
       );
     } finally {
-      LocalFree(HLOCAL(encBlob.ref.pbData.cast()));
+      LocalFree(encBlob.ref.pbData.cast());
     }
   });
 }
@@ -1447,6 +1447,13 @@ class _FaultyMapStorage extends ffi.MapStorage {
 
   @override
   FutureOr<void> clear(Map<String, String> options) => _delegate.clear(options);
+}
+
+class _QaPathProvider extends PathProviderPlatform {
+  _QaPathProvider(this.directory);
+  final String directory;
+  @override
+  Future<String?> getApplicationSupportPath() async => directory;
 }
 
 bool canTest() {
