@@ -1,3 +1,4 @@
+import '../widgets/adaptive_player_header.dart';
 import 'dart:convert';
 import '../core/native_player_properties.dart';
 import 'package:flutter/foundation.dart';
@@ -4472,7 +4473,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                 : SystemMouseCursors.basic,
             onHover: (_) {
               _pokeCursor();
-              if (!_touchLocked && !_controlsVisible) {
+              if (!kIsWeb && !_touchLocked && !_controlsVisible) {
                 _showControls();
               } else if (kIsWeb) {
                 _armHideTimer();
@@ -4486,14 +4487,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                   _showUnlockButton();
                   return;
                 }
-                // Hover can reveal controls just before the browser click.
-                if (kIsWeb) {
-                  _showControls();
-                } else {
-                  _controlsVisible
-                      ? setState(() => _controlsVisible = false)
-                      : _showControls();
-                }
+                _hideTimer?.cancel();
+                _controlsVisible
+                    ? setState(() => _controlsVisible = false)
+                    : _showControls();
               },
               onVerticalDragStart: (details) => _startVerticalGesture(
                 details,
@@ -4581,119 +4578,154 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                   top: 6,
                                   right: 12,
                                   left: 12,
-                                  child: LayoutBuilder(builder: (context, constraints) {
-                                    final children = <Widget>[
-                                      _RoundControl(
-                                        icon: Icons.arrow_forward_rounded,
-                                        tooltip: 'بازگشت',
-                                        onTap: () => unawaited(_exitPlayer()),
-                                      ),
-                                      const SizedBox(width: 14),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              widget.content.title,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(
-                                                fontSize: 18,
-                                                fontWeight: FontWeight.w700,
-                                              ),
-                                            ),
-                                            Text(
-                                              _episode.name,
-                                              style: const TextStyle(
-                                                color: Colors.white70,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      _RoundControl(
-                                        icon: Icons.graphic_eq_rounded,
-                                        tooltip: 'صدا و زیرنویس',
-                                        onTap: _showTrackPicker,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      _RoundControl(
-                                        icon: Icons.closed_caption_rounded,
-                                        tooltip: 'تنظیم زیرنویس',
-                                        onTap: _showSubtitleSettings,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      _RoundControl(
-                                        icon: Icons.speed_rounded,
-                                        tooltip: 'تنظیم سرعت',
-                                        onTap: _showSpeedSettings,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      _RoundControl(
-                                        icon: _fitCover
-                                            ? Icons.fit_screen_rounded
-                                            : Icons.aspect_ratio_rounded,
-                                        tooltip: 'اندازهٔ تصویر (V)',
-                                        onTap: _toggleFit,
-                                      ),
-                                      if (kIsWeb) ...[
-                                        const SizedBox(width: 8),
-                                        _RoundControl(icon: Icons.cast_rounded, tooltip: 'AirPlay / ارسال تصویر',
-                                          onTap: () async {
-                                            final shown = await BrowserFeatures.cast();
-                                            if (!shown && context.mounted) {
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                const SnackBar(content: Text('این مرورگر یا دستگاه ارسال تصویر را پشتیبانی نمی‌کند.')));
-                                            }
-                                          }),
-                                      ],
-                                      if (isDesktopWindow || kIsWeb) ...[
-                                        const SizedBox(width: 8),
+                                  child: LayoutBuilder(
+                                    builder: (context, constraints) {
+                                      final children = <Widget>[
                                         _RoundControl(
-                                          icon: _isFullScreen
-                                              ? Icons.fullscreen_exit_rounded
-                                              : Icons.fullscreen_rounded,
-                                          tooltip: 'تمام‌صفحه (F)',
-                                          onTap: _toggleFullscreen,
+                                          icon: Icons.arrow_forward_rounded,
+                                          tooltip: 'بازگشت',
+                                          onTap: () => unawaited(_exitPlayer()),
+                                        ),
+                                        const SizedBox(width: 14),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                widget.content.title,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(
+                                                  fontSize: 18,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                              Text(
+                                                _episode.name,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(
+                                                  color: Colors.white70,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        _RoundControl(
+                                          icon: Icons.graphic_eq_rounded,
+                                          tooltip: 'صدا و زیرنویس',
+                                          onTap: _showTrackPicker,
                                         ),
                                         const SizedBox(width: 8),
                                         _RoundControl(
-                                          icon: Icons.keyboard_rounded,
-                                          tooltip: 'راهنمای کیبورد (F1)',
-                                          onTap: () => _keyboardCommand(
-                                            PlayerCommand.help,
-                                          ),
+                                          icon: Icons.closed_caption_rounded,
+                                          tooltip: 'تنظیم زیرنویس',
+                                          onTap: _showSubtitleSettings,
                                         ),
-                                      ],
-                                      if (!isDesktopWindow && !isAndroidTv) ...[
                                         const SizedBox(width: 8),
-                                        if (_pipSupported) ...[
-                                          _RoundControl(
-                                            icon: Icons
-                                                .picture_in_picture_alt_rounded,
-                                            tooltip: 'تصویر در تصویر',
-                                            onTap: _enterPictureInPicture,
-                                          ),
+                                        _RoundControl(
+                                          icon: Icons.speed_rounded,
+                                          tooltip: 'تنظیم سرعت',
+                                          onTap: _showSpeedSettings,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        _RoundControl(
+                                          icon: _fitCover
+                                              ? Icons.fit_screen_rounded
+                                              : Icons.aspect_ratio_rounded,
+                                          tooltip: 'اندازهٔ تصویر (V)',
+                                          onTap: _toggleFit,
+                                        ),
+                                        if (kIsWeb &&
+                                            BrowserFeatures.castSupported) ...[
                                           const SizedBox(width: 8),
+                                          _RoundControl(
+                                            icon: Icons.cast_rounded,
+                                            tooltip: 'AirPlay / ارسال تصویر',
+                                            onTap: () async {
+                                              final shown =
+                                                  await BrowserFeatures.cast();
+                                              if (!shown && context.mounted) {
+                                                ScaffoldMessenger.of(
+                                                  context,
+                                                ).showSnackBar(
+                                                  const SnackBar(
+                                                    content: Text(
+                                                      'این مرورگر یا دستگاه ارسال تصویر را پشتیبانی نمی‌کند.',
+                                                    ),
+                                                  ),
+                                                );
+                                              }
+                                            },
+                                          ),
                                         ],
-                                        _RoundControl(
-                                          icon: Icons.lock_outline_rounded,
-                                          tooltip: 'قفل لمس',
-                                          onTap: _lockTouch,
-                                        ),
-                                      ],
-                                    ];
-                                    if (kIsWeb && constraints.maxWidth < 700) {
-                                      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                                        Row(children: children.take(3).toList()),
-                                        const SizedBox(height: 10),
-                                        Wrap(alignment: WrapAlignment.end, spacing: 8, runSpacing: 8,
-                                          children: children.skip(3).where((child) => child is! SizedBox).toList()),
-                                      ]);
-                                    }
-                                    return Row(children: children);
-                                  }),
+                                        if (isDesktopWindow || kIsWeb) ...[
+                                          const SizedBox(width: 8),
+                                          _RoundControl(
+                                            icon: _isFullScreen
+                                                ? Icons.fullscreen_exit_rounded
+                                                : Icons.fullscreen_rounded,
+                                            tooltip: 'تمام‌صفحه (F)',
+                                            onTap: _toggleFullscreen,
+                                          ),
+                                        ],
+                                        if (isDesktopWindow ||
+                                            (kIsWeb &&
+                                                !BrowserFeatures
+                                                    .isMobileBrowser)) ...[
+                                          const SizedBox(width: 8),
+                                          _RoundControl(
+                                            icon: Icons.keyboard_rounded,
+                                            tooltip: 'راهنمای کیبورد (F1)',
+                                            onTap: () => _keyboardCommand(
+                                              PlayerCommand.help,
+                                            ),
+                                          ),
+                                        ],
+                                        if ((kIsWeb || !isDesktopWindow) &&
+                                            !isAndroidTv) ...[
+                                          const SizedBox(width: 8),
+                                          if (_pipSupported) ...[
+                                            _RoundControl(
+                                              icon: Icons
+                                                  .picture_in_picture_alt_rounded,
+                                              tooltip: 'تصویر در تصویر',
+                                              onTap: _enterPictureInPicture,
+                                            ),
+                                            const SizedBox(width: 8),
+                                          ],
+                                          if (!kIsWeb ||
+                                              BrowserFeatures.isMobileBrowser)
+                                            _RoundControl(
+                                              icon: Icons.lock_outline_rounded,
+                                              tooltip: 'قفل لمس',
+                                              onTap: _lockTouch,
+                                            ),
+                                        ],
+                                      ];
+                                      final actions = children
+                                          .skip(3)
+                                          .whereType<_RoundControl>()
+                                          .toList();
+                                      return AdaptivePlayerHeader(
+                                        back: children.first,
+                                        title: (children[2] as Expanded).child,
+                                        actions: [
+                                          for (final action in actions)
+                                            PlayerHeaderAction(
+                                              icon: action.icon,
+                                              label: action.tooltip,
+                                              onTap: action.onTap,
+                                              button: action,
+                                            ),
+                                        ],
+                                        onMenuOpened: () =>
+                                            _hideTimer?.cancel(),
+                                        onMenuClosed: _armHideTimer,
+                                      );
+                                    },
+                                  ),
                                 ),
                                 Center(
                                   child: Row(

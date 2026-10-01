@@ -171,7 +171,10 @@ class DeviceBridge(
                 }
                 "clearAuthBridge" -> {
                     val prefs = activity.getSharedPreferences("mbn_auth_bridge", Context.MODE_PRIVATE)
-                    prefs.edit().clear().apply()
+                    val expected = call.argument<String>("token")
+                    if (expected == null || prefs.getString("token", null) == expected) {
+                        prefs.edit().clear().apply()
+                    }
                     result.success(true)
                 }
                 "readSiblingAuth" -> {

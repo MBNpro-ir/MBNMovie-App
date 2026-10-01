@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 abstract final class BrowserFeatures {
+  static bool get isMobileBrowser => false;
+  static bool get castSupported => false;
   static bool get requiresCompatibleVideo => false;
   static void download(String url, String name) {}
   static void saveBytes(Uint8List bytes, String name, String mime) {}

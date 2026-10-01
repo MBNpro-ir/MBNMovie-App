@@ -73,10 +73,10 @@ class DeviceBridge {
     } catch (_) {}
   }
 
-  static Future<void> clearAuthBridge() async {
+  static Future<void> clearAuthBridge({String? token}) async {
     if (!Platform.isAndroid) return;
     try {
-      await channel.invokeMethod('clearAuthBridge');
+      await channel.invokeMethod('clearAuthBridge', {'token': token});
     } catch (_) {}
   }
 

@@ -9,7 +9,8 @@ void main() {
   ) async {
     SharedPreferences.setMockInitialValues({});
     FlutterSecureStorage.setMockInitialValues({});
-    await tester.pumpWidget(const MbnmovieApp());
+    var sharedReads = 0;
+    await tester.pumpWidget(MbnmovieApp(sharedTokenReader: () async { sharedReads++; return null; }));
     // On Windows hosts the custom title bar renders an extra 'MBNMovie'
     // next to the splash brand mark, so accept one or more matches.
     expect(find.text('MBNMovie'), findsWidgets);
@@ -19,6 +20,7 @@ void main() {
     // No saved session in tests: the server login gate is shown. Network is
     // unavailable in widget tests, so restore always fails here.
     expect(find.text('خوش برگشتی'), findsOneWidget);
+    expect(sharedReads, greaterThanOrEqualTo(1));
     expect(find.text('ورود به MBNMovie'), findsOneWidget);
   });
 }

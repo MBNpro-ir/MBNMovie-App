@@ -80,7 +80,11 @@ class MbnAuth {
   final String baseUrl;
   String? _token;
   String? get token => _token;
-  set token(String? value) { _token = value; WebGateway.token = value; }
+  set token(String? value) {
+    _token = value;
+    WebGateway.token = value;
+  }
+
   MbnProfile? profile;
   String? forcedLogoutMessage;
 
@@ -166,6 +170,7 @@ class MbnAuth {
       'identifier': identifier.trim(),
       'password': password,
       'app': 'movie',
+      'shared_token': await CrossAppAuth.readSiblingToken(siblingId: 'MBNime'),
     });
     return loginWithHandoff(data, identifier: identifier);
   }
@@ -191,16 +196,23 @@ class MbnAuth {
     token = authToken;
     try {
       try {
-        final exchanged = await postJson('/api/auth/exchange', {'target_app': 'movie'});
+        final exchanged = await postJson('/api/auth/exchange', {
+          'target_app': 'movie',
+          'previous_token': prevToken,
+        });
         if (exchanged['token'] != null) {
           token = exchanged['token'].toString();
         }
-      } on MbnAuthException { rethrow; }
+      } on MbnAuthException {
+        rethrow;
+      }
       final data = await getJson('/api/me');
       profile = MbnProfile.fromJson(
         (data['user'] as Map?)?.cast<String, dynamic>() ?? {},
       );
-      final identifier = profile!.email.isNotEmpty ? profile!.email : profile!.username;
+      final identifier = profile!.email.isNotEmpty
+          ? profile!.email
+          : profile!.username;
       await _persist(identifier);
       return profile!;
     } catch (_) {
@@ -275,12 +287,17 @@ class MbnAuth {
   Future<void> logout() async {
     final oldToken = token;
     if (oldToken != null) {
-      _client.post(_uri('/api/auth/logout'), headers: {'Authorization': 'Bearer $oldToken'})
-        .timeout(const Duration(seconds: 5)).then((_) {}, onError: (Object _) {});
+      _client
+          .post(
+            _uri('/api/auth/logout'),
+            headers: {'Authorization': 'Bearer $oldToken'},
+          )
+          .timeout(const Duration(seconds: 5))
+          .then((_) {}, onError: (Object _) {});
     }
     token = null;
     profile = null;
-    unawaited(CrossAppAuth.clearSharedToken());
+    await CrossAppAuth.clearSharedToken(token: oldToken);
     try {
       await _secureStorage.delete(key: _tokenKey);
       final prefs = await SharedPreferences.getInstance();
@@ -294,7 +311,7 @@ class MbnAuth {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_emailKey, email);
       if (token != null && token!.isNotEmpty) {
-        unawaited(CrossAppAuth.saveSharedToken(token: token!, email: email));
+        await CrossAppAuth.saveSharedToken(token: token!, email: email);
       }
     } catch (_) {}
   }

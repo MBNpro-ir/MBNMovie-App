@@ -27,7 +27,9 @@ import 'services/app_updater.dart';
 import 'services/cross_app_auth.dart';
 
 class MbnmovieApp extends StatefulWidget {
-  const MbnmovieApp({super.key});
+  const MbnmovieApp({super.key, this.sharedTokenReader});
+
+  final Future<String?> Function()? sharedTokenReader;
 
   @override
   State<MbnmovieApp> createState() => _MbnmovieAppState();
@@ -48,6 +50,8 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
   bool _handoffBusy = false;
   bool _siblingAvailable = false;
   bool _checkingAccount = false;
+  bool _sharedLoginBusy = false;
+  bool _loginBusy = false;
   bool _terminating = false;
   late final SessionWatch _sessionWatch = SessionWatch(_forceLogout);
 
@@ -56,10 +60,10 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     unawaited(TitleLanguage.initialize());
-    _accountTimer = Timer.periodic(
-      const Duration(seconds: 6),
-      (_) => _checkAccount(),
-    );
+    _accountTimer = Timer.periodic(const Duration(seconds: 6), (_) {
+      unawaited(_checkAccount());
+      unawaited(_restoreSharedLogin());
+    });
     _syncTimer = Timer.periodic(
       const Duration(minutes: 1),
       (_) => unawaited(MbnSync.instance.syncAll()),
@@ -86,6 +90,7 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _checkAccount();
+      unawaited(_restoreSharedLogin());
       UpdatePresentation.checkNow();
       unawaited(MbnSync.instance.syncAll());
       unawaited(_checkSibling());
@@ -167,6 +172,10 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
       await Future.wait([
         () async {
           ok = await _auth.restore();
+          if (_auth.forcedLogoutMessage == null) {
+            await _restoreSharedLogin(startup: true);
+            ok = _auth.profile != null;
+          }
           if (!ok &&
               _auth.forcedLogoutMessage == null &&
               kDebugMode &&
@@ -215,6 +224,48 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _restoreSharedLogin({bool startup = false}) async {
+    if (_loginBusy ||
+        _sharedLoginBusy ||
+        (!startup && _restoring) ||
+        (!startup && _loggedIn) ||
+        _terminating ||
+        !mounted) {
+      return;
+    }
+    _sharedLoginBusy = true;
+    try {
+      final token = await (widget.sharedTokenReader?.call() ?? CrossAppAuth.readSiblingToken(siblingId: 'MBNime'));
+      if (token == null) {
+        final current = _auth.token;
+        if (startup && current != null) {
+          await CrossAppAuth.saveSharedToken(
+            token: current,
+            email: _auth.profile?.email ?? "",
+          );
+        }
+        return;
+      }
+      if (!mounted || _terminating || (!startup && _loggedIn)) return;
+      await _auth.loginWithToken(token);
+      await _bindDelfanSession();
+      if (_auth.profile != null) {
+        await MbnSync.instance.bindAccount(_auth.profile!.id);
+      }
+      MbnSync.instance.configure(auth: _auth);
+      if (mounted) {
+        setState(() {
+          _loggedIn = true;
+        });
+      }
+      unawaited(MbnSync.instance.syncAll());
+    } catch (_) {
+      // An expired/revoked sibling token never creates a replacement session.
+    } finally {
+      _sharedLoginBusy = false;
+    }
+  }
+
   void _refresh() => setState(() {});
 
   Future<void> _bindDelfanSession() async {
@@ -238,7 +289,11 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
     }
   }
 
-  Future<bool> _loginWithCapacity(Future<dynamic> Function() action, String identifier) async {
+  Future<bool> _loginWithCapacity(
+    Future<dynamic> Function() action,
+    String identifier,
+  ) async {
+    _loginBusy = true;
     try {
       await action();
       return true;
@@ -246,10 +301,16 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
       if (error.details?['code'] != 'session_limit') rethrow;
       final ctx = appNavigatorKey.currentContext;
       if (ctx == null || !ctx.mounted) rethrow;
-      final result = await showSessionDevicesDialog(ctx, error.details!, _auth.postJson);
+      final result = await showSessionDevicesDialog(
+        ctx,
+        error.details!,
+        _auth.postJson,
+      );
       if (result == null) return false;
       await _auth.loginWithHandoff(result, identifier: identifier);
       return true;
+    } finally {
+      _loginBusy = false;
     }
   }
 
@@ -268,7 +329,9 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
       return;
     }
     try {
-      if (!await _loginWithCapacity(() => _auth.loginWithToken(token), 'کاربر')) return;
+      if (!await _loginWithCapacity(() => _auth.loginWithToken(token), 'کاربر')) {
+        return;
+      }
       await _bindDelfanSession();
       MbnSync.instance.configure(auth: _auth);
       if (_auth.profile != null && _auth.profile!.id > 0) {
@@ -280,8 +343,8 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
         final displayName = _auth.profile?.name.isNotEmpty == true
             ? _auth.profile!.name
             : (_auth.profile?.email.isNotEmpty == true
-                ? _auth.profile!.email
-                : _auth.profile?.username ?? '');
+                  ? _auth.profile!.email
+                  : _auth.profile?.username ?? '');
         appMessengerKey.currentState?.showSnackBar(
           SnackBar(
             content: Text(
@@ -408,14 +471,16 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
           false;
       if (!useIt) return;
       if (!await _loginWithCapacity(() async {
-      final data = await AuthHandoff.consume(
-        post: _auth.postJson,
-        id: id,
-        targetApp: 'movie',
-      );
-      if (data == null) return;
-      await _auth.loginWithHandoff(data, identifier: identifier);
-      }, identifier)) { return; }
+        final data = await AuthHandoff.consume(
+          post: _auth.postJson,
+          id: id,
+          targetApp: 'movie',
+        );
+        if (data == null) return;
+        await _auth.loginWithHandoff(data, identifier: identifier);
+      }, identifier)) {
+        return;
+      }
       await _bindDelfanSession();
       if (_auth.profile != null && _auth.profile!.id > 0) {
         await MbnSync.instance.bindAccount(_auth.profile!.id);
@@ -450,11 +515,17 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
           title: 'MBNMovie',
           theme: MovieTheme.buildTheme(
             highContrast: access.highContrast,
-            visualDensity: isAndroidTv ? VisualDensity.standard : access.visualDensity,
+            visualDensity: isAndroidTv
+                ? VisualDensity.standard
+                : access.visualDensity,
             reduceMotion: access.reduceMotion,
             boldText: access.boldText,
-            focusColor: isAndroidTv ? MovieColors.cyan.withValues(alpha: .4) : null,
-            hoverColor: isAndroidTv ? MovieColors.cyan.withValues(alpha: .15) : null,
+            focusColor: isAndroidTv
+                ? MovieColors.cyan.withValues(alpha: .4)
+                : null,
+            hoverColor: isAndroidTv
+                ? MovieColors.cyan.withValues(alpha: .15)
+                : null,
           ),
           locale: const Locale('fa', 'IR'),
           // Actually localize framework-provided strings (back-button tooltips,
@@ -479,71 +550,86 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
               ),
             ),
           ),
-      home: AnimatedSwitcher(
-        duration: access.reduceMotion ? Duration.zero : const Duration(milliseconds: 650),
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeInCubic,
-        transitionBuilder: (child, animation) => access.reduceMotion
-            ? child
-            : FadeTransition(
-                opacity: animation,
-                child: ScaleTransition(
-                  scale: Tween<double>(begin: .985, end: 1).animate(animation),
-                  child: child,
-                ),
-              ),
-        child: _restoring
-            ? const SplashScreen(key: ValueKey('splash'))
-            : _loggedIn
-            ? MainShell(
-                key: const ValueKey('main'),
-                email: (_auth.profile?.email.isNotEmpty ?? false)
-                    ? _auth.profile!.email
-                    : (_auth.profile?.username.isNotEmpty ?? false)
-                    ? _auth.profile!.username
-                    : 'کاربر',
-                auth: _auth,
-                api: _api,
-                onLogout: () async {
-                  try {
-                    await MbnSync.instance.flushPending();
-                  } catch (_) {}
-                  MbnSync.instance.clear();
-                  _api.clearDelfanSession();
-                  await _auth.logout();
-                  _loggedIn = false;
-                  _refresh();
-                },
-              )
-            : LoginScreen(
-                key: const ValueKey('login'),
-                auth: _auth,
-                onAuthenticated: (data, identifier) async {
-                  await _auth.loginWithHandoff(data, identifier: identifier);
-                  await _bindDelfanSession();
-                  MbnSync.instance.configure(auth: _auth);
-                  if (_auth.profile != null && _auth.profile!.id > 0) {
-                    await MbnSync.instance.bindAccount(_auth.profile!.id);
-                  }
-                  await MbnSync.instance.syncAll();
-                  if (mounted) setState(() => _loggedIn = true);
-                },
-                onUseOtherApp: _siblingAvailable ? _beginHandoff : null,
-                onLogin: (identifier, password) async {
-                  if (!await _loginWithCapacity(
-                    () => _auth.login(identifier: identifier, password: password), identifier)) { return; }
-                  await _bindDelfanSession();
-                  MbnSync.instance.configure(auth: _auth);
-                  if (_auth.profile != null && _auth.profile!.id > 0) {
-                    await MbnSync.instance.bindAccount(_auth.profile!.id);
-                  }
-                  await MbnSync.instance.syncAll();
-                  _loggedIn = true;
-                  _refresh();
-                },
-              ),
-      ),
-    );
+          home: AnimatedSwitcher(
+            duration: access.reduceMotion
+                ? Duration.zero
+                : const Duration(milliseconds: 650),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, animation) => access.reduceMotion
+                ? child
+                : FadeTransition(
+                    opacity: animation,
+                    child: ScaleTransition(
+                      scale: Tween<double>(
+                        begin: .985,
+                        end: 1,
+                      ).animate(animation),
+                      child: child,
+                    ),
+                  ),
+            child: _restoring
+                ? const SplashScreen(key: ValueKey('splash'))
+                : _loggedIn
+                ? MainShell(
+                    key: const ValueKey('main'),
+                    email: (_auth.profile?.email.isNotEmpty ?? false)
+                        ? _auth.profile!.email
+                        : (_auth.profile?.username.isNotEmpty ?? false)
+                        ? _auth.profile!.username
+                        : 'کاربر',
+                    auth: _auth,
+                    api: _api,
+                    onLogout: () async {
+                      try {
+                        await MbnSync.instance.flushPending();
+                      } catch (_) {}
+                      MbnSync.instance.clear();
+                      _api.clearDelfanSession();
+                      await _auth.logout();
+                      _loggedIn = false;
+                      _refresh();
+                    },
+                  )
+                : LoginScreen(
+                    key: const ValueKey('login'),
+                    auth: _auth,
+                    onAuthenticated: (data, identifier) async {
+                      await _auth.loginWithHandoff(
+                        data,
+                        identifier: identifier,
+                      );
+                      await _bindDelfanSession();
+                      MbnSync.instance.configure(auth: _auth);
+                      if (_auth.profile != null && _auth.profile!.id > 0) {
+                        await MbnSync.instance.bindAccount(_auth.profile!.id);
+                      }
+                      await MbnSync.instance.syncAll();
+                      if (mounted) setState(() => _loggedIn = true);
+                    },
+                    onUseOtherApp: _siblingAvailable ? _beginHandoff : null,
+                    onLogin: (identifier, password) async {
+                      if (!await _loginWithCapacity(
+                        () => _auth.login(
+                          identifier: identifier,
+                          password: password,
+                        ),
+                        identifier,
+                      )) {
+                        return;
+                      }
+                      await _bindDelfanSession();
+                      MbnSync.instance.configure(auth: _auth);
+                      if (_auth.profile != null && _auth.profile!.id > 0) {
+                        await MbnSync.instance.bindAccount(_auth.profile!.id);
+                      }
+                      await MbnSync.instance.syncAll();
+                      _loggedIn = true;
+                      _refresh();
+                    },
+                  ),
+          ),
+        );
       },
     );
   }
@@ -573,10 +659,7 @@ class AccessibilityAppWrapper extends StatelessWidget {
             rawMedia.size.width <= 0 ||
             rawMedia.size.height <= 0 ||
             (uiScale - 1.0).abs() < 0.005) {
-          return MediaQuery(
-            data: baseMedia,
-            child: child,
-          );
+          return MediaQuery(data: baseMedia, child: child);
         }
 
         final targetWidth = rawMedia.size.width / uiScale;
@@ -613,10 +696,7 @@ class AccessibilityAppWrapper extends StatelessWidget {
             child: SizedBox(
               width: targetWidth,
               height: targetHeight,
-              child: MediaQuery(
-                data: scaledMedia,
-                child: child,
-              ),
+              child: MediaQuery(data: scaledMedia, child: child),
             ),
           ),
         );
@@ -624,4 +704,3 @@ class AccessibilityAppWrapper extends StatelessWidget {
     );
   }
 }
-

@@ -12,6 +12,10 @@ class AuthBridgeProvider : ContentProvider() {
 
     override fun call(method: String, arg: String?, extras: Bundle?): Bundle? {
         val ctx = context ?: return null
+        // Android verifies callingPackage against the Binder caller UID.
+        if (callingPackage !in setOf("com.mbn.ime", "com.mbn.movie")) {
+            throw SecurityException("Only MBN applications may read the auth bridge")
+        }
         val prefs = ctx.getSharedPreferences("mbn_auth_bridge", Context.MODE_PRIVATE)
         if (method == "getAuthToken") {
             val token = prefs.getString("token", null)
