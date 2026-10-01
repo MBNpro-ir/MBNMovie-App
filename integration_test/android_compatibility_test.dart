@@ -1,3 +1,8 @@
+import 'dart:convert';
+import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:mbnmovie/screens/detail_screen.dart';
+import 'package:mbnmovie/models/movie_content.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -132,4 +137,113 @@ void main() {
     },
     timeout: const Timeout(Duration(minutes: 3)),
   );
+  testWidgets(
+    'real player exit restores Android system bars and portrait',
+    (tester) async {
+      await initializeDeviceLayout();
+      await DevicePerformance.initialize();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('player_gestures_introduced', true);
+      const channel = MethodChannel('com.mbn.movie/device');
+      Future<Map<String, dynamic>> window() async =>
+          await channel.invokeMapMethod<String, dynamic>('systemUiState') ?? {};
+      final source = const String.fromEnvironment(
+        'MBN_QA_MEDIA',
+        defaultValue: 'http://10.0.2.2:8765/mbn-compatibility.mp4',
+      );
+      final item = MovieContent(
+        id: 'native-fullscreen-qa',
+        title: 'Native fullscreen QA',
+        subtitle: '',
+        description: '',
+        year: 2026,
+        rating: 0,
+        kind: ContentKind.movie,
+        colors: const [],
+        genres: const [],
+      );
+      final episode = MovieEpisode(id: 'one', name: '1', fileUrl: source);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: FilledButton(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        PlayerScreen(content: item, episode: episode),
+                  ),
+                ),
+                child: const Text('open real player'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open real player'));
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        final state = await window();
+        if (state['orientation'] == 2 &&
+            ((state['flags'] as int? ?? 0) & 4) != 0) {
+          break;
+        }
+      }
+      final playing = await window();
+      expect(playing['orientation'], 2);
+      expect(((playing['flags'] as int) & 4) != 0, true);
+      final before = await _resourceSnapshot();
+      final elapsed = Stopwatch()..start();
+      for (var i = 0; i < 75; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      final during = await _resourceSnapshot();
+      await tester.binding.handlePopRoute();
+      for (var i = 0; i < 30; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        if (find.text('open real player').evaluate().isNotEmpty &&
+            find.byType(PlayerScreen).evaluate().isEmpty) {
+          break;
+        }
+      }
+      expect(find.byType(PlayerScreen), findsNothing);
+      final returned = await window();
+      if (isAndroidTv) {
+        expect(returned['orientation'], 2);
+      } else {
+        expect(returned['orientation'], 1);
+        expect((returned['flags'] as int) & (2 | 4 | 2048 | 4096), 0);
+        expect(returned['windowFullscreen'], false);
+      }
+      final after = await _resourceSnapshot();
+      // Debug emulator measurements are diagnostics, not battery or release CPU claims.
+      final diagnostics = jsonEncode({
+        'sdk': DevicePerformance.androidSdk,
+        'tv': isAndroidTv,
+        'mode': 'debug-emulator',
+        'seconds': elapsed.elapsedMilliseconds / 1000,
+        'before': before,
+        'playing': during,
+        'afterReturn': after,
+        'windowAfterReturn': returned,
+      });
+      debugPrint('MBN_RESOURCE $diagnostics');
+      expect(tester.takeException(), isNull);
+    },
+    timeout: const Timeout(Duration(minutes: 3)),
+  );
+}
+
+Future<Map<String, Object>> _resourceSnapshot() async {
+  final result = <String, Object>{'rssMiB': ProcessInfo.currentRss / 1048576};
+  try {
+    final stat = await File('/proc/self/stat').readAsString();
+    final fields = stat.substring(stat.lastIndexOf(')') + 2).split(' ');
+    result['cpuTicks'] = int.parse(fields[11]) + int.parse(fields[12]);
+  } catch (_) {}
+  return result;
 }

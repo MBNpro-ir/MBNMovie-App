@@ -1,3 +1,5 @@
+import '../services/player_system_ui.dart';
+import '../widgets/player_speed_sheet.dart';
 import '../services/device_performance.dart';
 import '../widgets/adaptive_player_header.dart';
 import 'dart:convert';
@@ -2429,13 +2431,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     _episode = widget.episode;
     _episodeCatalog = EpisodeCatalog.from(widget.content);
     if (isDesktopWindow) windowManager.addListener(this);
-    if (!kIsWeb) {
-      SystemChrome.setPreferredOrientations([
-        DeviceOrientation.landscapeLeft,
-        DeviceOrientation.landscapeRight,
-      ]);
-    }
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    if (!kIsWeb) unawaited(PlayerSystemUi.enter());
     _pip.addListener(_handlePipModeChanged);
     _player = Player(
       configuration: PlayerConfiguration(
@@ -2968,7 +2964,8 @@ class _PlayerScreenState extends State<PlayerScreen>
       if (response.statusCode != 200) throw StateError('Subtitle unavailable');
       document = WebSubtitleDocument.parse(utf8.decode(response.bodyBytes));
     }
-    if (!mounted || !_isCurrentMediaOp(mediaGeneration) ||
+    if (!mounted ||
+        !_isCurrentMediaOp(mediaGeneration) ||
         selection != _webSubtitleSelection) {
       return;
     }
@@ -3821,7 +3818,11 @@ class _PlayerScreenState extends State<PlayerScreen>
   Future<void> _exitPlayer() async {
     if (_exitingPlayer) return;
     _exitingPlayer = true;
-    if (kIsWeb) await BrowserFeatures.fullscreen(false);
+    if (kIsWeb) {
+      await BrowserFeatures.fullscreen(false);
+    } else {
+      await PlayerSystemUi.exit();
+    }
     try {
       await _persistProgress();
       // Remember the exact exit point for the section-scoped «ادامه تماشا»
@@ -4110,19 +4111,7 @@ class _PlayerScreenState extends State<PlayerScreen>
         }
       }),
     );
-    if (!kIsWeb) {
-      SystemChrome.setPreferredOrientations(
-        isAndroidTv
-            ? [
-                DeviceOrientation.landscapeLeft,
-                DeviceOrientation.landscapeRight,
-              ]
-            : const [],
-      );
-    }
-    SystemChrome.setEnabledSystemUIMode(
-      isAndroidTv ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
-    );
+    if (!kIsWeb) unawaited(PlayerSystemUi.exit());
     super.dispose();
   }
 
@@ -4750,13 +4739,13 @@ class _PlayerScreenState extends State<PlayerScreen>
     _hideTimer?.cancel();
     final result = await showModalBottomSheet<(SubtitlePreferences, double)>(
       context: context,
-      constraints: BoxConstraints(maxWidth: panelWidth(context, large: 760)),
+      constraints: BoxConstraints(maxWidth: playerSpeedSheetWidth(context)),
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: MovieColors.surface,
       showDragHandle: true,
       builder: (context) =>
-          _SubtitleTiming(initial: _subtitle, initialRate: _rate),
+          PlayerSpeedSheet(initial: _subtitle, initialRate: _rate),
     );
     if (!mounted || _playerTornDown) return;
     if (result != null) {
@@ -5004,29 +4993,6 @@ class _PlayerScreenState extends State<PlayerScreen>
                                           tooltip: 'اندازهٔ تصویر (V)',
                                           onTap: _toggleFit,
                                         ),
-                                        if (kIsWeb &&
-                                            BrowserFeatures.castSupported) ...[
-                                          const SizedBox(width: 8),
-                                          _RoundControl(
-                                            icon: Icons.cast_rounded,
-                                            tooltip: 'AirPlay / ارسال تصویر',
-                                            onTap: () async {
-                                              final shown =
-                                                  await BrowserFeatures.cast();
-                                              if (!shown && context.mounted) {
-                                                ScaffoldMessenger.of(
-                                                  context,
-                                                ).showSnackBar(
-                                                  const SnackBar(
-                                                    content: Text(
-                                                      'این مرورگر یا دستگاه ارسال تصویر را پشتیبانی نمی‌کند.',
-                                                    ),
-                                                  ),
-                                                );
-                                              }
-                                            },
-                                          ),
-                                        ],
                                         if (isDesktopWindow || kIsWeb) ...[
                                           const SizedBox(width: 8),
                                           _RoundControl(
@@ -5748,283 +5714,6 @@ class _EmptyTrackState extends StatelessWidget {
         const SizedBox(height: 10),
         Text(text, style: const TextStyle(color: Colors.white60)),
       ],
-    ),
-  );
-}
-
-class _SubtitleTiming extends StatefulWidget {
-  const _SubtitleTiming({required this.initial, required this.initialRate});
-  final SubtitlePreferences initial;
-  final double initialRate;
-
-  @override
-  State<_SubtitleTiming> createState() => _SubtitleTimingState();
-}
-
-class _SubtitleTimingState extends State<_SubtitleTiming> {
-  late SubtitlePreferences value = widget.initial;
-  late double rate = widget.initialRate;
-
-  @override
-  Widget build(BuildContext context) {
-    final isCompact = MediaQuery.sizeOf(context).width < 600;
-    return SafeArea(
-      top: false,
-      child: SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(
-          isCompact ? 12 : 18,
-          0,
-          isCompact ? 12 : 18,
-          isCompact ? 12 : 18,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.sync_alt_rounded,
-                  color: MovieColors.orange,
-                  size: isCompact ? 20 : 24,
-                ),
-                SizedBox(width: isCompact ? 8 : 10),
-                Text(
-                  'تنظیم سرعت',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontSize: isCompact ? 16 : 20,
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: isCompact ? 6 : 8),
-            Text(
-              'برای زیرنویس‌های جدا از تصویر؛ زیرنویس چسبیده داخل خود ویدیو قابل تغییر نیست.',
-              style: TextStyle(
-                color: Colors.white60,
-                fontSize: isCompact ? 11 : 12,
-              ),
-            ),
-            SizedBox(height: isCompact ? 10 : 16),
-            _TimingCard(
-              icon: Icons.speed_rounded,
-              title: 'سرعت ویدیو',
-              description: 'سرعت پخش تصویر و صدا.',
-              valueLabel: '${rate.toStringAsFixed(2)}×',
-              min: .5,
-              max: 4,
-              divisions: 70,
-              value: rate.clamp(.5, 4),
-              onChanged: (next) => setState(() => rate = next),
-              onMinus: () =>
-                  setState(() => rate = (rate - .05).clamp(.5, 4).toDouble()),
-              onPlus: () =>
-                  setState(() => rate = (rate + .05).clamp(.5, 4).toDouble()),
-            ),
-            SizedBox(height: isCompact ? 8 : 12),
-            _TimingCard(
-              icon: Icons.swap_horiz_rounded,
-              title: 'جابه‌جایی زمان زیرنویس',
-              description: 'همهٔ جمله‌ها را با هم جلو یا عقب می‌برد.',
-              valueLabel:
-                  '${value.delay >= 0 ? '+' : ''}${value.delay.toStringAsFixed(1)} ثانیه',
-              min: -30,
-              max: 30,
-              divisions: 600,
-              value: value.delay,
-              onChanged: (next) =>
-                  setState(() => value = value.copyWith(delay: next)),
-              onMinus: () => setState(
-                () => value = value.copyWith(
-                  delay: (value.delay - .1).clamp(-30, 30).toDouble(),
-                ),
-              ),
-              onPlus: () => setState(
-                () => value = value.copyWith(
-                  delay: (value.delay + .1).clamp(-30, 30).toDouble(),
-                ),
-              ),
-            ),
-            SizedBox(height: isCompact ? 8 : 12),
-            _TimingCard(
-              icon: Icons.compress_rounded,
-              title: 'فاصلهٔ زمانی بین زیرنویس‌ها',
-              description:
-                  'سرعت تایم‌کدها را تغییر می‌دهد؛ برای زیرنویسی که کم‌کم از فیلم عقب می‌افتد.',
-              valueLabel: '${value.timingScale.toStringAsFixed(2)}×',
-              min: .5,
-              max: 2,
-              divisions: 150,
-              value: value.timingScale,
-              onChanged: (next) =>
-                  setState(() => value = value.copyWith(timingScale: next)),
-              onMinus: () => setState(
-                () => value = value.copyWith(
-                  timingScale: (value.timingScale - .01)
-                      .clamp(.5, 2)
-                      .toDouble(),
-                ),
-              ),
-              onPlus: () => setState(
-                () => value = value.copyWith(
-                  timingScale: (value.timingScale + .01)
-                      .clamp(.5, 2)
-                      .toDouble(),
-                ),
-              ),
-            ),
-            SizedBox(height: isCompact ? 10 : 16),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => setState(() {
-                      rate = 1;
-                      value = value.copyWith(delay: 0, timingScale: 1);
-                    }),
-                    icon: const Icon(Icons.restart_alt_rounded),
-                    label: const Text('بازنشانی'),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  flex: 2,
-                  child: FilledButton.icon(
-                    onPressed: () => Navigator.pop(context, (value, rate)),
-                    icon: const Icon(Icons.check_rounded),
-                    label: const Text('اعمال سرعت'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _TimingCard extends StatelessWidget {
-  const _TimingCard({
-    required this.icon,
-    required this.title,
-    required this.description,
-    required this.valueLabel,
-    required this.min,
-    required this.max,
-    required this.divisions,
-    required this.value,
-    required this.onChanged,
-    required this.onMinus,
-    required this.onPlus,
-  });
-  final IconData icon;
-  final String title;
-  final String description;
-  final String valueLabel;
-  final double min;
-  final double max;
-  final int divisions;
-  final double value;
-  final ValueChanged<double> onChanged;
-  final VoidCallback onMinus;
-  final VoidCallback onPlus;
-
-  @override
-  Widget build(BuildContext context) {
-    final isCompact = MediaQuery.sizeOf(context).width < 600;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: MovieColors.surfaceHigh,
-        borderRadius: BorderRadius.circular(isCompact ? 16 : 20),
-        border: Border.all(color: Colors.white12),
-      ),
-      child: Padding(
-        padding: EdgeInsets.all(isCompact ? 10 : 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  icon,
-                  color: MovieColors.orange,
-                  size: isCompact ? 18 : 24,
-                ),
-                SizedBox(width: isCompact ? 6 : 9),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: isCompact ? 13 : 15,
-                    ),
-                  ),
-                ),
-                Text(
-                  valueLabel,
-                  textDirection: TextDirection.ltr,
-                  style: TextStyle(
-                    color: MovieColors.orange,
-                    fontWeight: FontWeight.w800,
-                    fontSize: isCompact ? 12 : 14,
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: isCompact ? 2 : 4),
-            Text(
-              description,
-              style: const TextStyle(color: Colors.white60, fontSize: 11),
-            ),
-            SizedBox(height: isCompact ? 2 : 4),
-            Row(
-              children: [
-                _StepButton(
-                  icon: Icons.remove_rounded,
-                  onTap: onMinus,
-                  compact: isCompact,
-                ),
-                Expanded(
-                  child: Slider(
-                    value: value.clamp(min, max),
-                    min: min,
-                    max: max,
-                    divisions: divisions,
-                    onChanged: onChanged,
-                  ),
-                ),
-                _StepButton(
-                  icon: Icons.add_rounded,
-                  onTap: onPlus,
-                  compact: isCompact,
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _StepButton extends StatelessWidget {
-  const _StepButton({
-    required this.icon,
-    required this.onTap,
-    this.compact = false,
-  });
-  final IconData icon;
-  final VoidCallback onTap;
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) => IconButton.filledTonal(
-    onPressed: onTap,
-    icon: Icon(icon, size: compact ? 18 : 24),
-    style: IconButton.styleFrom(
-      minimumSize: Size(compact ? 36 : 48, compact ? 36 : 48),
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      padding: EdgeInsets.zero,
     ),
   );
 }

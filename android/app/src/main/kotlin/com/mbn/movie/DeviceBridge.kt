@@ -50,6 +50,12 @@ class DeviceBridge(
     fun handle(call: MethodCall, result: MethodChannel.Result) {
         try {
             when (call.method) {
+                "systemUiState" -> result.success(mapOf(
+                    "flags" to activity.window.decorView.systemUiVisibility,
+                    "windowFullscreen" to ((activity.window.attributes.flags and
+                        android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN) != 0),
+                    "orientation" to activity.resources.configuration.orientation,
+                ))
                 "performanceInfo" -> {
                     val manager = activity.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
                     val uiMode = activity.getSystemService(Context.UI_MODE_SERVICE) as android.app.UiModeManager
