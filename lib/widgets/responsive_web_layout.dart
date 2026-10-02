@@ -40,8 +40,22 @@ class ResponsiveContentFrame extends StatelessWidget {
       : child;
 }
 
-/// Desktop web panels stay near the action instead of filling a monitor.
-/// On phones the existing bottom sheet keeps its gestures and safe areas.
+bool compactPlayerLayout(BuildContext context) =>
+    !isLargeScreenDevice &&
+    (!kIsWeb || MediaQuery.sizeOf(context).shortestSide < 600);
+
+double compactPlayerPanelWidth(BuildContext context) =>
+    math.max(0, math.min(520, MediaQuery.sizeOf(context).width - 24));
+
+double compactPlayerPanelHeight(BuildContext context) {
+  final media = MediaQuery.of(context);
+  final available =
+      media.size.height - media.padding.vertical - media.viewInsets.bottom - 36;
+  return math.max(0, math.min(520, available * .9));
+}
+
+/// Desktop web uses a centered panel. Every native phone player sheet uses
+/// the same width and height limits as the speed settings.
 Future<T?> showResponsivePlayerPanel<T>({
   required BuildContext context,
   required WidgetBuilder builder,
@@ -60,8 +74,7 @@ Future<T?> showResponsivePlayerPanel<T>({
     data: capturedTheme,
     child: Builder(builder: builder),
   );
-  final phone =
-      compactLayout ?? (!isLargeScreenDevice && media.size.shortestSide < 600);
+  final phone = compactLayout ?? compactPlayerLayout(context);
   if (kIsWeb && media.size.width >= 700 && media.size.height >= 480) {
     return showDialog<T>(
       context: context,
@@ -82,21 +95,14 @@ Future<T?> showResponsivePlayerPanel<T>({
     backgroundColor: backgroundColor,
     constraints: kIsWeb || phone
         ? BoxConstraints(
-            maxWidth: math.min(
-              phone ? 520 : constraints?.maxWidth ?? 640,
-              media.size.width - 24,
-            ),
+            minWidth: phone ? compactPlayerPanelWidth(context) : 0,
+            maxWidth: phone
+                ? compactPlayerPanelWidth(context)
+                : math.min(constraints?.maxWidth ?? 640, media.size.width - 24),
             maxHeight: math.max(
               0,
               phone
-                  ? math.min(
-                      520,
-                      (media.size.height -
-                              media.padding.vertical -
-                              media.viewInsets.bottom -
-                              36) *
-                          .74,
-                    )
+                  ? compactPlayerPanelHeight(context)
                   : media.size.height -
                         media.padding.top -
                         media.viewInsets.bottom -
@@ -105,6 +111,88 @@ Future<T?> showResponsivePlayerPanel<T>({
           )
         : constraints,
   );
+}
+
+/// Subtitle appearance keeps its original slide-down route on native devices.
+Future<T?> showTopPlayerPanel<T>({
+  required BuildContext context,
+  required WidgetBuilder builder,
+  required Color backgroundColor,
+  ThemeData? panelTheme,
+  bool? compactLayout,
+}) {
+  final theme = panelTheme ?? Theme.of(context);
+  final compact = compactLayout ?? compactPlayerLayout(context);
+  return showGeneralDialog<T>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: 'بستن تنظیمات زیرنویس',
+    barrierColor: Colors.black26,
+    transitionDuration: const Duration(milliseconds: 280),
+    transitionBuilder: (context, animation, secondary, child) =>
+        SlideTransition(
+          position: Tween(begin: const Offset(0, -1), end: Offset.zero).animate(
+            CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+          ),
+          child: child,
+        ),
+    pageBuilder: (context, animation, secondary) => Theme(
+      data: theme,
+      child: TopPlayerPanel(
+        compactLayout: compact,
+        color: backgroundColor,
+        child: Builder(builder: builder),
+      ),
+    ),
+  );
+}
+
+class TopPlayerPanel extends StatelessWidget {
+  const TopPlayerPanel({
+    super.key,
+    required this.child,
+    required this.color,
+    this.compactLayout,
+  });
+  final Widget child;
+  final Color color;
+  final bool? compactLayout;
+  @override
+  Widget build(BuildContext context) {
+    final compact = compactLayout ?? compactPlayerLayout(context);
+    final media = MediaQuery.of(context);
+    return SafeArea(
+      bottom: false,
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: Material(
+          key: const Key('top-player-panel'),
+          color: color,
+          elevation: 18,
+          borderRadius: const BorderRadius.vertical(
+            bottom: Radius.circular(24),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: compact
+                  ? compactPlayerPanelWidth(context)
+                  : panelWidth(context, large: 1100),
+              maxHeight: compact
+                  ? compactPlayerPanelHeight(context)
+                  : math.min(340, media.size.height * .82),
+            ),
+            child: SizedBox(
+              width: compact
+                  ? compactPlayerPanelWidth(context)
+                  : panelWidth(context, large: 1100),
+              child: child,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class PlayerWebPanel extends StatelessWidget {

@@ -1,3 +1,4 @@
+import '../widgets/subtitle_appearance_panel.dart';
 import '../widgets/responsive_web_layout.dart';
 import '../services/player_system_ui.dart';
 import '../widgets/browser_video_view.dart';
@@ -3174,14 +3175,14 @@ class _PlayerScreenState extends State<PlayerScreen>
       showDragHandle: true,
       backgroundColor: MovieColors.surface,
       builder: (context) => SizedBox(
-        height: kIsWeb
+        height: kIsWeb || compactPlayerLayout(context)
             ? webPanelHeight(
                 context,
                 desired: 100 + group.variants.length * 52.0,
               )
             : null,
         child: FractionallySizedBox(
-          heightFactor: kIsWeb ? 1 : .78,
+          heightFactor: kIsWeb || compactPlayerLayout(context) ? 1 : .78,
           child: Column(
             children: [
               const ListTile(
@@ -3445,7 +3446,7 @@ class _PlayerScreenState extends State<PlayerScreen>
                 ];
           return SafeArea(
             child: SizedBox(
-              height: kIsWeb
+              height: kIsWeb || compactPlayerLayout(context)
                   ? webPanelHeight(
                       context,
                       desired:
@@ -3453,14 +3454,24 @@ class _PlayerScreenState extends State<PlayerScreen>
                           (_episodeCatalog.seasons.length > 1 ? 48 : 0) +
                           (choices.length /
                                       playerEpisodePickerColumns(
-                                        panelWidth(context, large: 1040) - 32,
+                                        (compactPlayerLayout(context)
+                                                ? compactPlayerPanelWidth(
+                                                    context,
+                                                  )
+                                                : panelWidth(
+                                                    context,
+                                                    large: 1040,
+                                                  )) -
+                                            32,
                                       ))
                                   .ceil() *
                               120.0,
                     )
                   : null,
               child: FractionallySizedBox(
-                heightFactor: kIsWeb ? .96 : .88,
+                heightFactor: kIsWeb || compactPlayerLayout(context)
+                    ? .96
+                    : .88,
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                   child: Column(
@@ -4421,7 +4432,7 @@ class _PlayerScreenState extends State<PlayerScreen>
           child: SafeArea(
             top: false,
             child: SizedBox(
-              height: kIsWeb
+              height: kIsWeb || compactPlayerLayout(context)
                   ? webPanelHeight(
                       sheetContext,
                       desired:
@@ -4766,7 +4777,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   Future<void> _showSubtitleSettings() async {
     _hideTimer?.cancel();
     setState(() => _controlsVisible = false);
-    final result = await (kIsWeb || (Platform.isAndroid && !isAndroidTv)
+    final result = await (kIsWeb
         ? showResponsivePlayerPanel<SubtitlePreferences>(
             containsCloseButton: true,
             context: context,
@@ -4774,9 +4785,11 @@ class _PlayerScreenState extends State<PlayerScreen>
               maxWidth: panelWidth(context, large: 840),
             ),
             backgroundColor: MovieColors.surface,
-            builder: (context) => SizedBox(
-              height: webPanelHeight(context, desired: 560),
-              child: _TopSubtitleSettings(
+            builder: (context) => ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: webPanelHeight(context, desired: 560),
+              ),
+              child: SubtitleAppearancePanel(
                 initial: _subtitle,
                 onChanged: (value) {
                   if (mounted) setState(() => _subtitle = value);
@@ -4784,48 +4797,14 @@ class _PlayerScreenState extends State<PlayerScreen>
               ),
             ),
           )
-        : showGeneralDialog<SubtitlePreferences>(
+        : showTopPlayerPanel<SubtitlePreferences>(
             context: context,
-            barrierDismissible: true,
-            barrierLabel: 'بستن تنظیمات زیرنویس',
-            barrierColor: Colors.black26,
-            transitionDuration: const Duration(milliseconds: 280),
-            transitionBuilder: (context, animation, secondary, child) =>
-                SlideTransition(
-                  position: Tween(begin: const Offset(0, -1), end: Offset.zero)
-                      .animate(
-                        CurvedAnimation(
-                          parent: animation,
-                          curve: Curves.easeOutCubic,
-                        ),
-                      ),
-                  child: child,
-                ),
-            pageBuilder: (context, animation, secondary) => SafeArea(
-              bottom: false,
-              child: Align(
-                alignment: Alignment.topCenter,
-                child: Material(
-                  color: MovieColors.surface,
-                  elevation: 18,
-                  borderRadius: const BorderRadius.vertical(
-                    bottom: Radius.circular(24),
-                  ),
-                  child: SizedBox(
-                    width: panelWidth(context, large: 1100),
-                    height: (MediaQuery.sizeOf(context).height * .82).clamp(
-                      0.0,
-                      340.0,
-                    ),
-                    child: _TopSubtitleSettings(
-                      initial: _subtitle,
-                      onChanged: (value) {
-                        if (mounted) setState(() => _subtitle = value);
-                      },
-                    ),
-                  ),
-                ),
-              ),
+            backgroundColor: MovieColors.surface,
+            builder: (context) => SubtitleAppearancePanel(
+              initial: _subtitle,
+              onChanged: (value) {
+                if (mounted) setState(() => _subtitle = value);
+              },
             ),
           ));
     if (!mounted || _playerTornDown) return;
@@ -5818,277 +5797,6 @@ class _EmptyTrackState extends StatelessWidget {
   );
 }
 
-class _TopSubtitleSettings extends StatefulWidget {
-  const _TopSubtitleSettings({required this.initial, required this.onChanged});
-  final SubtitlePreferences initial;
-  final ValueChanged<SubtitlePreferences> onChanged;
-  @override
-  State<_TopSubtitleSettings> createState() => _TopSubtitleSettingsState();
-}
-
-class _TopSubtitleSettingsState extends State<_TopSubtitleSettings> {
-  late SubtitlePreferences value = widget.initial;
-  void change(SubtitlePreferences next) {
-    setState(() => value = next);
-    widget.onChanged(next);
-    unawaited(() async {
-      final prefs = await SharedPreferences.getInstance();
-      await next.save(prefs);
-      unawaited(MbnSync.instance.pushPreferencesThrottled());
-    }());
-  }
-
-  Widget colors(
-    String title,
-    List<Color> colors,
-    Color selected,
-    SubtitlePreferences Function(Color) update,
-  ) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(title),
-      const SizedBox(height: 5),
-      Wrap(
-        spacing: 7,
-        children: [
-          for (final color in colors)
-            InkWell(
-              onTap: () => change(update(color)),
-              borderRadius: BorderRadius.circular(30),
-              child: CircleAvatar(
-                radius: 15,
-                backgroundColor: color,
-                child: selected == color
-                    ? Icon(
-                        Icons.check_rounded,
-                        color: color.computeLuminance() > .6
-                            ? Colors.black
-                            : Colors.white,
-                      )
-                    : null,
-              ),
-            ),
-        ],
-      ),
-    ],
-  );
-
-  @override
-  Widget build(BuildContext context) {
-    final first = <Widget>[
-      Row(
-        children: [
-          Expanded(
-            child: DropdownButtonFormField<String>(
-              value: value.fontFamily,
-              isExpanded: kIsWeb,
-              isDense: true,
-              decoration: const InputDecoration(
-                labelText: 'فونت فارسی',
-                isDense: true,
-              ),
-              items: const [
-                DropdownMenuItem(value: 'Vazirmatn', child: Text('وزیرمتن')),
-                DropdownMenuItem(
-                  value: 'NotoSansArabic',
-                  child: Text('نوتو سنس فارسی'),
-                ),
-                DropdownMenuItem(
-                  value: 'NotoNaskhArabic',
-                  child: Text('نوتو نسخ فارسی'),
-                ),
-                DropdownMenuItem(value: 'MarkaziText', child: Text('مرکزی')),
-                DropdownMenuItem(value: 'sans-serif', child: Text('ساده')),
-                DropdownMenuItem(value: 'serif', child: Text('نسخ / سریف')),
-              ],
-              onChanged: (font) {
-                if (font != null) change(value.copyWith(fontFamily: font));
-              },
-            ),
-          ),
-          const SizedBox(width: 8),
-          SizedBox(
-            width: 98,
-            child: DropdownButtonFormField<double>(
-              value: value.size.clamp(10, 52).roundToDouble(),
-              isDense: true,
-              decoration: const InputDecoration(
-                labelText: 'اندازه',
-                isDense: true,
-              ),
-              items: [
-                for (var size = 10; size <= 52; size++)
-                  DropdownMenuItem(
-                    value: size.toDouble(),
-                    child: Text('$size'),
-                  ),
-              ],
-              onChanged: (size) {
-                if (size != null) change(value.copyWith(size: size));
-              },
-            ),
-          ),
-        ],
-      ),
-      _SettingSlider(
-        label: 'فاصله خطوط',
-        value: value.lineHeight,
-        min: 1,
-        max: 2,
-        onChanged: (v) => change(value.copyWith(lineHeight: v)),
-      ),
-      _SettingSlider(
-        label: 'فاصله از پایین',
-        value: value.bottomPadding,
-        min: 0,
-        max: 1000,
-        onChanged: (v) => change(value.copyWith(bottomPadding: v)),
-      ),
-      const SizedBox(height: 12),
-      colors(
-        'رنگ متن',
-        const [
-          Colors.white,
-          Color(0xFFFFE66D),
-          Color(0xFFFFD600),
-          Color(0xFFFFA000),
-          Color(0xFFFF6D00),
-          Color(0xFFFF3D00),
-          Color(0xFF8FE9FF),
-          Color(0xFF00E5FF),
-          Color(0xFF76FF03),
-          Color(0xFFFFB3C6),
-          Color(0xFFFF4081),
-        ],
-        value.color,
-        (c) => value.copyWith(color: c),
-      ),
-    ];
-    final second = <Widget>[
-      _SettingSlider(
-        label: 'تیرگی پس‌زمینه',
-        value: value.backgroundOpacity,
-        min: 0,
-        max: 1,
-        onChanged: (v) => change(value.copyWith(backgroundOpacity: v)),
-      ),
-      _SettingSlider(
-        label: 'گردی گوشه‌ها',
-        value: value.cornerRadius,
-        min: 0,
-        max: 24,
-        onChanged: (v) => change(value.copyWith(cornerRadius: v)),
-      ),
-      const SizedBox(height: 12),
-      colors(
-        'رنگ پس‌زمینه',
-        const [
-          Colors.black,
-          Color(0xFF3A3F4B),
-          Color(0xFFFF7A1A),
-          Color(0xFF8D6BFF),
-          Color(0xFF0E7C7B),
-        ],
-        value.backgroundColor,
-        (c) => value.copyWith(backgroundColor: c),
-      ),
-      SwitchListTile(
-        contentPadding: EdgeInsets.zero,
-        dense: true,
-        visualDensity: VisualDensity.compact,
-        title: const Text('متن ضخیم'),
-        value: value.bold,
-        onChanged: (v) => change(value.copyWith(bold: v)),
-      ),
-      SwitchListTile(
-        contentPadding: EdgeInsets.zero,
-        dense: true,
-        visualDensity: VisualDensity.compact,
-        title: const Text('سایه و حاشیه برای خوانایی'),
-        value: value.shadow,
-        onChanged: (v) => change(value.copyWith(shadow: v)),
-      ),
-    ];
-    Widget pane(List<Widget> children) => Expanded(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: Column(children: children),
-      ),
-    );
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
-        child: Column(
-          children: [
-            if (kIsWeb || !isLargeScreenDevice)
-              SubtitlePanelToolbar(
-                onReset: () => change(
-                  SubtitlePreferences(
-                    delay: value.delay,
-                    timingScale: value.timingScale,
-                  ),
-                ),
-                onSave: () => Navigator.pop(context, value),
-              )
-            else
-              Row(
-                children: [
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close_rounded),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    'تنظیمات ظاهر زیرنویس',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const Spacer(),
-                  TextButton.icon(
-                    onPressed: () => change(
-                      SubtitlePreferences(
-                        delay: value.delay,
-                        timingScale: value.timingScale,
-                      ),
-                    ),
-                    icon: const Icon(Icons.restart_alt_rounded),
-                    label: const Text('پیش‌فرض'),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton.icon(
-                    onPressed: () => Navigator.pop(context, value),
-                    icon: const Icon(Icons.check_rounded),
-                    label: const Text('ذخیره'),
-                  ),
-                ],
-              ),
-            const Divider(),
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  if (constraints.maxWidth >= 600) {
-                    return Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        pane(first),
-                        const VerticalDivider(width: 1),
-                        pane(second),
-                      ],
-                    );
-                  }
-                  return SingleChildScrollView(
-                    child: Column(children: [...first, ...second]),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// Retained for compatibility with older golden/widget references.
 class _SubtitleSettings extends StatefulWidget {
   const _SubtitleSettings({required this.initial});
   final SubtitlePreferences initial;

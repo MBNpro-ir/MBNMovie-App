@@ -338,7 +338,7 @@ class _MainShellState extends State<MainShell> {
                 favorites: _openFavorites,
                 switchApp: _openSiblingAnime,
               ),
-              if (isAndroidTv || isDesktopWeb)
+              if (isAndroidTv)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Row(

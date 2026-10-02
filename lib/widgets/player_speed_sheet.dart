@@ -3,9 +3,12 @@ import 'package:flutter/material.dart';
 import '../core/platform_ui.dart';
 import '../core/player_preferences.dart';
 import '../core/theme.dart';
+import 'responsive_web_layout.dart';
 
 bool _compact(BuildContext context) =>
-    !isAndroidTv && MediaQuery.sizeOf(context).shortestSide < 600;
+    !isAndroidTv &&
+    (compactPlayerLayout(context) ||
+        MediaQuery.sizeOf(context).shortestSide < 600);
 
 double playerSpeedSheetWidth(BuildContext context) => math.min(
   MediaQuery.sizeOf(context).width - 24,
