@@ -61,25 +61,40 @@ void main() {
         await tester.pumpAndSettle();
         await closed;
       }
+      SubtitlePreferences? liveValue;
       final closed = showTopPlayerPanel<void>(
         context: context,
         compactLayout: true,
+        fullWidth: true,
         backgroundColor: Colors.black,
         builder: (_) => SubtitleAppearancePanel(
           initial: SubtitlePreferences(),
           compactLayout: true,
-          onChanged: (_) {},
+          twoColumnLayout: true,
+          onChanged: (value) => liveValue = value,
         ),
       );
       await tester.pumpAndSettle();
       final top = tester.getRect(find.byKey(const Key('top-player-panel')));
       expect(top.top, closeTo(0, .01));
-      expect(top.width, closeTo(expectedWidth, .01));
+      expect(top.width, closeTo(size.width, .01));
+      expect(
+        find.byKey(const Key('subtitle-appearance-columns')),
+        findsOneWidget,
+      );
+      final columns = tester.widget<Row>(
+        find.byKey(const Key('subtitle-appearance-columns')),
+      );
+      expect(columns.children, hasLength(2));
       expect(
         top.height,
-        lessThanOrEqualTo(math.min(520, (size.height - 36) * .9) + .01),
+        lessThanOrEqualTo(math.min(340, size.height * .62) + .01),
       );
       expect(find.byTooltip('بستن پنل'), findsOneWidget);
+      await tester.tap(find.byTooltip('پیش‌فرض'));
+      await tester.pump();
+      expect(liveValue, isNotNull);
+      expect(liveValue!.size, SubtitlePreferences().size);
       expect(tester.takeException(), isNull);
       await tester.tap(find.byTooltip('بستن پنل'));
       await tester.pumpAndSettle();

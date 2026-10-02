@@ -14,10 +14,12 @@ class SubtitleAppearancePanel extends StatefulWidget {
     required this.initial,
     required this.onChanged,
     this.compactLayout,
+    this.twoColumnLayout = false,
   });
   final SubtitlePreferences initial;
   final ValueChanged<SubtitlePreferences> onChanged;
   final bool? compactLayout;
+  final bool twoColumnLayout;
   @override
   State<SubtitleAppearancePanel> createState() =>
       _SubtitleAppearancePanelState();
@@ -209,7 +211,9 @@ class _SubtitleAppearancePanelState extends State<SubtitleAppearancePanel> {
     ];
     Widget pane(List<Widget> children) => Expanded(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        padding: EdgeInsets.symmetric(
+          horizontal: widget.twoColumnLayout ? 4 : 12,
+        ),
         child: Column(mainAxisSize: MainAxisSize.min, children: children),
       ),
     );
@@ -223,6 +227,7 @@ class _SubtitleAppearancePanelState extends State<SubtitleAppearancePanel> {
           children: [
             if (widget.compactLayout ?? (kIsWeb || !isLargeScreenDevice))
               SubtitlePanelToolbar(
+                singleRow: widget.twoColumnLayout,
                 onReset: () => change(
                   SubtitlePreferences(
                     delay: value.delay,
@@ -266,8 +271,9 @@ class _SubtitleAppearancePanelState extends State<SubtitleAppearancePanel> {
             Flexible(
               child: LayoutBuilder(
                 builder: (context, constraints) => SingleChildScrollView(
-                  child: constraints.maxWidth >= 600
+                  child: widget.twoColumnLayout || constraints.maxWidth >= 600
                       ? Row(
+                          key: const Key('subtitle-appearance-columns'),
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [pane(first), pane(second)],
                         )

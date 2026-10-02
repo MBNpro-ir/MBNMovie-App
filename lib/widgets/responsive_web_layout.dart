@@ -120,6 +120,7 @@ Future<T?> showTopPlayerPanel<T>({
   required Color backgroundColor,
   ThemeData? panelTheme,
   bool? compactLayout,
+  bool fullWidth = false,
 }) {
   final theme = panelTheme ?? Theme.of(context);
   final compact = compactLayout ?? compactPlayerLayout(context);
@@ -139,6 +140,7 @@ Future<T?> showTopPlayerPanel<T>({
     pageBuilder: (context, animation, secondary) => Theme(
       data: theme,
       child: TopPlayerPanel(
+        fullWidth: fullWidth,
         compactLayout: compact,
         color: backgroundColor,
         child: Builder(builder: builder),
@@ -153,14 +155,26 @@ class TopPlayerPanel extends StatelessWidget {
     required this.child,
     required this.color,
     this.compactLayout,
+    this.fullWidth = false,
   });
   final Widget child;
   final Color color;
   final bool? compactLayout;
+  final bool fullWidth;
   @override
   Widget build(BuildContext context) {
     final compact = compactLayout ?? compactPlayerLayout(context);
     final media = MediaQuery.of(context);
+    final width = fullWidth
+        ? media.size.width - media.padding.horizontal
+        : compact
+        ? compactPlayerPanelWidth(context)
+        : panelWidth(context, large: 1100);
+    final height = fullWidth
+        ? math.min(340.0, (media.size.height - media.padding.vertical) * .62)
+        : compact
+        ? compactPlayerPanelHeight(context)
+        : math.min(340.0, media.size.height * .82);
     return SafeArea(
       bottom: false,
       child: Align(
@@ -174,20 +188,8 @@ class TopPlayerPanel extends StatelessWidget {
           ),
           clipBehavior: Clip.antiAlias,
           child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: compact
-                  ? compactPlayerPanelWidth(context)
-                  : panelWidth(context, large: 1100),
-              maxHeight: compact
-                  ? compactPlayerPanelHeight(context)
-                  : math.min(340, media.size.height * .82),
-            ),
-            child: SizedBox(
-              width: compact
-                  ? compactPlayerPanelWidth(context)
-                  : panelWidth(context, large: 1100),
-              child: child,
-            ),
+            constraints: BoxConstraints(maxWidth: width, maxHeight: height),
+            child: SizedBox(width: width, child: child),
           ),
         ),
       ),
@@ -341,11 +343,36 @@ class SubtitlePanelToolbar extends StatelessWidget {
     super.key,
     required this.onReset,
     required this.onSave,
+    this.singleRow = false,
   });
   final VoidCallback onReset, onSave;
+  final bool singleRow;
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
+      if (singleRow) {
+        return Row(
+          children: [
+            IconButton(
+              tooltip: 'بستن پنل',
+              onPressed: () => Navigator.pop(context),
+              icon: const Icon(Icons.close_rounded),
+            ),
+            const Expanded(
+              child: Text(
+                'ظاهر زیرنویس',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+              ),
+            ),
+            IconButton(
+              tooltip: 'پیش‌فرض',
+              onPressed: onReset,
+              icon: const Icon(Icons.restart_alt_rounded),
+            ),
+            TextButton(onPressed: onSave, child: const Text('ذخیره')),
+          ],
+        );
+      }
       final heading = Row(
         children: [
           IconButton(

@@ -4798,9 +4798,11 @@ class _PlayerScreenState extends State<PlayerScreen>
             ),
           )
         : showTopPlayerPanel<SubtitlePreferences>(
+            fullWidth: !isLargeScreenDevice,
             context: context,
             backgroundColor: MovieColors.surface,
             builder: (context) => SubtitleAppearancePanel(
+              twoColumnLayout: !isLargeScreenDevice,
               initial: _subtitle,
               onChanged: (value) {
                 if (mounted) setState(() => _subtitle = value);
