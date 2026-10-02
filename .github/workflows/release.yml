@@ -224,6 +224,6 @@ jobs:
           gh release create "$RELEASE_TAG" release-assets/* --draft \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "MBNMovie ${RELEASE_TAG#v}" \
+            --title "⭐ MBNMovie ${RELEASE_TAG#v}" \
             --notes-file "changelogs/${RELEASE_TAG#v}.fa.md"
           gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
