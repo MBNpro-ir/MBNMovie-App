@@ -3,6 +3,7 @@ import 'app_platform.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'theme.dart';
@@ -21,7 +22,7 @@ bool get isLargeScreenDevice => isDesktopWindow || isAndroidTv;
 /// Bottom sheets remain full-width on phones, while TV/desktop use a readable
 /// dialog-like width instead of stretching controls across the whole display.
 double panelWidth(BuildContext context, {double large = 760}) =>
-    isLargeScreenDevice
+    isLargeScreenDevice || (kIsWeb && MediaQuery.sizeOf(context).width >= 600)
     ? math.min(large, MediaQuery.sizeOf(context).width - 32)
     : MediaQuery.sizeOf(context).width;
 
