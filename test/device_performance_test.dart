@@ -8,6 +8,7 @@ void main() {
     DevicePerformance.androidSdk = 0;
     DevicePerformance.lowRam = false;
     DevicePerformance.television = false;
+    DevicePerformance.appleMobileWeb = false;
   });
 
   test('Android 6 through 11 use light UI, Android 12 keeps full UI', () {
@@ -47,6 +48,32 @@ void main() {
       ),
       isTrue,
     );
+  });
+
+  testWidgets('iPhone uses a smaller cache policy and no ambient ticker', (
+    tester,
+  ) async {
+    DevicePerformance.appleMobileWeb = true;
+    expect(
+      DevicePerformance.useLightweightUiFor(
+        sdk: 0,
+        lowRam: false,
+        television: false,
+        appleMobileWeb: true,
+      ),
+      isTrue,
+    );
+    expect(DevicePerformance.artworkWidth(true), 240);
+    expect(DevicePerformance.artworkWidth(false), 640);
+    expect(DevicePerformance.routeDuration.inMilliseconds, 120);
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: AmbientBackground(animate: true, child: Text('iPhone')),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 15));
+    expect(tester.binding.hasScheduledFrame, isFalse);
   });
 
   testWidgets('light background schedules no continuous frames', (

@@ -1,4 +1,5 @@
 import '../services/player_system_ui.dart';
+import '../widgets/browser_video_view.dart';
 import '../widgets/player_speed_sheet.dart';
 import '../services/device_performance.dart';
 import '../widgets/adaptive_player_header.dart';
@@ -2415,6 +2416,9 @@ class _PlayerScreenState extends State<PlayerScreen>
   Track _track = const Track();
   SubtitlePreferences _subtitle = SubtitlePreferences.withPlatformDefaults();
   String? _error;
+  bool _webNeedsTap = false;
+  int _webPlayAttempt = 0;
+  int? _webPlayerHandle;
   Duration _positionAtLastError = Duration.zero;
 
   @override
@@ -2468,6 +2472,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   }
 
   Future<void> _startInitialPlayback() async {
+    if (kIsWeb) _webPlayerHandle = await _player.handle;
     final prefs = await SharedPreferences.getInstance();
     if (!mounted || _playerTornDown) return;
     if (!(prefs.getBool('player_gestures_introduced') ?? false)) {
@@ -2594,7 +2599,10 @@ class _PlayerScreenState extends State<PlayerScreen>
     }
 
     const headers = {'User-Agent': 'MBNMovie/1.0 Android'};
-    if (kIsWeb) BrowserFeatures.clearAudio();
+    if (kIsWeb) {
+      BrowserFeatures.clearPlayPrompt();
+      BrowserFeatures.clearAudio();
+    }
     final routed = kIsWeb
         ? await WebGateway.media(
             fileUrl,
@@ -2621,6 +2629,36 @@ class _PlayerScreenState extends State<PlayerScreen>
     await _awaitLoadReady(generation: generation);
   }
 
+  Future<void> _requestPlay() async {
+    if (!kIsWeb) {
+      await _player.play();
+      return;
+    }
+    final generation = _mediaGeneration;
+    final attempt = ++_webPlayAttempt;
+    try {
+      final started = await BrowserFeatures.play(
+        handle: _webPlayerHandle,
+        active: () =>
+            _isCurrentMediaOp(generation) && attempt == _webPlayAttempt,
+      );
+      if (!_isCurrentMediaOp(generation) || attempt != _webPlayAttempt) return;
+      setState(() {
+        _webNeedsTap = !started;
+        if (!started) {
+          _error = null;
+          _buffering = false;
+          _controlsVisible = true;
+        }
+      });
+      if (!started) _hideTimer?.cancel();
+    } catch (error) {
+      if (_isCurrentMediaOp(generation) && attempt == _webPlayAttempt) {
+        _handlePlaybackError('$error');
+      }
+    }
+  }
+
   Future<void> _openMedia() async {
     final generation = ++_mediaGeneration;
     final resumeAt = widget.initialPosition;
@@ -2638,7 +2676,7 @@ class _PlayerScreenState extends State<PlayerScreen>
       await _player.seek(_safeResumePosition(resumeAt));
       if (!_isCurrentMediaOp(generation)) return;
     }
-    await _player.play();
+    await _requestPlay();
     if (!_isCurrentMediaOp(generation)) return;
 
     if (resumeAt > Duration.zero) {
@@ -2808,7 +2846,10 @@ class _PlayerScreenState extends State<PlayerScreen>
     _subscriptions.add(
       _player.stream.playing.listen((value) {
         if (!mounted) return;
-        setState(() => _playing = value);
+        setState(() {
+          _playing = value;
+          if (value) _webNeedsTap = false;
+        });
         if (value && _controlsVisible && !_touchLocked && !_isInPip) {
           _armHideTimer();
         } else if (!value) {
@@ -3239,7 +3280,7 @@ class _PlayerScreenState extends State<PlayerScreen>
       await _waitUntilSeekable(generation: generation);
       await _player.seek(_safeResumePosition(position));
       if (!_isCurrentMediaOp(generation)) return;
-      if (wasPlaying) await _player.play();
+      if (wasPlaying) await _requestPlay();
       if (!_isCurrentMediaOp(generation)) return;
       // Commit media identity and timeline together for the current op only.
       _episode = target.episode;
@@ -3272,7 +3313,7 @@ class _PlayerScreenState extends State<PlayerScreen>
           generation: generation,
         );
         await _player.seek(_safeResumePosition(position));
-        if (wasPlaying) await _player.play();
+        if (wasPlaying) await _requestPlay();
       } catch (_) {}
       if (!mounted) return;
       if (_isCurrentMediaOp(generation)) {
@@ -3690,7 +3731,7 @@ class _PlayerScreenState extends State<PlayerScreen>
         await _player.seek(_safeResumePosition(startAt));
         if (!_isCurrentMediaOp(generation)) return;
       }
-      await _player.play();
+      await _requestPlay();
       if (!mounted || !_isCurrentMediaOp(generation)) return;
       _episode = target.episode;
       final prefs = await SharedPreferences.getInstance();
@@ -3726,7 +3767,7 @@ class _PlayerScreenState extends State<PlayerScreen>
         );
         await _waitUntilSeekable(generation: generation);
         await _player.seek(_safeResumePosition(previousPosition));
-        if (wasPlaying) await _player.play();
+        if (wasPlaying) await _requestPlay();
       } catch (_) {}
       if (!mounted) return;
       if (_isCurrentMediaOp(generation)) {
@@ -4056,6 +4097,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     if (kIsWeb) {
       WidgetsBinding.instance.removeObserver(this);
       unawaited(BrowserFeatures.fullscreen(false));
+      BrowserFeatures.clearPlayPrompt();
       BrowserFeatures.clearAudio();
       BrowserFeatures.clearSubtitle();
     }
@@ -4134,6 +4176,7 @@ class _PlayerScreenState extends State<PlayerScreen>
 
   void _armHideTimer() {
     _hideTimer?.cancel();
+    if (_webNeedsTap) return;
     if (!_playing || _isSeeking || ModalRoute.of(context)?.isCurrent != true) {
       return;
     }
@@ -4200,7 +4243,16 @@ class _PlayerScreenState extends State<PlayerScreen>
   }
 
   void _toggle({bool showControls = true}) {
-    _player.playOrPause();
+    if (kIsWeb) {
+      if (_playing && !_webNeedsTap) {
+        ++_webPlayAttempt;
+        unawaited(_player.pause());
+      } else {
+        unawaited(_requestPlay());
+      }
+    } else {
+      _player.playOrPause();
+    }
     if (showControls) _showControls();
   }
 
@@ -4856,15 +4908,18 @@ class _PlayerScreenState extends State<PlayerScreen>
                 fit: StackFit.expand,
                 children: [
                   RepaintBoundary(
-                    child: Video(
-                      controller: _video,
-                      fit: _fitCover ? BoxFit.cover : BoxFit.contain,
-                      controls: (_) => const SizedBox.shrink(),
-                      // Native subtitles are hidden; [_AnimeSubtitles] renders them
-                      // in one uniform rounded box instead (no stacked backgrounds).
-                      subtitleViewConfiguration:
-                          const SubtitleViewConfiguration(visible: false),
-                    ),
+                    child: DevicePerformance.appleMobileWeb
+                        ? BrowserVideoView(player: _player, cover: _fitCover)
+                        : Video(
+                            controller: _video,
+                            fit: _fitCover ? BoxFit.cover : BoxFit.contain,
+                            controls: (_) => const SizedBox.shrink(),
+                            wakelock: !DevicePerformance.appleMobileWeb,
+                            // Native subtitles are hidden; [_AnimeSubtitles] renders them
+                            // in one uniform rounded box instead (no stacked backgrounds).
+                            subtitleViewConfiguration:
+                                const SubtitleViewConfiguration(visible: false),
+                          ),
                   ),
                   // Keep Flutter hit testing above the HTML platform view even
                   // when every visible control is hidden or the viewport rotates.
@@ -5049,6 +5104,10 @@ class _PlayerScreenState extends State<PlayerScreen>
                                             PlayerHeaderAction(
                                               icon: action.icon,
                                               label: action.tooltip,
+                                              priority:
+                                                  playerHeaderActionPriority(
+                                                    action.tooltip,
+                                                  ),
                                               onTap: action.onTap,
                                               button: action,
                                             ),

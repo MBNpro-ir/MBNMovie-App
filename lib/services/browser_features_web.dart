@@ -12,6 +12,101 @@ abstract final class BrowserFeatures {
         (ua.contains('macintosh') && nav.maxTouchPoints > 1);
   }
 
+  static bool get isAppleMobile =>
+      RegExp(
+        r'iphone|ipad|ipod',
+        caseSensitive: false,
+      ).hasMatch(web.window.navigator.userAgent) ||
+      (web.window.navigator.vendor.contains('Apple') &&
+          web.window.navigator.maxTouchPoints > 1);
+
+  // Invoke play before the first await, while a real tap still owns the
+  // Safari user gesture. Network preparation cannot retain that permission.
+  static Future<bool> play({int? handle, bool Function()? active}) async {
+    var video = _video;
+    if (video == null && handle != null) {
+      final instances = globalContext.getProperty<JSObject?>(
+        r'$com.alexmercerind.media_kit.instances'.toJS,
+      );
+      video = instances?.getProperty<web.HTMLVideoElement>(
+        handle.toString().toJS,
+      );
+    }
+    if (video == null) throw StateError('Video is not attached');
+    try {
+      await video.play().toDart;
+      return true;
+    } catch (error) {
+      if ((error as web.DOMException).name == 'NotAllowedError') {
+        if (active?.call() == false) return false;
+        _showTapToPlay(video);
+        return false;
+      }
+      rethrow;
+    }
+  }
+
+  static void clearPlayPrompt() => _clearTapToPlay();
+  static web.HTMLButtonElement? _tapButton;
+  static web.HTMLVideoElement? _tapVideo;
+  static JSFunction? _tapPlaying;
+  static void _clearTapToPlay() {
+    if (_tapPlaying != null) {
+      _tapVideo?.removeEventListener('playing', _tapPlaying);
+    }
+    _tapPlaying = null;
+    _tapVideo = null;
+    _tapButton?.remove();
+    _tapButton = null;
+  }
+
+  static void _showTapToPlay(web.HTMLVideoElement video) {
+    _clearTapToPlay();
+    final button = web.HTMLButtonElement()
+      ..textContent = 'برای شروع پخش لمس کن'
+      ..setAttribute('aria-label', 'برای شروع پخش لمس کن');
+    button.style
+      ..position = 'fixed'
+      ..left = '50%'
+      ..top = '50%'
+      ..transform = 'translate(-50%, -50%)'
+      ..zIndex = '10000'
+      ..padding = '16px 22px'
+      ..border = '1px solid white'
+      ..borderRadius = '16px'
+      ..backgroundColor = '#202535'
+      ..color = 'white'
+      ..font = 'bold 16px Tahoma, sans-serif'
+      ..cursor = 'pointer';
+    // A native click calls play synchronously, before Flutter's gesture
+    // recognizers or an async lock can consume Safari's transient permission.
+    button.addEventListener(
+      'click',
+      ((web.Event _) {
+        video
+            .play()
+            .toDart
+            .then((_) {
+              if (_tapButton == button) _clearTapToPlay();
+            })
+            .catchError((Object _) {
+              button.textContent = 'پخش انجام نشد؛ دوباره لمس کن';
+            });
+      }).toJS,
+    );
+    _tapVideo = video;
+    _tapPlaying = ((web.Event _) {
+      if (_tapButton == button) _clearTapToPlay();
+    }).toJS;
+    video.addEventListener(
+      'playing',
+      _tapPlaying,
+      web.AddEventListenerOptions(once: true),
+    );
+    _tapButton = button;
+    web.document.body!.appendChild(button);
+  }
+
   static bool get castSupported =>
       _video != null &&
       (_video!.hasProperty('webkitShowPlaybackTargetPicker'.toJS).toDart ||
@@ -19,7 +114,17 @@ abstract final class BrowserFeatures {
 
   static bool get requiresCompatibleVideo =>
       web.window.navigator.vendor.contains('Apple');
+  static web.HTMLVideoElement? _ownedVideo;
+  static void attachVideo(web.HTMLVideoElement video) => _ownedVideo = video;
+  static void detachVideo(web.HTMLVideoElement video) {
+    if (_ownedVideo == video) {
+      _clearTapToPlay();
+      _ownedVideo = null;
+    }
+  }
+
   static web.HTMLVideoElement? get _video =>
+      _ownedVideo ??
       web.document.querySelector('video') as web.HTMLVideoElement?;
   static void download(String url, String name) {
     final anchor = web.HTMLAnchorElement()
@@ -151,6 +256,7 @@ abstract final class BrowserFeatures {
   }
 
   static void stop() {
+    _clearTapToPlay();
     clearAudio();
     clearSubtitle();
     final video = _video;
@@ -166,6 +272,8 @@ abstract final class BrowserFeatures {
     if (_video != null) _video!.muted = value;
   }
 
+  static web.HTMLButtonElement? _audioTapButton;
+  static Completer<void>? _audioTapPending;
   static web.HTMLAudioElement? _audio;
   static web.HTMLVideoElement? _audioVideo;
   static JSFunction? _audioSync;
@@ -181,6 +289,10 @@ abstract final class BrowserFeatures {
     'ended',
   ];
   static void clearAudio() {
+    _audioTapButton?.remove();
+    _audioTapButton = null;
+    _audioTapPending?.complete();
+    _audioTapPending = null;
     if (_audioSync != null && _audioVideo != null) {
       for (final event in _audioEvents) {
         _audioVideo!.removeEventListener(event, _audioSync);
@@ -208,9 +320,51 @@ abstract final class BrowserFeatures {
     audio.volume = video.volume;
     try {
       if (!video.paused) await audio.play().toDart;
-    } catch (_) {
-      if (_audio == audio) clearAudio();
-      rethrow;
+    } catch (error) {
+      if (_audio != audio) return;
+      if ((error as web.DOMException).name != 'NotAllowedError') {
+        if (_audio == audio) clearAudio();
+        rethrow;
+      }
+      final permission = Completer<void>();
+      _audioTapPending = permission;
+      final button = web.HTMLButtonElement()
+        ..textContent = 'برای پخش صدای انتخاب‌شده لمس کن'
+        ..setAttribute('aria-label', 'برای پخش صدای انتخاب‌شده لمس کن');
+      button.style
+        ..position = 'fixed'
+        ..left = '50%'
+        ..top = '50%'
+        ..transform = 'translate(-50%, -50%)'
+        ..zIndex = '10000'
+        ..padding = '16px'
+        ..borderRadius = '16px'
+        ..backgroundColor = '#202535'
+        ..color = 'white'
+        ..font = '16px Tahoma, sans-serif';
+      button.addEventListener(
+        'click',
+        ((web.Event _) {
+          audio.currentTime = video.currentTime;
+          audio
+              .play()
+              .toDart
+              .then((_) {
+                if (_audioTapPending == permission) {
+                  _audioTapPending = null;
+                  _audioTapButton = null;
+                  button.remove();
+                  permission.complete();
+                }
+              })
+              .catchError((Object _) {
+                button.textContent = 'پخش صدا انجام نشد؛ دوباره لمس کن';
+              });
+        }).toJS,
+      );
+      _audioTapButton = button;
+      web.document.body!.appendChild(button);
+      await permission.future;
     }
     if (_audio != audio) return;
     video.muted = true;

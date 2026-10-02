@@ -52,7 +52,8 @@ class _ArtworkProbe {
 }
 
 class _ContentArtState extends State<ContentArt> {
-  static const _maxProbeEntries = 500;
+  static int get _maxProbeEntries =>
+      DevicePerformance.appleMobileWeb ? 80 : 500;
   static final LinkedHashMap<String, Future<_ArtworkProbe?>> _probeCache =
       LinkedHashMap<String, Future<_ArtworkProbe?>>();
   static final LinkedHashMap<String, _ArtworkProbe> _probeResults =

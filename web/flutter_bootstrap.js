@@ -1,8 +1,9 @@
 {{flutter_js}}
 {{flutter_build_config}}
+const mbnAppleMobile = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.vendor.includes('Apple') && navigator.maxTouchPoints > 1);
 const mbnAssetRoot = new URL('.', document.currentScript.src).href;
 _flutter.loader.load({
-  config: {entrypointBaseUrl: mbnAssetRoot, assetBase: mbnAssetRoot, canvasKitBaseUrl: mbnAssetRoot + 'canvaskit/'},
+  config: {entrypointBaseUrl: mbnAssetRoot, assetBase: mbnAssetRoot, canvasKitBaseUrl: mbnAssetRoot + 'canvaskit/', ...(mbnAppleMobile ? {canvasKitMaximumSurfaces: 2} : {})},
   onEntrypointLoaded: async function(engineInitializer) {
     const appRunner = await engineInitializer.initializeEngine({assetBase: mbnAssetRoot});
     await appRunner.runApp();

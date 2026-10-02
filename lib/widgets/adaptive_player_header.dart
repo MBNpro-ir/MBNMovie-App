@@ -7,11 +7,13 @@ class PlayerHeaderAction {
     required this.label,
     required this.onTap,
     required this.button,
+    this.priority = 100,
   });
   final IconData icon;
   final String label;
   final VoidCallback onTap;
   final Widget button;
+  final int priority;
 }
 
 /// Keep one row and put only the actions that cannot fit into the menu.
@@ -31,7 +33,7 @@ class AdaptivePlayerHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
-      const buttonSize = 50.0, gap = 8.0, leadingWidth = 64.0;
+      const buttonSize = 50.0, gap = 8.0, leadingWidth = 78.0;
       final titleWidth = constraints.maxWidth < 500 ? 64.0 : 120.0;
       final slots = math.max(
         1,
@@ -39,16 +41,21 @@ class AdaptivePlayerHeader extends StatelessWidget {
                 (buttonSize + gap))
             .floor(),
       );
+      final ranked = [...actions]
+        ..sort((a, b) {
+          final priority = a.priority.compareTo(b.priority);
+          return priority != 0
+              ? priority
+              : actions.indexOf(a).compareTo(actions.indexOf(b));
+        });
       final visible = actions.length <= slots
           ? actions.length
           : math.max(0, slots - 1);
-      final hidden = actions.skip(visible).toList();
+      final hidden = ranked.skip(visible).toList();
       return Row(
+        textDirection: TextDirection.ltr,
         children: [
-          SizedBox(width: buttonSize, height: buttonSize, child: back),
-          const SizedBox(width: 14),
-          Expanded(child: title),
-          for (final action in actions.take(visible)) ...[
+          for (final action in ranked.take(visible)) ...[
             const SizedBox(width: gap),
             SizedBox(
               width: buttonSize,
@@ -104,8 +111,21 @@ class AdaptivePlayerHeader extends StatelessWidget {
               ),
             ),
           ],
+          const SizedBox(width: 14),
+          Expanded(child: title),
+          const SizedBox(width: 14),
+          SizedBox(width: buttonSize, height: buttonSize, child: back),
         ],
       );
     },
   );
 }
+
+int playerHeaderActionPriority(String label) => switch (label) {
+  'تمام‌صفحه (F)' => 0,
+  'اندازهٔ تصویر (V)' => 1,
+  'تنظیم سرعت' => 2,
+  'تنظیم زیرنویس' => 3,
+  'صدا و زیرنویس' => 4,
+  _ => 100,
+};
