@@ -12,7 +12,8 @@ class TitleLanguage {
 
   static const preferenceKey = 'movie_titles_english';
   static final revision = ValueNotifier<int>(0);
-  static bool english = false;
+  static bool english = true;
+  static final Map<String, String> _persianById = {};
   static final Map<String, String> _originalById = {};
 
   /// Offline English/original title for [id], if the bundled catalog knows it.
@@ -32,18 +33,31 @@ class TitleLanguage {
 
   static Future<void> initialize() async {
     final prefs = await SharedPreferences.getInstance();
-    english = prefs.getBool(preferenceKey) ?? false;
+    if (!(prefs.getBool('movie_title_language_default_v2') ?? false)) {
+      await prefs.setBool(preferenceKey, true);
+      await prefs.setBool('movie_title_language_default_v2', true);
+    }
+    english = prefs.getBool(preferenceKey) ?? true;
     try {
       final source = await rootBundle.loadString('assets/catalog_index.json');
       final rows = jsonDecode(source) as List<dynamic>;
       for (final value in rows) {
         if (value is! Map) continue;
         final id = value['id']?.toString() ?? '';
+        final persian = value['title']?.toString() ?? '';
+        if (id.isNotEmpty && persian.isNotEmpty) _persianById[id] = persian;
+        final original = value['english_title']?.toString().trim() ?? '';
+        if (id.isNotEmpty &&
+            original.isNotEmpty &&
+            RegExp(r'[A-Za-z]').hasMatch(original)) {
+          _originalById[id] = original;
+        }
         final aliases = value['aliases'];
         if (id.isEmpty || aliases is! List) continue;
         for (final alias in aliases) {
           final original = alias?.toString().trim() ?? '';
-          if (RegExp(r'[A-Za-z]').hasMatch(original)) {
+          if (!_originalById.containsKey(id) &&
+              RegExp(r'[A-Za-z]').hasMatch(original)) {
             _originalById[id] = original;
             break;
           }
@@ -62,8 +76,13 @@ class TitleLanguage {
     await prefs.setBool(preferenceKey, value);
   }
 
+  static String titleFor(String id, String fallback) =>
+      (english ? _originalById[id] : _persianById[id]) ?? fallback;
+
   static String title(MovieContent item) {
-    if (!english) return item.title;
+    if (!english) return _persianById[item.id] ?? item.title;
+    final known = _originalById[item.id];
+    if (known != null) return known;
     for (final alias in item.alternateTitles) {
       if (RegExp(r'[A-Za-z]').hasMatch(alias)) return alias;
     }

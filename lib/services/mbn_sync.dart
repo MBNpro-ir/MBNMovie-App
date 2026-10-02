@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:async';
-import 'package:flutter/foundation.dart';
-import '../core/app_platform.dart' show Platform;
+import '../core/platform_ui.dart' show settingsDeviceProfile;
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -24,7 +23,11 @@ class MbnSync {
   static const _app = 'movie';
   static const _tsPrefix = 'mbn_sync_ts_';
   static const _categories = [
-    'favorites', 'playlists', 'history', 'progress', 'preferences',
+    'favorites',
+    'playlists',
+    'history',
+    'progress',
+    'preferences',
   ];
 
   MbnAuth? _auth;
@@ -57,10 +60,12 @@ class MbnSync {
         await lists.delete(list.id);
       }
       for (final key in prefs.getKeys().toList()) {
-        if (_isProgressKey(key) || _isPreferenceKey(key) ||
+        if (_isProgressKey(key) ||
+            _isPreferenceKey(key) ||
             key.startsWith(_tsPrefix) ||
             key.startsWith('mbn_sync_dirty_') ||
-            key.startsWith('mbn_sync_rev_') || key == _pendingResetKey) {
+            key.startsWith('mbn_sync_rev_') ||
+            key == _pendingResetKey) {
           await prefs.remove(key);
         }
       }
@@ -99,8 +104,7 @@ class MbnSync {
       key == 'access_text_scale';
 
   static bool _isIntPreferenceKey(String key) =>
-      key == 'sub_color' ||
-      key == 'sub_bg_color';
+      key == 'sub_color' || key == 'sub_bg_color';
 
   static String _tsKey(String category) => '$_tsPrefix$category';
 
@@ -221,11 +225,19 @@ class MbnSync {
 
   /// Queue a scoped reset durably so an offline clear cannot be resurrected
   /// by the next server pull. The server rejects older device snapshots.
-  Future<bool> resetEpisodeProgress(String contentId, Set<String> episodeIds) async {
+  Future<bool> resetEpisodeProgress(
+    String contentId,
+    Set<String> episodeIds,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
     final pending = prefs.getStringList(_pendingResetKey) ?? [];
-    pending.add(jsonEncode({'app': _app, 'content_id': contentId,
-      'episode_ids': episodeIds.toList()}));
+    pending.add(
+      jsonEncode({
+        'app': _app,
+        'content_id': contentId,
+        'episode_ids': episodeIds.toList(),
+      }),
+    );
     await prefs.setStringList(_pendingResetKey, pending);
     await _touchLocal('progress');
     final synced = await _flushEpisodeResets();
@@ -245,8 +257,10 @@ class MbnSync {
     try {
       while ((prefs.getStringList(_pendingResetKey) ?? []).isNotEmpty) {
         final entry = prefs.getStringList(_pendingResetKey)!.first;
-        await _auth!.postJson('/api/sync/progress/reset-episode',
-          Map<String, dynamic>.from(jsonDecode(entry) as Map));
+        await _auth!.postJson(
+          '/api/sync/progress/reset-episode',
+          Map<String, dynamic>.from(jsonDecode(entry) as Map),
+        );
         final remaining = prefs.getStringList(_pendingResetKey) ?? [];
         remaining.remove(entry);
         await prefs.setStringList(_pendingResetKey, remaining);
@@ -352,8 +366,11 @@ class MbnSync {
     if (prefs.getBool(promptKey) ?? false) return;
 
     try {
-      final platformKey = kIsWeb ? 'web' : (Platform.isWindows ? 'windows' : (Platform.isAndroid ? 'android' : 'other'));
-      final res = await auth!.getJson('/api/sync/other-settings', query: {'platform': platformKey});
+      final platformKey = settingsDeviceProfile;
+      final res = await auth!.getJson(
+        '/api/sync/other-settings',
+        query: {'platform': platformKey},
+      );
       if (res['has_settings'] == true && res['settings'] is Map) {
         final otherName = res['other_app_name']?.toString() ?? 'برنامه دیگر';
         if (!context.mounted) return;
@@ -416,7 +433,7 @@ class MbnSync {
 
       // 2. If current app had no settings or nothing restored, fallback to checking other app's settings
       if (!restored) {
-        final platformKey = kIsWeb ? 'web' : (Platform.isWindows ? 'windows' : (Platform.isAndroid ? 'android' : 'other'));
+        final platformKey = settingsDeviceProfile;
         final otherRes = await auth.getJson(
           '/api/sync/other-settings',
           query: {'platform': platformKey},
@@ -467,7 +484,7 @@ class MbnSync {
         final prefs = await SharedPreferences.getInstance();
         if (!(prefs.getBool('sync_settings_enabled') ?? true)) return null;
         final raw = await _readPreferenceKeys();
-        final platformKey = kIsWeb ? 'web' : (Platform.isWindows ? 'windows' : (Platform.isAndroid ? 'android' : 'other'));
+        final platformKey = settingsDeviceProfile;
         return {platformKey: raw};
     }
     return null;
@@ -506,22 +523,34 @@ class MbnSync {
     final prefs = await SharedPreferences.getInstance();
     if (!(prefs.getBool('sync_settings_enabled') ?? true)) return false;
 
-    final platformKey = kIsWeb ? 'web' : (Platform.isWindows ? 'windows' : (Platform.isAndroid ? 'android' : 'other'));
+    final platformKey = settingsDeviceProfile;
     Map? targetPayload;
     bool isCrossPlatformFallback = false;
 
-    if (payload.containsKey(platformKey) && payload[platformKey] is Map && (payload[platformKey] as Map).isNotEmpty) {
+    if (payload.containsKey(platformKey) &&
+        payload[platformKey] is Map &&
+        (payload[platformKey] as Map).isNotEmpty) {
       targetPayload = payload[platformKey] as Map;
-    } else if (payload.containsKey('windows') && payload['windows'] is Map && (payload['windows'] as Map).isNotEmpty) {
+    } else if (payload.containsKey('windows') &&
+        payload['windows'] is Map &&
+        (payload['windows'] as Map).isNotEmpty) {
       targetPayload = payload['windows'] as Map;
       isCrossPlatformFallback = (platformKey != 'windows');
-    } else if (payload.containsKey('android') && payload['android'] is Map && (payload['android'] as Map).isNotEmpty) {
+    } else if (payload.containsKey('android') &&
+        payload['android'] is Map &&
+        (payload['android'] as Map).isNotEmpty) {
       targetPayload = payload['android'] as Map;
       isCrossPlatformFallback = (platformKey != 'android');
-    } else if (payload.containsKey('other') && payload['other'] is Map && (payload['other'] as Map).isNotEmpty) {
+    } else if (payload.containsKey('other') &&
+        payload['other'] is Map &&
+        (payload['other'] as Map).isNotEmpty) {
       targetPayload = payload['other'] as Map;
       isCrossPlatformFallback = (platformKey != 'other');
-    } else if (!payload.containsKey('windows') && !payload.containsKey('android') && !payload.containsKey('other')) {
+    } else if (!payload.containsKey('windows') &&
+        !payload.containsKey('android') &&
+        !payload.containsKey('web') &&
+        !payload.containsKey('tv') &&
+        !payload.containsKey('other')) {
       targetPayload = payload;
     }
 

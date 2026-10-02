@@ -8,22 +8,60 @@ import 'package:mbnmovie/models/movie_content.dart';
 import 'package:mbnmovie/services/movie_api.dart';
 
 void main() {
-  test('guest search finds The Last Kingdom in both languages when API rejects filtering', () async {
-    TestWidgetsFlutterBinding.ensureInitialized();
-    final api = MovieApi(client: MockClient((request) async {
-      if (request.url.queryParameters['action'] == 'login') {
-        return http.Response(jsonEncode({
-          'infos': [{'auth': 'guest'}], 'q1': 1, 'q2': 2,
-        }), 200);
+  test(
+    'Five Feet Apart resolves immediately without upstream traffic',
+    () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      final api = MovieApi(
+        client: MockClient(
+          (_) async => throw StateError('network must not be used'),
+        ),
+      );
+      for (final query in ['five feet apart', 'Five Feet Apart']) {
+        expect(
+          (await api.search(query)).map((item) => item.id),
+          contains('6510'),
+        );
       }
-      return http.Response(jsonEncode({'state_all': 'F', 'msg': 'guest'}), 200);
-    }));
-    for (final query in ['The Last Kingdom', 'آخرین پادشاهی']) {
-      expect((await api.search(query)).map((item) => item.id), contains('8315'));
-      expect((await api.advancedFilter(query: query)).map((item) => item.id),
-          contains('8315'));
-    }
-  });
+    },
+  );
+
+  test(
+    'guest search finds The Last Kingdom in both languages when API rejects filtering',
+    () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      final api = MovieApi(
+        client: MockClient((request) async {
+          if (request.url.queryParameters['action'] == 'login') {
+            return http.Response(
+              jsonEncode({
+                'infos': [
+                  {'auth': 'guest'},
+                ],
+                'q1': 1,
+                'q2': 2,
+              }),
+              200,
+            );
+          }
+          return http.Response(
+            jsonEncode({'state_all': 'F', 'msg': 'guest'}),
+            200,
+          );
+        }),
+      );
+      for (final query in ['The Last Kingdom', 'آخرین پادشاهی']) {
+        expect(
+          (await api.search(query)).map((item) => item.id),
+          contains('8315'),
+        );
+        expect(
+          (await api.advancedFilter(query: query)).map((item) => item.id),
+          contains('8315'),
+        );
+      }
+    },
+  );
 
   test(
     'bundled catalog finds every The Office series by original title',

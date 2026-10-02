@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'theme.dart';
+import '../services/browser_features.dart';
 import '../services/accessibility_service.dart';
 
 /// Shared navigator/messenger keys (single source used by the app shell and
@@ -17,6 +18,17 @@ final appMessengerKey = GlobalKey<ScaffoldMessengerState>();
 /// True on desktop window builds (custom title bar, no bottom nav).
 bool get isDesktopWindow => Platform.isWindows;
 bool isAndroidTv = false;
+String get settingsDeviceProfile => kIsWeb
+    ? 'web'
+    : isAndroidTv
+    ? 'tv'
+    : Platform.isWindows
+    ? 'windows'
+    : Platform.isAndroid
+    ? 'android'
+    : 'other';
+bool get isDesktopWeb => kIsWeb && !BrowserFeatures.isMobileBrowser;
+bool get hideBottomNavigation => isLargeScreenDevice || isDesktopWeb;
 bool get isLargeScreenDevice => isDesktopWindow || isAndroidTv;
 
 /// Bottom sheets remain full-width on phones, while TV/desktop use a readable
@@ -47,7 +59,7 @@ final hideWindowChrome = ValueNotifier<bool>(false);
 
 /// Bottom breathing room: lists reserve space for the mobile nav bar,
 /// which is hidden on desktop.
-double get bottomListGap => isLargeScreenDevice ? 28 : 110;
+double get bottomListGap => hideBottomNavigation ? 28 : 110;
 
 /// Shared route for inner pages. Android deliberately uses a Material route so
 /// its predictive-back transition can follow the system edge-swipe in real

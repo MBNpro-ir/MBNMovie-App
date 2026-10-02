@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'services/device_performance.dart';
 import 'dart:async';
 import 'services/session_watch.dart';
@@ -60,6 +61,7 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _api.catalogRequest = (path, query) => _auth.getJson(path, query: query);
     unawaited(TitleLanguage.initialize());
     _accountTimer = Timer.periodic(const Duration(seconds: 6), (_) {
       unawaited(_checkAccount());
@@ -627,6 +629,7 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
                       )) {
                         return;
                       }
+                      TextInput.finishAutofillContext(shouldSave: true);
                       await _bindDelfanSession();
                       MbnSync.instance.configure(auth: _auth);
                       if (_auth.profile != null && _auth.profile!.id > 0) {

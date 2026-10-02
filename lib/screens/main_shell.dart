@@ -1,3 +1,4 @@
+import '../core/title_language.dart';
 import '../services/device_performance.dart';
 import '../services/web_gateway.dart';
 import 'package:flutter/foundation.dart';
@@ -70,6 +71,7 @@ class _MainShellState extends State<MainShell> {
   void initState() {
     super.initState();
     _pageController = PageController();
+    TitleLanguage.revision.addListener(_titleLanguageChanged);
     _restore();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -82,8 +84,14 @@ class _MainShellState extends State<MainShell> {
 
   @override
   void dispose() {
+    TitleLanguage.revision.removeListener(_titleLanguageChanged);
     _pageController.dispose();
     super.dispose();
+  }
+
+  void _titleLanguageChanged() {
+    if (!mounted) return;
+    setState(() {});
   }
 
   Future<void> _restore() async {
@@ -330,7 +338,7 @@ class _MainShellState extends State<MainShell> {
                 favorites: _openFavorites,
                 switchApp: _openSiblingAnime,
               ),
-              if (isAndroidTv)
+              if (isAndroidTv || isDesktopWeb)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Row(
@@ -372,7 +380,7 @@ class _MainShellState extends State<MainShell> {
           ),
         ),
       ),
-      bottomNavigationBar: isLargeScreenDevice
+      bottomNavigationBar: hideBottomNavigation
           ? null
           : _AnimatedBottomNav(index: _index, onSelected: _goToPage),
     );
@@ -2025,7 +2033,7 @@ class _FeaturedCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          item.title,
+                          TitleLanguage.title(item),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.headlineMedium,
@@ -4671,7 +4679,7 @@ class _ContinueWatchSection extends StatelessWidget {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            last.title,
+                            TitleLanguage.titleFor(last.contentId, last.title),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(

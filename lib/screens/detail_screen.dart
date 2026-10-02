@@ -945,7 +945,7 @@ class _ContinueWatchButtonState extends State<_ContinueWatchButton> {
       builder: (dialogContext) => AlertDialog(
         icon: const Icon(Icons.history_rounded),
         title: Text(
-          widget.item.title,
+          TitleLanguage.title(widget.item),
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),
@@ -2555,7 +2555,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   Future<void> _configurePictureInPicture() => _pip.configure(
     autoEnter: _playing,
     aspectRatio: _pipAspectRatio,
-    title: widget.content.title,
+    title: TitleLanguage.title(widget.content),
     subtitle: _episode.name,
   );
 
@@ -2568,7 +2568,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     setState(() => _controlsVisible = false);
     final entered = await _pip.enter(
       aspectRatio: _pipAspectRatio,
-      title: widget.content.title,
+      title: TitleLanguage.title(widget.content),
       subtitle: _episode.name,
     );
     if (!mounted || entered) return;
@@ -3897,7 +3897,7 @@ class _PlayerScreenState extends State<PlayerScreen>
         const store = LastWatchStore();
         final atExit = LastWatch(
           contentId: widget.content.id,
-          title: widget.content.title,
+          title: TitleLanguage.title(widget.content),
           episodeId: _progressEpisodeId,
           episodeName: _episode.name,
           fileUrl: _episode.fileUrl,
@@ -4766,8 +4766,9 @@ class _PlayerScreenState extends State<PlayerScreen>
   Future<void> _showSubtitleSettings() async {
     _hideTimer?.cancel();
     setState(() => _controlsVisible = false);
-    final result = await (kIsWeb
+    final result = await (kIsWeb || (Platform.isAndroid && !isAndroidTv)
         ? showResponsivePlayerPanel<SubtitlePreferences>(
+            containsCloseButton: true,
             context: context,
             constraints: BoxConstraints(
               maxWidth: panelWidth(context, large: 840),
@@ -4841,6 +4842,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     _hideTimer?.cancel();
     final result =
         await showResponsivePlayerPanel<(SubtitlePreferences, double)>(
+          containsCloseButton: true,
           context: context,
           constraints: BoxConstraints(maxWidth: playerSpeedSheetWidth(context)),
           isScrollControlled: true,
@@ -5036,7 +5038,9 @@ class _PlayerScreenState extends State<PlayerScreen>
                                                 CrossAxisAlignment.start,
                                             children: [
                                               Text(
-                                                widget.content.title,
+                                                TitleLanguage.title(
+                                                  widget.content,
+                                                ),
                                                 maxLines: 1,
                                                 overflow: TextOverflow.ellipsis,
                                                 style: const TextStyle(
@@ -6016,7 +6020,7 @@ class _TopSubtitleSettingsState extends State<_TopSubtitleSettings> {
         padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
         child: Column(
           children: [
-            if (kIsWeb)
+            if (kIsWeb || !isLargeScreenDevice)
               SubtitlePanelToolbar(
                 onReset: () => change(
                   SubtitlePreferences(

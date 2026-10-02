@@ -138,7 +138,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       _volume = (prefs.getDouble('player_volume') ?? 100).clamp(0, 100);
       _rate = (prefs.getDouble('player_rate') ?? 1).clamp(.5, 4.0);
       _fitCover = prefs.getBool('player_fit_cover') ?? false;
-      _englishTitles = prefs.getBool(TitleLanguage.preferenceKey) ?? false;
+      _englishTitles = TitleLanguage.english;
       _customBrightness = brightness != null;
       _brightness = (brightness ?? .5).clamp(0, 1);
       _defaultPlayer = _players.containsKey(player)
@@ -194,7 +194,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     await prefs.setDouble('player_volume', 100);
     await prefs.setDouble('player_rate', 1);
     await prefs.setBool('player_fit_cover', false);
-    await TitleLanguage.setEnglish(false);
+    await TitleLanguage.setEnglish(true);
     await prefs.remove('player_screen_brightness');
     await prefs.setString(
       PlaybackPreferenceStore.defaultPlayerKey,

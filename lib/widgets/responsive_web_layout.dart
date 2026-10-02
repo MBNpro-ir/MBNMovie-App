@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../core/platform_ui.dart';
 
 bool isWideWebLayout(BuildContext context) =>
     kIsWeb && MediaQuery.sizeOf(context).width >= 900;
@@ -49,37 +50,57 @@ Future<T?> showResponsivePlayerPanel<T>({
   bool useSafeArea = true,
   bool showDragHandle = true,
   Color? backgroundColor,
+  bool containsCloseButton = false,
+  ThemeData? panelTheme,
+  bool? compactLayout,
 }) {
   final media = MediaQuery.of(context);
+  final capturedTheme = panelTheme ?? Theme.of(context);
+  Widget themed(BuildContext context) => Theme(
+    data: capturedTheme,
+    child: Builder(builder: builder),
+  );
+  final phone =
+      compactLayout ?? (!isLargeScreenDevice && media.size.shortestSide < 600);
   if (kIsWeb && media.size.width >= 700 && media.size.height >= 480) {
     return showDialog<T>(
       context: context,
       builder: (context) => PlayerWebPanel(
         maxWidth: constraints?.maxWidth ?? 640,
         color: backgroundColor,
-        child: Builder(builder: builder),
+        showCloseButton: !containsCloseButton,
+        child: Builder(builder: themed),
       ),
     );
   }
   return showModalBottomSheet<T>(
     context: context,
-    builder: builder,
+    builder: themed,
     isScrollControlled: isScrollControlled,
     useSafeArea: useSafeArea,
     showDragHandle: showDragHandle,
     backgroundColor: backgroundColor,
-    constraints: kIsWeb
+    constraints: kIsWeb || phone
         ? BoxConstraints(
             maxWidth: math.min(
-              constraints?.maxWidth ?? 640,
-              media.size.width - 16,
+              phone ? 520 : constraints?.maxWidth ?? 640,
+              media.size.width - 24,
             ),
             maxHeight: math.max(
               0,
-              media.size.height -
-                  media.padding.top -
-                  media.viewInsets.bottom -
-                  8,
+              phone
+                  ? math.min(
+                      520,
+                      (media.size.height -
+                              media.padding.vertical -
+                              media.viewInsets.bottom -
+                              36) *
+                          .74,
+                    )
+                  : media.size.height -
+                        media.padding.top -
+                        media.viewInsets.bottom -
+                        8,
             ),
           )
         : constraints,
@@ -92,10 +113,12 @@ class PlayerWebPanel extends StatelessWidget {
     required this.child,
     this.maxWidth = 640,
     this.color,
+    this.showCloseButton = true,
   });
   final Widget child;
   final double maxWidth;
   final Color? color;
+  final bool showCloseButton;
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
@@ -122,14 +145,15 @@ class PlayerWebPanel extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Align(
-                alignment: AlignmentDirectional.centerEnd,
-                child: IconButton(
-                  tooltip: 'بستن پنل',
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close_rounded),
+              if (showCloseButton)
+                Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: IconButton(
+                    tooltip: 'بستن پنل',
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
                 ),
-              ),
               Flexible(child: child),
             ],
           ),
@@ -237,7 +261,7 @@ class SubtitlePanelToolbar extends StatelessWidget {
       final heading = Row(
         children: [
           IconButton(
-            tooltip: 'بستن',
+            tooltip: 'بستن پنل',
             onPressed: () => Navigator.pop(context),
             icon: const Icon(Icons.close_rounded),
           ),

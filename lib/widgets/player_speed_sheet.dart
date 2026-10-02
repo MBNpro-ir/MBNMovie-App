@@ -68,7 +68,7 @@ class _PlayerSpeedSheetState extends State<PlayerSpeedSheet> {
                     ),
                   ),
                   IconButton(
-                    tooltip: 'بستن',
+                    tooltip: 'بستن پنل',
                     icon: const Icon(Icons.close_rounded, size: 20),
                     onPressed: () => Navigator.pop(context),
                     visualDensity: VisualDensity.compact,
@@ -286,4 +286,3 @@ class _TimingCard extends StatelessWidget {
     ),
   );
 }
-

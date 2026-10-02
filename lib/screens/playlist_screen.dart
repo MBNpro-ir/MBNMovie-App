@@ -1,3 +1,4 @@
+import '../core/title_language.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -12,10 +13,8 @@ import '../widgets/content_art.dart';
 import '../widgets/pressable.dart';
 
 /// Callback used to open a title from a playlist grid.
-typedef PlaylistOpenContent = Future<void> Function(
-  MovieContent item,
-  String tag,
-);
+typedef PlaylistOpenContent =
+    Future<void> Function(MovieContent item, String tag);
 
 /// Shows the add-to-playlist sheet for [item].
 Future<void> showAddToPlaylistSheet(
@@ -91,7 +90,9 @@ class _PlaylistsPageState extends State<PlaylistsPage> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('حذف پلی‌لیست؟'),
-        content: Text('«${list.name}» با ${list.items.length} عنوان حذف می‌شود.'),
+        content: Text(
+          '«${list.name}» با ${list.items.length} عنوان حذف می‌شود.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -211,7 +212,10 @@ class _PlaylistsPageState extends State<PlaylistsPage> {
                         IconButton(
                           tooltip: 'حذف',
                           onPressed: () => _delete(list),
-                          icon: const Icon(Icons.delete_outline_rounded, size: 20),
+                          icon: const Icon(
+                            Icons.delete_outline_rounded,
+                            size: 20,
+                          ),
                         ),
                       ],
                     ),
@@ -321,13 +325,12 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
               )
             : GridView.builder(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 90),
-                gridDelegate:
-                    const SliverGridDelegateWithMaxCrossAxisExtent(
-                      maxCrossAxisExtent: 180,
-                      childAspectRatio: .57,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                    ),
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 180,
+                  childAspectRatio: .57,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                ),
                 itemCount: list.items.length,
                 itemBuilder: (context, index) {
                   final item = list.items[index];
@@ -450,7 +453,7 @@ class _AddToPlaylistSheetState extends State<_AddToPlaylistSheet> {
           ),
           const SizedBox(height: 4),
           Text(
-            widget.item.title,
+            TitleLanguage.title(widget.item),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(color: MovieColors.muted, fontSize: 12),
@@ -493,8 +496,7 @@ class _AddToPlaylistSheetState extends State<_AddToPlaylistSheet> {
                     child: ListView.separated(
                       shrinkWrap: true,
                       itemCount: _lists.length,
-                      separatorBuilder: (_, _) =>
-                          const SizedBox(height: 6),
+                      separatorBuilder: (_, _) => const SizedBox(height: 6),
                       itemBuilder: (context, index) {
                         final list = _lists[index];
                         final selected = _containing.contains(list.id);
@@ -549,8 +551,7 @@ Future<String?> _askName(
           child: const Text('انصراف'),
         ),
         FilledButton(
-          onPressed: () =>
-              Navigator.pop(dialogContext, controller.text.trim()),
+          onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
           child: const Text('تأیید'),
         ),
       ],

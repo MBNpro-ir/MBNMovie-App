@@ -60,3 +60,5 @@ app.*.map.json
 /tool/catalog_index_checkpoint.jsonl
 /android/app/profile
 /android/app/release
+
+/tool/bilingual_catalog_pages.jsonl

@@ -12,11 +12,9 @@ class TvNavigation extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!isAndroidTv) return child;
     return MediaQuery(
-      data: MediaQuery.of(context).copyWith(
-        textScaler: MediaQuery.textScalerOf(
-          context,
-        ).clamp(minScaleFactor: 1.12),
-      ),
+      data: MediaQuery.of(
+        context,
+      ).copyWith(navigationMode: NavigationMode.directional),
       child: Shortcuts(
         shortcuts: const {
           SingleActivator(LogicalKeyboardKey.select): ActivateIntent(),
@@ -24,10 +22,7 @@ class TvNavigation extends StatelessWidget {
         },
         child: FocusTraversalGroup(
           policy: ReadingOrderTraversalPolicy(),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            child: child,
-          ),
+          child: child,
         ),
       ),
     );

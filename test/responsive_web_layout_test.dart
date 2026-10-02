@@ -3,6 +3,76 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mbnmovie/widgets/responsive_web_layout.dart';
 
 void main() {
+  testWidgets('panel with internal close has exactly one close action', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: PlayerWebPanel(
+            showCloseButton: false,
+            child: IconButton(
+              tooltip: 'بستن پنل',
+              onPressed: () {},
+              icon: const Icon(Icons.close_rounded),
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.byTooltip('بستن پنل'), findsOneWidget);
+    expect(find.byIcon(Icons.close_rounded), findsOneWidget);
+  });
+  testWidgets('phone sheet remains bounded with a long list', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    late BuildContext context;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (c) {
+            context = c;
+            return const Scaffold();
+          },
+        ),
+      ),
+    );
+    final closed = showResponsivePlayerPanel(
+      compactLayout: true,
+      context: context,
+      builder: (_) => SizedBox(
+        height: 2000,
+        child: Column(
+          children: [
+            const Text('Panel heading'),
+            Expanded(
+              child: ListView(
+                children: List.generate(40, (i) => Text('Item $i')),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final box = tester.getSize(
+      find
+          .descendant(
+            of: find.byType(BottomSheet),
+            matching: find.byType(Material),
+          )
+          .first,
+    );
+    expect(box.width, lessThanOrEqualTo(366));
+    expect(box.height, lessThanOrEqualTo(598));
+    expect(tester.takeException(), isNull);
+    Navigator.pop(tester.element(find.byType(BottomSheet)));
+    await tester.pumpAndSettle();
+    await closed;
+  });
+
   testWidgets('preparation and buffering share exactly one indicator', (
     tester,
   ) async {

@@ -1,3 +1,4 @@
+import '../core/title_language.dart';
 import '../widgets/responsive_web_layout.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
@@ -348,7 +349,7 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
     final result = await ExternalApps.playVideo(
       player: player,
       url: episode.fileUrl,
-      title: '${widget.content.title} · ${episode.name}',
+      title: '${TitleLanguage.title(widget.content)} · ${episode.name}',
     );
     if (!mounted || result == ExternalLaunchResult.launched) return;
     if (result == ExternalLaunchResult.missing) {
@@ -701,7 +702,7 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
                 child: Text(
-                  widget.content.title,
+                  TitleLanguage.title(widget.content),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.titleLarge,

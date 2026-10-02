@@ -70,7 +70,11 @@ class AccessibilityService extends ChangeNotifier {
 
   void _readFromPrefs(SharedPreferences prefs) {
     // روی گوشی همراه به‌صورت پیش‌فرض مقیاس فشرده‌تر (0.85) اعمال می‌شود
-    final defaultScale = isPhoneDevice ? 0.85 : 1.0;
+    final defaultScale = isAndroidTv
+        ? 0.80
+        : isPhoneDevice
+        ? 0.85
+        : 1.0;
     _uiScale = (prefs.getDouble(keyUiScale) ?? defaultScale).clamp(0.70, 1.30);
     _textScale = (prefs.getDouble(keyTextScale) ?? 1.0).clamp(0.80, 1.40);
     _densityMode = DensityMode.fromKey(prefs.getString(keyDensity));
@@ -161,7 +165,11 @@ class AccessibilityService extends ChangeNotifier {
   }
 
   Future<void> resetToDefaults() async {
-    final defaultScale = isPhoneDevice ? 0.85 : 1.0;
+    final defaultScale = isAndroidTv
+        ? 0.80
+        : isPhoneDevice
+        ? 0.85
+        : 1.0;
     _uiScale = defaultScale;
     _textScale = 1.0;
     _densityMode = isPhoneDevice ? DensityMode.compact : DensityMode.standard;

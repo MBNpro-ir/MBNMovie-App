@@ -79,9 +79,11 @@ class _LoginScreenState extends State<LoginScreen> {
         if (data['token'] != null) {
           await widget.onAuthenticated(data, _mobile.text.trim());
         } else if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(data['message']?.toString() ?? 'شماره تأیید شد.'),
-          ));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(data['message']?.toString() ?? 'شماره تأیید شد.'),
+            ),
+          );
           setState(() {
             _challengeId = null;
             _registering = false;
@@ -96,10 +98,15 @@ class _LoginScreenState extends State<LoginScreen> {
         });
         if (mounted) {
           if (_recoverStep == 3) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('رمز تغییر کرد؛ با شماره و رمز جدید وارد شو.'),
-            ));
-            setState(() { _recovering = false; _recoverStep = 1; });
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('رمز تغییر کرد؛ با شماره و رمز جدید وارد شو.'),
+              ),
+            );
+            setState(() {
+              _recovering = false;
+              _recoverStep = 1;
+            });
           } else {
             setState(() => _recoverStep++);
           }
@@ -107,19 +114,23 @@ class _LoginScreenState extends State<LoginScreen> {
       } else if (_registering) {
         final mobile = _mobile.text.trim();
         final data = await widget.auth.postJson(
-            mobile.isEmpty ? '/api/auth/register' : '/api/auth/delfan/signup', {
-          'name': _name.text.trim(),
-          'email': _registrationEmail.text.trim(),
-          'username': _username.text.trim(),
-          'mobile': mobile,
-          'password': _password.text,
-          'app': 'movie',
-        });
+          mobile.isEmpty ? '/api/auth/register' : '/api/auth/delfan/signup',
+          {
+            'name': _name.text.trim(),
+            'email': _registrationEmail.text.trim(),
+            'username': _username.text.trim(),
+            'mobile': mobile,
+            'password': _password.text,
+            'app': 'movie',
+          },
+        );
         if (data['token'] != null) {
-          await widget.onAuthenticated(data,
-              _registrationEmail.text.trim().isNotEmpty
-                  ? _registrationEmail.text.trim()
-                  : _username.text.trim());
+          await widget.onAuthenticated(
+            data,
+            _registrationEmail.text.trim().isNotEmpty
+                ? _registrationEmail.text.trim()
+                : _username.text.trim(),
+          );
         } else if (mounted) {
           setState(() => _challengeId = data['challenge_id']?.toString());
         }
@@ -128,8 +139,14 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } on MbnAuthException catch (error) {
       if (mounted && error.details?['code'] == 'session_limit') {
-        final result = await showSessionDevicesDialog(context, error.details!, widget.auth.postJson);
-        if (result != null) await widget.onAuthenticated(result, _mobile.text.trim());
+        final result = await showSessionDevicesDialog(
+          context,
+          error.details!,
+          widget.auth.postJson,
+        );
+        if (result != null) {
+          await widget.onAuthenticated(result, _mobile.text.trim());
+        }
       } else if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -154,15 +171,15 @@ class _LoginScreenState extends State<LoginScreen> {
         'challenge_id': _challengeId,
       });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('کد دوباره ارسال شد.')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('کد دوباره ارسال شد.')));
       }
     } on MbnAuthException catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error.message)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -179,9 +196,9 @@ class _LoginScreenState extends State<LoginScreen> {
         final message = e is MbnAuthException && e.message.isNotEmpty
             ? e.message
             : 'ورود با حساب MBNime ناموفق بود؛ لطفاً دوباره تلاش کنید.';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(message)));
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -225,8 +242,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     offset: Offset(0, value),
                     child: child,
                   ),
-                  child: Form(
-                    key: _formKey,
+                  child: _LoginAutofillForm(
+                    formKey: _formKey,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -236,9 +253,13 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 44),
                         Text(
-                          verifying ? 'تأیید شماره' : recovering
-                              ? 'بازیابی رمز' : registering
-                              ? 'ساخت حساب' : 'خوش برگشتی',
+                          verifying
+                              ? 'تأیید شماره'
+                              : recovering
+                              ? 'بازیابی رمز'
+                              : registering
+                              ? 'ساخت حساب'
+                              : 'خوش برگشتی',
                           style: Theme.of(context).textTheme.displaySmall,
                         ),
                         const SizedBox(height: 8),
@@ -256,7 +277,9 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                         const SizedBox(height: 20),
-                        if (!registering && !verifying && !recovering &&
+                        if (!registering &&
+                            !verifying &&
+                            !recovering &&
                             widget.onUseOtherApp != null) ...[
                           OutlinedButton.icon(
                             onPressed: _loading ? null : _useOtherApp,
@@ -326,11 +349,14 @@ class _LoginScreenState extends State<LoginScreen> {
                               if (text.isEmpty) {
                                 return _registrationEmail.text.trim().isEmpty &&
                                         _mobile.text.trim().isEmpty
-                                    ? 'ایمیل، نام کاربری یا شماره لازم است' : null;
+                                    ? 'ایمیل، نام کاربری یا شماره لازم است'
+                                    : null;
                               }
-                              return RegExp(r'^[a-zA-Z][a-zA-Z0-9_]{2,31}$')
-                                      .hasMatch(text)
-                                  ? null : '۳ تا ۳۲ نویسهٔ انگلیسی؛ شروع با حرف';
+                              return RegExp(
+                                    r'^[a-zA-Z][a-zA-Z0-9_]{2,31}$',
+                                  ).hasMatch(text)
+                                  ? null
+                                  : '۳ تا ۳۲ نویسهٔ انگلیسی؛ شروع با حرف';
                             },
                           ),
                           const SizedBox(height: 14),
@@ -344,42 +370,49 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             validator: (value) {
                               final text = value?.trim() ?? '';
-                              return text.isEmpty || RegExp(
-                                r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
-                              ).hasMatch(text) ? null : 'ایمیل معتبر وارد کن';
+                              return text.isEmpty ||
+                                      RegExp(
+                                        r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                                      ).hasMatch(text)
+                                  ? null
+                                  : 'ایمیل معتبر وارد کن';
                             },
                           ),
                           const SizedBox(height: 14),
                         ],
                         if (!registering && !verifying && !recovering)
-                        TextFormField(
-                          controller: _email,
-                          keyboardType: TextInputType.emailAddress,
-                          textDirection: TextDirection.ltr,
-                          autofillHints: const [AutofillHints.email],
-                          decoration: InputDecoration(
-                            labelText: 'ایمیل، نام کاربری یا موبایل',
-                            hintText: 'ایمیل، نام کاربری یا 09123456789',
-                            prefixIcon: Icon(Icons.alternate_email_rounded),
+                          TextFormField(
+                            controller: _email,
+                            keyboardType: TextInputType.emailAddress,
+                            textDirection: TextDirection.ltr,
+                            autofillHints: const [AutofillHints.username],
+                            decoration: InputDecoration(
+                              labelText: 'ایمیل، نام کاربری یا موبایل',
+                              hintText: 'ایمیل، نام کاربری یا 09123456789',
+                              prefixIcon: Icon(Icons.alternate_email_rounded),
+                            ),
+                            validator: (value) {
+                              final text = value?.trim() ?? '';
+                              final validEmail = RegExp(
+                                r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                              ).hasMatch(text);
+                              final validUsername = RegExp(
+                                r'^[a-zA-Z][a-zA-Z0-9_]{2,31}$',
+                              ).hasMatch(text);
+                              final validMobile = RegExp(
+                                r'^09\d{9}$',
+                              ).hasMatch(text);
+                              if (!validEmail &&
+                                  !validUsername &&
+                                  !validMobile) {
+                                return 'ایمیل، نام کاربری یا شماره معتبر وارد کن';
+                              }
+                              return null;
+                            },
                           ),
-                          validator: (value) {
-                            final text = value?.trim() ?? '';
-                            final validEmail = RegExp(
-                              r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
-                            ).hasMatch(text);
-                            final validUsername = RegExp(
-                              r'^[a-zA-Z][a-zA-Z0-9_]{2,31}$',
-                            ).hasMatch(text);
-                            final validMobile = RegExp(r'^09\d{9}$')
-                                .hasMatch(text);
-                            if (!validEmail && !validUsername && !validMobile) {
-                              return 'ایمیل، نام کاربری یا شماره معتبر وارد کن';
-                            }
-                            return null;
-                          },
-                        ),
                         const SizedBox(height: 14),
-                        if (registering || (recovering && _recoverStep == 1)) ...[
+                        if (registering ||
+                            (recovering && _recoverStep == 1)) ...[
                           TextFormField(
                             controller: _mobile,
                             keyboardType: TextInputType.phone,
@@ -388,13 +421,16 @@ class _LoginScreenState extends State<LoginScreen> {
                               labelText: registering
                                   ? 'شماره موبایل (اختیاری؛ برای تأیید پیامکی)'
                                   : 'شماره موبایل',
-                              prefixIcon: const Icon(Icons.phone_android_rounded),
+                              prefixIcon: const Icon(
+                                Icons.phone_android_rounded,
+                              ),
                             ),
                             validator: (value) {
                               final text = value?.trim() ?? '';
                               if (text.isEmpty && registering) return null;
                               return RegExp(r'^09\d{9}$').hasMatch(text)
-                                  ? null : 'شماره را به شکل 09123456789 وارد کن';
+                                  ? null
+                                  : 'شماره را به شکل 09123456789 وارد کن';
                             },
                           ),
                           const SizedBox(height: 14),
@@ -408,9 +444,12 @@ class _LoginScreenState extends State<LoginScreen> {
                               labelText: 'کد پیامک',
                               prefixIcon: Icon(Icons.sms_outlined),
                             ),
-                            validator: (value) => RegExp(r'^\d{4,8}$')
-                                    .hasMatch(value?.trim() ?? '')
-                                ? null : 'کد ۴ تا ۸ رقمی را وارد کن',
+                            validator: (value) =>
+                                RegExp(
+                                  r'^\d{4,8}$',
+                                ).hasMatch(value?.trim() ?? '')
+                                ? null
+                                : 'کد ۴ تا ۸ رقمی را وارد کن',
                           ),
                           const SizedBox(height: 14),
                         ],
@@ -424,39 +463,42 @@ class _LoginScreenState extends State<LoginScreen> {
                               prefixIcon: Icon(Icons.lock_reset_rounded),
                             ),
                             validator: (value) => (value?.length ?? 0) < 6
-                                ? 'حداقل ۶ نویسه وارد کن' : null,
+                                ? 'حداقل ۶ نویسه وارد کن'
+                                : null,
                           ),
                           const SizedBox(height: 14),
                         ],
                         if (!verifying && !recovering)
-                        TextFormField(
-                          controller: _password,
-                          obscureText: _obscure,
-                          textDirection: TextDirection.ltr,
-                          autofillHints: const [AutofillHints.password],
-                          onFieldSubmitted: (_) => _submit(),
-                          decoration: InputDecoration(
-                            labelText: 'رمز عبور',
-                            prefixIcon: const Icon(Icons.lock_outline_rounded),
-                            suffixIcon: IconButton(
-                              onPressed: () =>
-                                  setState(() => _obscure = !_obscure),
-                              icon: AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 220),
-                                child: Icon(
-                                  _obscure
-                                      ? Icons.visibility_rounded
-                                      : Icons.visibility_off_rounded,
-                                  key: ValueKey(_obscure),
+                          TextFormField(
+                            controller: _password,
+                            obscureText: _obscure,
+                            textDirection: TextDirection.ltr,
+                            autofillHints: const [AutofillHints.password],
+                            onFieldSubmitted: (_) => _submit(),
+                            decoration: InputDecoration(
+                              labelText: 'رمز عبور',
+                              prefixIcon: const Icon(
+                                Icons.lock_outline_rounded,
+                              ),
+                              suffixIcon: IconButton(
+                                onPressed: () =>
+                                    setState(() => _obscure = !_obscure),
+                                icon: AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 220),
+                                  child: Icon(
+                                    _obscure
+                                        ? Icons.visibility_rounded
+                                        : Icons.visibility_off_rounded,
+                                    key: ValueKey(_obscure),
+                                  ),
                                 ),
                               ),
                             ),
+                            validator: (value) =>
+                                (value?.length ?? 0) < (registering ? 6 : 1)
+                                ? 'رمز عبور را کامل وارد کن'
+                                : null,
                           ),
-                          validator: (value) => (value?.length ?? 0) <
-                                  (registering ? 6 : 1)
-                              ? 'رمز عبور را کامل وارد کن'
-                              : null,
-                        ),
                         if (registering) ...[
                           const SizedBox(height: 14),
                           TextFormField(
@@ -492,8 +534,11 @@ class _LoginScreenState extends State<LoginScreen> {
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
                                       Text(
-                                        verifying ? 'تأیید کد' : recovering
-                                            ? 'ادامه بازیابی' : registering
+                                        verifying
+                                            ? 'تأیید کد'
+                                            : recovering
+                                            ? 'ادامه بازیابی'
+                                            : registering
                                             ? 'ساخت حساب / ارسال کد'
                                             : 'ورود به MBNMovie',
                                       ),
@@ -516,11 +561,11 @@ class _LoginScreenState extends State<LoginScreen> {
                         OutlinedButton.icon(
                           onPressed: _loading ? null : _openTelegram,
                           icon: const Icon(Icons.send_rounded),
-                          label: const Text(
-                            'پشتیبانی تلگرام',
-                          ),
+                          label: const Text('پشتیبانی تلگرام'),
                         ),
-                        if (!_hideRegistration && !recovering && !verifying) ...[
+                        if (!_hideRegistration &&
+                            !recovering &&
+                            !verifying) ...[
                           const SizedBox(height: 4),
                           TextButton(
                             onPressed: _loading
@@ -541,20 +586,26 @@ class _LoginScreenState extends State<LoginScreen> {
                             !verifying &&
                             !recovering)
                           TextButton(
-                            onPressed: _loading ? null : () => setState(() {
-                              _recovering = true;
-                              _recoverStep = 1;
-                            }),
-                            child: const Text('رمز حساب شماره‌دار را فراموش کرده‌ام'),
+                            onPressed: _loading
+                                ? null
+                                : () => setState(() {
+                                    _recovering = true;
+                                    _recoverStep = 1;
+                                  }),
+                            child: const Text(
+                              'رمز حساب شماره‌دار را فراموش کرده‌ام',
+                            ),
                           ),
                         if (recovering || verifying)
                           TextButton(
-                            onPressed: _loading ? null : () => setState(() {
-                              _recovering = false;
-                              _recoverStep = 1;
-                              _challengeId = null;
-                              _registering = false;
-                            }),
+                            onPressed: _loading
+                                ? null
+                                : () => setState(() {
+                                    _recovering = false;
+                                    _recoverStep = 1;
+                                    _challengeId = null;
+                                    _registering = false;
+                                  }),
                             child: const Text('بازگشت به ورود'),
                           ),
                         const SizedBox(height: 18),
@@ -588,4 +639,15 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
+}
+
+class _LoginAutofillForm extends StatelessWidget {
+  const _LoginAutofillForm({required this.formKey, required this.child});
+  final GlobalKey<FormState> formKey;
+  final Widget child;
+  @override
+  Widget build(BuildContext context) => AutofillGroup(
+    onDisposeAction: AutofillContextAction.cancel,
+    child: Form(key: formKey, child: child),
+  );
 }

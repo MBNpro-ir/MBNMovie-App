@@ -117,6 +117,8 @@ class MovieApi implements ContentApi {
   }
 
   void clearDelfanSession() => bindDelfanSession(mobile: '', password: '');
+  Future<Map<String, dynamic>> Function(String path, Map<String, String> query)?
+  catalogRequest;
   Future<List<Map<String, dynamic>>>? _indexFuture;
 
   Future<List<Map<String, dynamic>>> _index() => _indexFuture ??= () async {
@@ -471,8 +473,11 @@ class MovieApi implements ContentApi {
     final init = _map(jsonDecode(utf8.decode(login.bodyBytes)));
     final info = _map(_list(init['infos']).firstOrNull);
     if (_delfanMobile.isNotEmpty && _text(info['login']) != 'T') {
-      throw FormatException(_text(info['msg']).isEmpty
-          ? 'اتصال حساب برقرار نشد' : _text(info['msg']));
+      throw FormatException(
+        _text(info['msg']).isEmpty
+            ? 'اتصال حساب برقرار نشد'
+            : _text(info['msg']),
+      );
     }
     final auth = _text(info['auth']);
     if (auth.isEmpty) throw const FormatException('نشست مهمان معتبر نیست');
@@ -508,7 +513,7 @@ class MovieApi implements ContentApi {
               'token': init.token,
               'body': body,
               'an': _md5('${init.q1 + init.q2 + 101}'),
-              'langueg': '',
+              'langueg': TitleLanguage.english ? 'EN' : 'Fa',
               'u_s': init.night,
               's_n': init.tx,
               'apname': init.mobile.isEmpty ? _wireApp : 'Delfan',
@@ -545,6 +550,11 @@ class MovieApi implements ContentApi {
   MovieContent _item(Map<String, dynamic> row, ContentKind hint) {
     final kind = _kind(row, hint);
     final image = _text(row['thumbnail_url'] ?? row['poster_url']);
+    final id = _text(row['videos_id'] ?? row['id']);
+    final wireTitle = _text(row['title']);
+    if (TitleLanguage.english && RegExp(r'[A-Za-z]').hasMatch(wireTitle)) {
+      TitleLanguage.noteOriginalTitle(id, wireTitle);
+    }
     return MovieContent(
       id: _text(row['videos_id'] ?? row['id']),
       title: _text(row['title']),
@@ -738,7 +748,8 @@ class MovieApi implements ContentApi {
         final data = await _request('collection_show&pageno=$page', {
           'video_id': collection.id,
         });
-        final rows = data['list'] ??
+        final rows =
+            data['list'] ??
             data['all'] ??
             data['movie_list'] ??
             data['collection'];
@@ -901,7 +912,7 @@ class MovieApi implements ContentApi {
     'StateSerie': '',
     'search_text': query,
     'StateCheckSearchDagig': 'F',
-    'langueg': '',
+    'langueg': TitleLanguage.english ? 'EN' : 'Fa',
   };
   Future<List<MovieContent>> catalogByGroup({
     required CatalogGroup group,
@@ -970,9 +981,7 @@ class MovieApi implements ContentApi {
         return _items(data['all'], ContentKind.movie);
       }
 
-      direct = page > 1
-          ? await fetch()
-          : await _firstPageWithRetry(fetch);
+      direct = page > 1 ? await fetch() : await _firstPageWithRetry(fetch);
       if (direct.isNotEmpty) return direct;
     } catch (_) {
       // An upstream error must still leave the bundled index available.
@@ -1005,6 +1014,33 @@ class MovieApi implements ContentApi {
   }) async {
     final trimmed = query.trim();
     if (trimmed.isEmpty) return [];
+    // A complete bilingual snapshot answers ordinary title searches immediately,
+    // even if the upstream filter hangs or rejects guest access.
+    final local = await _indexFilter(
+      query: trimmed,
+      page: page,
+    ).catchError((_) => <MovieContent>[]);
+    if (local.isNotEmpty) {
+      onPartial?.call(local);
+      return local;
+    }
+    if (catalogRequest != null && isCanceled?.call() != true) {
+      try {
+        final data = await catalogRequest!('/api/catalog/movie/search', {
+          'q': trimmed,
+          'page': '$page',
+        }).timeout(const Duration(seconds: 5));
+        final remote = _list(
+          data['items'],
+        ).map((row) => _indexItem(_map(row))).toList();
+        if (remote.isNotEmpty) {
+          onPartial?.call(remote);
+          return remote;
+        }
+      } catch (_) {
+        /* Keep upstream and local fallbacks available. */
+      }
+    }
     try {
       Future<List<MovieContent>> fetch() async {
         return await _firstPageWithRetry(() async {
@@ -1017,8 +1053,10 @@ class MovieApi implements ContentApi {
       }
 
       final fetchFuture = fetch().catchError((_) => <MovieContent>[]);
-      final indexFuture =
-          _indexFilter(query: trimmed, page: page).catchError((_) => <MovieContent>[]);
+      final indexFuture = _indexFilter(
+        query: trimmed,
+        page: page,
+      ).catchError((_) => <MovieContent>[]);
 
       final results = await Future.wait([fetchFuture, indexFuture]);
       final primary = results[0];
@@ -1049,8 +1087,12 @@ class MovieApi implements ContentApi {
 
       // 1. Prioritize strong matches from indexed (where title or aliases start with or contain needle)
       for (final item in indexed) {
-        final names = [item.title, ...item.alternateTitles].map(_normalizeQuery);
-        if (names.any((n) => n.startsWith(needle) || n == needle) && seen.add(item.id)) {
+        final names = [
+          item.title,
+          ...item.alternateTitles,
+        ].map(_normalizeQuery);
+        if (names.any((n) => n.startsWith(needle) || n == needle) &&
+            seen.add(item.id)) {
           combined.add(item);
         }
       }
@@ -1087,7 +1129,7 @@ class MovieApi implements ContentApi {
   }
 
   Future<List<MovieContent>> _catalogPage(ContentKind kind, int page) async {
-    final key = '${kind.name}:$page';
+    final key = '${TitleLanguage.english}:${kind.name}:$page';
     final cached = _catalogPageCache[key];
     if (cached != null) return cached;
     final data = await _request('movie_list&pageno=$page', {
@@ -1266,10 +1308,11 @@ class MovieApi implements ContentApi {
       return null;
     }
 
-    for (var catalogPage = 1;
-        catalogPage <= maxCatalogPages &&
-            matches.length < page * pageSize;
-        catalogPage++) {
+    for (
+      var catalogPage = 1;
+      catalogPage <= maxCatalogPages && matches.length < page * pageSize;
+      catalogPage++
+    ) {
       if (isCanceled?.call() ?? false) return const [];
       List<MovieContent> items;
       try {
@@ -1282,9 +1325,11 @@ class MovieApi implements ContentApi {
         items = const [];
       }
       if (items.isEmpty) break;
-      for (var offset = 0;
-          offset < items.length && matches.length < page * pageSize;
-          offset += detailBatch) {
+      for (
+        var offset = 0;
+        offset < items.length && matches.length < page * pageSize;
+        offset += detailBatch
+      ) {
         if (isCanceled?.call() ?? false) return const [];
         final batch = items.skip(offset).take(detailBatch).toList();
         final originals = await Future.wait(batch.map(originalOf));
