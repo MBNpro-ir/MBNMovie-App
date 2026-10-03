@@ -1,3 +1,5 @@
+import '../core/app_platform.dart';
+import '../core/platform_ui.dart' show isAndroidTv;
 import 'package:flutter/foundation.dart';
 import 'web_gateway.dart';
 import 'dart:async';
@@ -99,6 +101,11 @@ class MbnAuth {
         .post(
           _uri(path),
           headers: {
+            'X-MBN-Platform': kIsWeb
+                ? 'web'
+                : isAndroidTv
+                ? 'android_tv'
+                : Platform.operatingSystem,
             'Content-Type': 'application/json',
             if (token != null) 'Authorization': 'Bearer $token',
           },
@@ -120,7 +127,14 @@ class MbnAuth {
     final response = await _client
         .get(
           _uri(path, query),
-          headers: {if (token != null) 'Authorization': 'Bearer $token'},
+          headers: {
+            'X-MBN-Platform': kIsWeb
+                ? 'web'
+                : isAndroidTv
+                ? 'android_tv'
+                : Platform.operatingSystem,
+            if (token != null) 'Authorization': 'Bearer $token',
+          },
         )
         .timeout(const Duration(seconds: 30));
     return _decode(response);
@@ -134,6 +148,11 @@ class MbnAuth {
         .put(
           _uri(path),
           headers: {
+            'X-MBN-Platform': kIsWeb
+                ? 'web'
+                : isAndroidTv
+                ? 'android_tv'
+                : Platform.operatingSystem,
             'Content-Type': 'application/json',
             if (token != null) 'Authorization': 'Bearer $token',
           },
@@ -290,7 +309,14 @@ class MbnAuth {
       _client
           .post(
             _uri('/api/auth/logout'),
-            headers: {'Authorization': 'Bearer $oldToken'},
+            headers: {
+              'X-MBN-Platform': kIsWeb
+                  ? 'web'
+                  : isAndroidTv
+                  ? 'android_tv'
+                  : Platform.operatingSystem,
+              'Authorization': 'Bearer $oldToken',
+            },
           )
           .timeout(const Duration(seconds: 5))
           .then((_) {}, onError: (Object _) {});
