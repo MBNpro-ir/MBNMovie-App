@@ -3,6 +3,7 @@ import '../widgets/responsive_web_layout.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../core/app_platform.dart';
+import '../services/browser_features.dart';
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -451,6 +452,29 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
     ],
   );
 
+  bool get _useCompactSelectors =>
+      Platform.isAndroid || (kIsWeb && BrowserFeatures.isAppleMobile);
+
+  Widget _selectorDropdown<T>({
+    required Key key,
+    required String label,
+    required IconData icon,
+    required T value,
+    required List<DropdownMenuItem<T>> items,
+    required ValueChanged<T?> onChanged,
+  }) => DropdownButtonFormField<T>(
+    key: key,
+    value: value,
+    isExpanded: true,
+    decoration: InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(icon),
+      isDense: true,
+    ),
+    items: items,
+    onChanged: onChanged,
+  );
+
   Future<void> _resetEpisode(EpisodeGroup group) async {
     if (!_resetting.add(group.id)) return;
     setState(() {});
@@ -724,42 +748,89 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
                   border: Border.all(color: Colors.white10),
                 ),
                 child: Column(
-                  children: [
-                    if (seasons.length > 1) ...[
-                      _selectorRow(
-                        title: widget.content.kind == ContentKind.movie
-                            ? 'دسته‌بندی'
-                            : 'فصل',
-                        icon: widget.content.kind == ContentKind.movie
-                            ? Icons.category_rounded
-                            : Icons.video_library_rounded,
-                        children: [
-                          for (var i = 0; i < seasons.length; i++)
-                            ChoiceChip(
-                              label: Text(seasons[i].name),
-                              selected: i == _seasonIndex,
-                              onSelected: (_) => _selectSeason(i),
+                  children: _useCompactSelectors
+                      ? [
+                          if (seasons.length > 1)
+                            _selectorDropdown<int>(
+                              key: const Key('season-dropdown'),
+                              label: widget.content.kind == ContentKind.movie
+                                  ? 'دسته‌بندی'
+                                  : 'فصل',
+                              icon: widget.content.kind == ContentKind.movie
+                                  ? Icons.category_rounded
+                                  : Icons.video_library_rounded,
+                              value: _seasonIndex,
+                              items: [
+                                for (var i = 0; i < seasons.length; i++)
+                                  DropdownMenuItem(
+                                    value: i,
+                                    child: Text(
+                                      seasons[i].name,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                              ],
+                              onChanged: (value) {
+                                if (value != null) _selectSeason(value);
+                              },
+                            ),
+                          if (seasons.length > 1 &&
+                              displayQualities.isNotEmpty)
+                            const SizedBox(height: 10),
+                          if (displayQualities.isNotEmpty)
+                            _selectorDropdown<String>(
+                              key: const Key('quality-dropdown'),
+                              label: 'کیفیت',
+                              icon: Icons.high_quality_rounded,
+                              value: _selectedQuality,
+                              items: [
+                                for (final quality in displayQualities)
+                                  DropdownMenuItem(
+                                    value: quality,
+                                    child: Text(quality),
+                                  ),
+                              ],
+                              onChanged: (value) {
+                                if (value != null) _setQuality(value);
+                              },
+                            ),
+                        ]
+                      : [
+                          if (seasons.length > 1) ...[
+                            _selectorRow(
+                              title: widget.content.kind == ContentKind.movie
+                                  ? 'دسته‌بندی'
+                                  : 'فصل',
+                              icon: widget.content.kind == ContentKind.movie
+                                  ? Icons.category_rounded
+                                  : Icons.video_library_rounded,
+                              children: [
+                                for (var i = 0; i < seasons.length; i++)
+                                  ChoiceChip(
+                                    label: Text(seasons[i].name),
+                                    selected: i == _seasonIndex,
+                                    onSelected: (_) => _selectSeason(i),
+                                  ),
+                              ],
+                            ),
+                            if (displayQualities.isNotEmpty)
+                              const SizedBox(height: 10),
+                          ],
+                          if (displayQualities.isNotEmpty)
+                            _selectorRow(
+                              title: 'کیفیت',
+                              icon: Icons.high_quality_rounded,
+                              children: [
+                                for (final quality in displayQualities)
+                                  ChoiceChip(
+                                    key: Key('quality-$quality'),
+                                    label: Text(quality),
+                                    selected: quality == _selectedQuality,
+                                    onSelected: (_) => _setQuality(quality),
+                                  ),
+                              ],
                             ),
                         ],
-                      ),
-                      if (displayQualities.isNotEmpty)
-                        const SizedBox(height: 10),
-                    ],
-                    if (displayQualities.isNotEmpty)
-                      _selectorRow(
-                        title: 'کیفیت',
-                        icon: Icons.high_quality_rounded,
-                        children: [
-                          for (final quality in displayQualities)
-                            ChoiceChip(
-                              key: Key('quality-$quality'),
-                              label: Text(quality),
-                              selected: quality == _selectedQuality,
-                              onSelected: (_) => _setQuality(quality),
-                            ),
-                        ],
-                      ),
-                  ],
                 ),
               ),
               Expanded(

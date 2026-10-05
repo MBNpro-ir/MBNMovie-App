@@ -26,6 +26,17 @@ void main() {
       contains('00:00:03.000 --> 00:00:07.000'),
     );
   });
+
+  test('isolates Latin runs inside Persian subtitles', () {
+    final doc = WebSubtitleDocument.parse(
+      '1\n00:00:01,000 --> 00:00:03,000\nکاملاً ثابت بمونه MRI هیچ‌کس نمی‌تونه\n',
+    );
+    expect(
+      doc.at(const Duration(seconds: 2)),
+      ['کاملاً ثابت بمونه \u2066MRI\u2069 هیچ‌کس نمی‌تونه'],
+    );
+    expect(doc.vtt(), contains('\u2066MRI\u2069'));
+  });
   test('WebVTT settings and ASS commas and styling', () {
     final vtt = WebSubtitleDocument.parse(
       'WEBVTT\n\n00:00:01.000 --> 00:00:02.000 align:start\nمتن',

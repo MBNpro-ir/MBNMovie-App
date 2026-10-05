@@ -39,7 +39,8 @@ class WebSubtitleDocument {
       offset = tag.end;
     }
     if (!drawing) plain.write(text.substring(offset));
-    return plain
+    return _stabilizeBidi(
+      plain
         .toString()
         .replaceAll(RegExp(r'\{[^}]*\}|<[^>]*>'), '')
         .replaceAll(r'\N', '\n')
@@ -47,7 +48,26 @@ class WebSubtitleDocument {
         .replaceAll('&amp;', '&')
         .replaceAll('&lt;', '<')
         .replaceAll('&gt;', '>')
-        .trim();
+        .trim(),
+    );
+  }
+
+  /// Keep Latin/number runs together inside an otherwise RTL subtitle.
+  /// Flutter's plain text overlay otherwise lets the Unicode bidi algorithm
+  /// move tokens such as `MRI` around adjacent Persian punctuation. Isolates
+  /// are invisible and only affect the simple renderer; original ASS keeps
+  /// its authored layout.
+  static String _stabilizeBidi(String value) {
+    final isolate = RegExp(r'[A-Za-z0-9][A-Za-z0-9+./:_-]*');
+    return value.replaceAllMapped(isolate, (match) {
+      final start = match.start;
+      final end = match.end;
+      if ((start > 0 && value.codeUnitAt(start - 1) == 0x2066) ||
+          (end < value.length && value.codeUnitAt(end) == 0x2069)) {
+        return match.group(0)!;
+      }
+      return '\u2066${match.group(0)!}\u2069';
+    });
   }
 
   factory WebSubtitleDocument.parse(String source) {

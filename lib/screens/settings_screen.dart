@@ -833,9 +833,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                                           Expanded(
                                             child: Slider(
                                               value: access.uiScale,
-                                              min: 0.70,
-                                              max: 1.30,
-                                              divisions: 12,
+                                              min: 0.60,
+                                              max: 1.50,
+                                              divisions: 18,
                                               label:
                                                   '${(access.uiScale * 100).round()}٪',
                                               onChanged: (val) =>
@@ -853,6 +853,12 @@ class _SettingsScreenState extends State<SettingsScreen>
                                         spacing: 6,
                                         runSpacing: 6,
                                         children: [
+                                          _ScaleChip(
+                                            label: '۶۰٪ بسیار فشرده',
+                                            value: 0.60,
+                                            current: access.uiScale,
+                                            onSelect: access.setUiScale,
+                                          ),
                                           _ScaleChip(
                                             label: '۸۰٪ بسیار فشرده',
                                             value: 0.80,
@@ -886,6 +892,12 @@ class _SettingsScreenState extends State<SettingsScreen>
                                           _ScaleChip(
                                             label: '۱۲۰٪ خیلی بزرگ',
                                             value: 1.20,
+                                            current: access.uiScale,
+                                            onSelect: access.setUiScale,
+                                          ),
+                                          _ScaleChip(
+                                            label: '۱۵۰٪ بسیار بزرگ',
+                                            value: 1.50,
                                             current: access.uiScale,
                                             onSelect: access.setUiScale,
                                           ),

@@ -4896,7 +4896,28 @@ class _PlayerScreenState extends State<PlayerScreen>
     if (!mounted || _playerTornDown) return;
     _hideTimer?.cancel();
     setState(() => _controlsVisible = false);
-    final result = await (kIsWeb
+    final result = await (kIsWeb && BrowserFeatures.isMobileBrowser
+        ? showTopPlayerPanel<SubtitlePreferences>(
+            fullWidth: true,
+            compactLayout: true,
+            context: context,
+            backgroundColor: MovieColors.surface,
+            builder: (context) => SubtitleAppearancePanel(
+              twoColumnLayout: false,
+              assAvailable: _assAvailable,
+              initial: _subtitle,
+              onChanged: (value) {
+                if (mounted) {
+                  final previous = _subtitle;
+                  setState(() => _subtitle = value);
+                  if (previous.originalAss != value.originalAss) {
+                    unawaited(_applyAssRendering());
+                  }
+                }
+              },
+            ),
+          )
+        : kIsWeb
         ? showResponsivePlayerPanel<SubtitlePreferences>(
             containsCloseButton: true,
             context: context,

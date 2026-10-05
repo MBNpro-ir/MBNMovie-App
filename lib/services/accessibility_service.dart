@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/platform_ui.dart';
+import 'device_performance.dart';
 import 'mbn_sync.dart';
 
 enum DensityMode {
@@ -41,7 +42,8 @@ class AccessibilityService extends ChangeNotifier {
   static const String keyBoldText = 'access_bold_text';
   static const String keyHaptics = 'access_haptic_feedback';
 
-  static bool get isPhoneDevice => Platform.isAndroid && !isAndroidTv;
+  static bool get isPhoneDevice =>
+      (Platform.isAndroid && !isAndroidTv) || DevicePerformance.appleMobileWeb;
 
   double _uiScale = 1.0;
   double _textScale = 1.0;
@@ -72,10 +74,12 @@ class AccessibilityService extends ChangeNotifier {
     // روی گوشی همراه به‌صورت پیش‌فرض مقیاس فشرده‌تر (0.85) اعمال می‌شود
     final defaultScale = isAndroidTv
         ? 0.80
+        : DevicePerformance.appleMobileWeb
+        ? 0.80
         : isPhoneDevice
         ? 0.85
         : 1.0;
-    _uiScale = (prefs.getDouble(keyUiScale) ?? defaultScale).clamp(0.70, 1.30);
+    _uiScale = (prefs.getDouble(keyUiScale) ?? defaultScale).clamp(0.60, 1.50);
     _textScale = (prefs.getDouble(keyTextScale) ?? 1.0).clamp(0.80, 1.40);
     _densityMode = DensityMode.fromKey(prefs.getString(keyDensity));
     _reduceMotion = prefs.getBool(keyReduceMotion) ?? false;
@@ -92,7 +96,7 @@ class AccessibilityService extends ChangeNotifier {
 
   Future<void> setUiScale(double scale) async {
     final clamped = (scale * 100).round() / 100.0;
-    final value = clamped.clamp(0.70, 1.30);
+    final value = clamped.clamp(0.60, 1.50);
     if ((_uiScale - value).abs() < 0.005) return;
     _uiScale = value;
     notifyListeners();
@@ -166,6 +170,8 @@ class AccessibilityService extends ChangeNotifier {
 
   Future<void> resetToDefaults() async {
     final defaultScale = isAndroidTv
+        ? 0.80
+        : DevicePerformance.appleMobileWeb
         ? 0.80
         : isPhoneDevice
         ? 0.85
