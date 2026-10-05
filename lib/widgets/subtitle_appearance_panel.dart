@@ -5,7 +5,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/player_preferences.dart';
 import '../core/platform_ui.dart';
 import '../core/theme.dart';
-import '../services/mbn_sync.dart';
 import 'responsive_web_layout.dart';
 
 class SubtitleAppearancePanel extends StatefulWidget {
@@ -29,14 +28,30 @@ class SubtitleAppearancePanel extends StatefulWidget {
 
 class _SubtitleAppearancePanelState extends State<SubtitleAppearancePanel> {
   late SubtitlePreferences value = widget.initial;
+  Timer? _saveTimer;
   void change(SubtitlePreferences next) {
     setState(() => value = next);
     widget.onChanged(next);
-    unawaited(() async {
-      final prefs = await SharedPreferences.getInstance();
-      await next.save(prefs);
-      unawaited(MbnSync.instance.pushPreferencesThrottled());
-    }());
+    _saveTimer?.cancel();
+    // Live preview is immediate; persist only the final value after a drag.
+    _saveTimer = Timer(const Duration(milliseconds: 350), () {
+      _saveTimer = null;
+      unawaited(_persist(value));
+    });
+  }
+
+  Future<void> _persist(SubtitlePreferences next) async {
+    final prefs = await SharedPreferences.getInstance();
+    await next.save(prefs);
+  }
+
+  @override
+  void dispose() {
+    if (_saveTimer != null) {
+      _saveTimer!.cancel();
+      unawaited(_persist(value));
+    }
+    super.dispose();
   }
 
   Future<void> changeAss(bool enabled) async {
