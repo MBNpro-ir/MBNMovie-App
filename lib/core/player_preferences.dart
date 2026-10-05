@@ -6,6 +6,7 @@ import '../services/mbn_sync.dart';
 
 class SubtitlePreferences {
   const SubtitlePreferences({
+    this.originalAss = false,
     this.fontFamily = 'Vazirmatn',
     this.size = 14,
     this.lineHeight = 1.45,
@@ -23,13 +24,13 @@ class SubtitlePreferences {
   /// First-run default subtitle size: 14 on phones, 24 on Windows.
   /// Server just mirrors whatever the app pushes per platform
   /// (windows/android buckets), so fixing the app default is enough.
-  static double get platformDefaultSize =>
-      Platform.isWindows ? 24.0 : 14.0;
+  static double get platformDefaultSize => Platform.isWindows ? 24.0 : 14.0;
 
   /// Non-const constructor for first-run / reset values.
   factory SubtitlePreferences.withPlatformDefaults() =>
       SubtitlePreferences(size: platformDefaultSize);
 
+  final bool originalAss;
   final String fontFamily;
   final double size;
   final double lineHeight;
@@ -44,6 +45,7 @@ class SubtitlePreferences {
   final double timingScale;
 
   SubtitlePreferences copyWith({
+    bool? originalAss,
     String? fontFamily,
     double? size,
     double? lineHeight,
@@ -57,6 +59,7 @@ class SubtitlePreferences {
     double? delay,
     double? timingScale,
   }) => SubtitlePreferences(
+    originalAss: originalAss ?? this.originalAss,
     fontFamily: fontFamily ?? this.fontFamily,
     size: size ?? this.size,
     lineHeight: lineHeight ?? this.lineHeight,
@@ -73,6 +76,7 @@ class SubtitlePreferences {
 
   factory SubtitlePreferences.fromStore(SharedPreferences prefs) =>
       SubtitlePreferences(
+        originalAss: prefs.getBool('sub_original_ass') ?? false,
         fontFamily: prefs.getString('sub_font') ?? 'Vazirmatn',
         size: prefs.getDouble('sub_size') ?? platformDefaultSize,
         lineHeight: prefs.getDouble('sub_height') ?? 1.45,
@@ -90,6 +94,7 @@ class SubtitlePreferences {
       );
 
   Future<void> save(SharedPreferences prefs) async {
+    await prefs.setBool('sub_original_ass', originalAss);
     await prefs.setString('sub_font', fontFamily);
     await prefs.setDouble('sub_size', size);
     await prefs.setDouble('sub_height', lineHeight);
@@ -123,12 +128,18 @@ abstract final class PlaybackPreferenceStore {
       askEveryTime;
 
   static Future<void> setDefaultPlayer(String value) async {
-    await (await SharedPreferences.getInstance()).setString(defaultPlayerKey, value);
+    await (await SharedPreferences.getInstance()).setString(
+      defaultPlayerKey,
+      value,
+    );
     await MbnSync.instance.pushPreferences();
   }
 
   static Future<void> setDefaultStreamer(String value) async {
-    await (await SharedPreferences.getInstance()).setString(defaultStreamerKey, value);
+    await (await SharedPreferences.getInstance()).setString(
+      defaultStreamerKey,
+      value,
+    );
     await MbnSync.instance.pushPreferences();
   }
 

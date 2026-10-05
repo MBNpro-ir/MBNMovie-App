@@ -13,11 +13,13 @@ class SubtitleAppearancePanel extends StatefulWidget {
     super.key,
     required this.initial,
     required this.onChanged,
+    this.assAvailable = false,
     this.compactLayout,
     this.twoColumnLayout = false,
   });
   final SubtitlePreferences initial;
   final ValueChanged<SubtitlePreferences> onChanged;
+  final bool assAvailable;
   final bool? compactLayout;
   final bool twoColumnLayout;
   @override
@@ -35,6 +37,32 @@ class _SubtitleAppearancePanelState extends State<SubtitleAppearancePanel> {
       await next.save(prefs);
       unawaited(MbnSync.instance.pushPreferencesThrottled());
     }());
+  }
+
+  Future<void> changeAss(bool enabled) async {
+    if (enabled) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('نمایش طراحی اصلی ASS'),
+          content: const Text(
+            'در این حالت فونت، رنگ، موقعیت و جلوه‌های طراحی‌شده توسط سازندهٔ زیرنویس نمایش داده می‌شود و تنظیمات ظاهری برنامه اعمال نمی‌شود. ادامه می‌دهی؟',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('انصراف'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('فعال کردن'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+    change(value.copyWith(originalAss: enabled));
   }
 
   Widget colors(
@@ -208,13 +236,41 @@ class _SubtitleAppearancePanelState extends State<SubtitleAppearancePanel> {
         value: value.shadow,
         onChanged: (v) => change(value.copyWith(shadow: v)),
       ),
+      if (widget.assAvailable)
+        SwitchListTile(
+          key: const Key('original-ass-switch'),
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          title: const Text('طراحی اصلی ASS'),
+          subtitle: Text(
+            value.originalAss
+                ? 'ظاهر سازندهٔ زیرنویس'
+                : 'نمایش ساده با ظاهر برنامه',
+          ),
+          value: value.originalAss,
+          onChanged: changeAss,
+        ),
     ];
+    Widget appearanceControl(Widget child) {
+      if (child.key == const Key('original-ass-switch')) return child;
+      return AbsorbPointer(
+        absorbing: widget.assAvailable && value.originalAss,
+        child: Opacity(
+          opacity: widget.assAvailable && value.originalAss ? .4 : 1,
+          child: child,
+        ),
+      );
+    }
+
     Widget pane(List<Widget> children) => Expanded(
       child: Padding(
         padding: EdgeInsets.symmetric(
           horizontal: widget.twoColumnLayout ? 4 : 12,
         ),
-        child: Column(mainAxisSize: MainAxisSize.min, children: children),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: children.map(appearanceControl).toList(),
+        ),
       ),
     );
     return SafeArea(
@@ -279,7 +335,10 @@ class _SubtitleAppearancePanelState extends State<SubtitleAppearancePanel> {
                         )
                       : Column(
                           mainAxisSize: MainAxisSize.min,
-                          children: [...first, ...second],
+                          children: [
+                            ...first,
+                            ...second,
+                          ].map(appearanceControl).toList(),
                         ),
                 ),
               ),

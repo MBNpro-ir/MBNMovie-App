@@ -150,7 +150,10 @@ class MovieApi implements ContentApi {
       colors: const [Color(0xFF4665B3), Color(0xFF10182B)],
       genres: parts(row['genres']),
       countries: parts(row['countries']),
-      alternateTitles: _list(row['aliases']).map(_text).toList(),
+      alternateTitles: {
+        ..._list(row['aliases']).map(_text),
+        if (_text(row['english_title']).isNotEmpty) _text(row['english_title']),
+      }.toList(),
       imageUrl: image.isEmpty ? null : image,
       backdropUrl: image.isEmpty ? null : image,
       isDubbed: _text(row['is_duble']).toUpperCase() == 'T',
@@ -285,7 +288,7 @@ class MovieApi implements ContentApi {
           ...item.alternateTitles,
         ].map(_normalizeQuery);
         if (!names.any(
-          (name) => exact ? name == needle : name.contains(needle),
+          (name) => exact ? name == needle : _matchesTitle(name, query),
         )) {
           continue;
         }
@@ -317,6 +320,26 @@ class MovieApi implements ContentApi {
       matches.sort(
         (a, b) => (int.tryParse(b.id) ?? 0).compareTo(int.tryParse(a.id) ?? 0),
       );
+    }
+    if (needle.isNotEmpty && sortBy == 'NewMovie') {
+      int rank(MovieContent item) {
+        final names = [
+          item.title,
+          ...item.alternateTitles,
+        ].map(_normalizeQuery);
+        if (names.contains(needle)) return 0;
+        if (names.any((name) => name.startsWith(needle))) return 1;
+        if (names.any((name) => name.contains(needle))) return 2;
+        return 3;
+      }
+
+      matches.sort((a, b) {
+        final relevance = rank(a).compareTo(rank(b));
+        if (relevance != 0) return relevance;
+        final rating = b.rating.compareTo(a.rating);
+        if (rating != 0) return rating;
+        return a.id.compareTo(b.id);
+      });
     }
     return matches.skip((page - 1) * 24).take(24).toList();
   }
@@ -1199,6 +1222,15 @@ class MovieApi implements ContentApi {
       if (matches.length >= needed || candidates.length < 40) break;
     }
     return matches.skip((page - 1) * 24).take(24).toList();
+  }
+
+  static bool _matchesTitle(String normalizedTitle, String query) {
+    final words = query
+        .trim()
+        .split(RegExp(r'\s+'))
+        .map(_normalizeQuery)
+        .where((word) => word.isNotEmpty);
+    return words.every(normalizedTitle.contains);
   }
 
   /// یکدست‌سازی متن برای تطبیق عنوان‌ها (رسم‌الخط فارسی، نیم‌فاصله).

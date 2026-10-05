@@ -389,9 +389,32 @@ abstract final class BrowserFeatures {
     }
   }
 
+  static Future<void> ass(
+    String source, {
+    List<String> fonts = const [],
+  }) async {
+    final api = globalContext.getProperty<JSObject>('mbnAss'.toJS);
+    final video = _video;
+    if (video == null) throw StateError('Video unavailable');
+    await api
+        .callMethod<JSPromise<JSAny?>>(
+          'show'.toJS,
+          video,
+          source.toJS,
+          fonts.map((f) => f.toJS).toList().toJS,
+        )
+        .toDart;
+  }
+
+  static void clearAss() {
+    final api = globalContext.getProperty<JSObject?>('mbnAss'.toJS);
+    api?.callMethod<JSAny?>('clear'.toJS);
+  }
+
   static web.HTMLTrackElement? _track;
   static String? _subtitleUrl;
   static void clearSubtitle() {
+    clearAss();
     _track?.remove();
     _track = null;
     if (_subtitleUrl != null) web.URL.revokeObjectURL(_subtitleUrl!);
@@ -399,7 +422,8 @@ abstract final class BrowserFeatures {
   }
 
   static void subtitle(String vtt) {
-    clearSubtitle();
+    _track?.remove();
+    if (_subtitleUrl != null) web.URL.revokeObjectURL(_subtitleUrl!);
     final video = _video;
     if (video == null) return;
     _subtitleUrl = web.URL.createObjectURL(

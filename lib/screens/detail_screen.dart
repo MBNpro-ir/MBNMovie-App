@@ -1,3 +1,4 @@
+import '../core/ass_subtitles.dart';
 import '../widgets/subtitle_appearance_panel.dart';
 import '../widgets/responsive_web_layout.dart';
 import '../services/player_system_ui.dart';
@@ -2418,6 +2419,16 @@ class _PlayerScreenState extends State<PlayerScreen>
       mounted && !_playerTornDown && generation == _mediaGeneration;
   Offset? _doubleTapPosition;
   List<String> _subtitles = const [];
+  SubtitleTrack? _autoNativeSubtitle;
+  SubtitleTrack get _selectedSubtitle => _track.subtitle.id == 'auto'
+      ? (_autoNativeSubtitle ?? _track.subtitle)
+      : _track.subtitle;
+  Map<String, String> _webSubtitleCodecs = {};
+  List<String> _webAssFonts = [];
+  String? _webAssSource;
+  int _assRenderingGeneration = 0;
+  bool get _assAvailable =>
+      kIsWeb ? _webAssSource != null : isAssTrack(_selectedSubtitle);
   WebSubtitleDocument? _webSubtitle;
   int _webSubtitleSelection = 0;
   int _webAudioSelection = 0;
@@ -2614,6 +2625,11 @@ class _PlayerScreenState extends State<PlayerScreen>
     if (kIsWeb) {
       BrowserFeatures.clearPlayPrompt();
       BrowserFeatures.clearAudio();
+    }
+    if (kIsWeb) {
+      ++_assRenderingGeneration;
+      BrowserFeatures.clearAss();
+      _nativeSubtitleRendering = false;
     }
     final routed = kIsWeb
         ? await WebGateway.media(
@@ -2874,13 +2890,16 @@ class _PlayerScreenState extends State<PlayerScreen>
     watch(_player.stream.volume, (value) => _volume = value);
     watch(_player.stream.rate, (value) => _rate = value);
     watch(_player.stream.tracks, (value) {
-      if (!kIsWeb) _tracks = value;
+      if (!kIsWeb) {
+        _tracks = value;
+        unawaited(_resolveAutoSubtitle());
+      }
     });
     watch(_player.stream.track, (value) {
       if (kIsWeb) return;
       _track = value;
       _nativeSubtitleRendering = _requiresNativeSubtitle(value.subtitle);
-      unawaited(_setNativeSubtitleVisibility(_nativeSubtitleRendering));
+      unawaited(_applyAssRendering());
     });
     _subscriptions.add(_player.stream.error.listen(_handlePlaybackError));
     watch(_player.stream.subtitle, (value) {
@@ -2961,6 +2980,21 @@ class _PlayerScreenState extends State<PlayerScreen>
         supported.firstOrNull;
     if (!_isCurrentMediaOp(generation)) return;
     setState(() {
+      _webSubtitleCodecs = {
+        for (final s in supported)
+          subtitleTrack(s).id: s['codec']?.toString().toLowerCase() ?? '',
+      };
+      _webAssFonts = (data['fonts'] as List? ?? [])
+          .whereType<Map>()
+          .where((f) => f['url'] != null)
+          .map(
+            (f) => WebGateway.endpoint(
+              f['url'].toString().split('?').first,
+              Uri.parse(f['url'].toString()).queryParameters,
+            ).toString(),
+          )
+          .toList();
+      _webAssSource = null;
       _webSubtitle = null;
       _subtitles = [];
       _webSubtitleVisible = true;
@@ -2986,6 +3020,7 @@ class _PlayerScreenState extends State<PlayerScreen>
           ...supported.map(subtitleTrack),
         ],
       );
+      _autoNativeSubtitle = null;
       _track = Track();
     });
     BrowserFeatures.subtitle('WEBVTT\n\n');
@@ -3009,13 +3044,19 @@ class _PlayerScreenState extends State<PlayerScreen>
         : track.id == 'no'
         ? null
         : track;
+    String? assSource;
     WebSubtitleDocument? document;
     if (source != null) {
       final response = await http
           .get(Uri.parse(source.id))
           .timeout(const Duration(seconds: 25));
       if (response.statusCode != 200) throw StateError('Subtitle unavailable');
-      document = WebSubtitleDocument.parse(utf8.decode(response.bodyBytes));
+      final text = utf8.decode(response.bodyBytes);
+      final codec = _webSubtitleCodecs[source.id];
+      if ((codec == 'ass' || codec == 'ssa') && isAssDocument(text)) {
+        assSource = text;
+      }
+      document = WebSubtitleDocument.parse(text);
     }
     if (!mounted ||
         !_isCurrentMediaOp(mediaGeneration) ||
@@ -3023,6 +3064,7 @@ class _PlayerScreenState extends State<PlayerScreen>
       return;
     }
     setState(() {
+      _webAssSource = assSource;
       _webSubtitle = document;
       _webSubtitleVisible = source != null;
       _subtitles =
@@ -3035,6 +3077,7 @@ class _PlayerScreenState extends State<PlayerScreen>
       _track = _track.copyWith(subtitle: track);
       _nativeSubtitleRendering = false;
     });
+    await _applyAssRendering();
     BrowserFeatures.subtitle(
       document?.vtt(delay: _subtitle.delay, scale: _subtitle.timingScale) ??
           'WEBVTT\n\n',
@@ -3067,14 +3110,14 @@ class _PlayerScreenState extends State<PlayerScreen>
   }
 
   bool _requiresNativeSubtitle(SubtitleTrack track) {
+    if (track.id == 'auto') track = _selectedSubtitle;
     final descriptor = [
       track.codec,
       track.title,
       track.id,
     ].whereType<String>().join(' ').toLowerCase();
+    if (isAssTrack(track)) return _subtitle.originalAss;
     return const [
-      'ass',
-      'ssa',
       'pgs',
       'hdmv',
       'dvd_subtitle',
@@ -3090,13 +3133,81 @@ class _PlayerScreenState extends State<PlayerScreen>
     if (platform is NativePlayer) {
       await setNativePlayerProperty(
         platform,
+        'sub-ass-override',
+        _subtitle.originalAss ? 'no' : 'strip',
+      );
+      await setNativePlayerProperty(platform, 'sub-scale', '1');
+      await setNativePlayerProperty(
+        platform,
         'sub-visibility',
         visible ? 'yes' : 'no',
       );
     }
   }
 
+  Future<void> _resolveAutoSubtitle() async {
+    if (kIsWeb || _playerTornDown) return;
+    final generation = _mediaGeneration;
+    String? id;
+    try {
+      id = await getNativePlayerProperty(_player.platform!, 'sid');
+    } catch (_) {
+      return;
+    }
+    if (!mounted || generation != _mediaGeneration || _playerTornDown) return;
+    _autoNativeSubtitle = _tracks.subtitle.where((t) => t.id == id).firstOrNull;
+    await _applyAssRendering();
+  }
+
+  Future<void> _applyAssRendering() async {
+    final generation = ++_assRenderingGeneration;
+    final original = _subtitle.originalAss && _assAvailable;
+    if (kIsWeb) {
+      BrowserFeatures.clearAss();
+      if (original && _webSubtitleVisible) {
+        try {
+          await BrowserFeatures.ass(
+            timedAss(
+              _webAssSource!,
+              delay: _subtitle.delay,
+              scale: _subtitle.timingScale,
+            ),
+            fonts: _webAssFonts,
+          );
+          if (mounted && generation == _assRenderingGeneration) {
+            setState(() => _nativeSubtitleRendering = true);
+          }
+        } catch (_) {
+          if (mounted && generation == _assRenderingGeneration) {
+            setState(() => _nativeSubtitleRendering = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'طراحی ASS بارگذاری نشد؛ زیرنویس با ظاهر ساده نمایش داده می‌شود.',
+                ),
+              ),
+            );
+          }
+        }
+      } else if (mounted) {
+        setState(() => _nativeSubtitleRendering = false);
+      }
+    } else {
+      await _setNativeSubtitleVisibility(
+        _requiresNativeSubtitle(_track.subtitle),
+      );
+      if (mounted && generation == _assRenderingGeneration) {
+        setState(
+          () => _nativeSubtitleRendering = _requiresNativeSubtitle(
+            _track.subtitle,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _applySubtitleTiming(SubtitlePreferences prefs) async {
+    await _applyAssRendering();
     if (kIsWeb && _webSubtitle != null) {
       BrowserFeatures.subtitle(
         _webSubtitle!.vtt(delay: prefs.delay, scale: prefs.timingScale),
@@ -4368,6 +4479,7 @@ class _PlayerScreenState extends State<PlayerScreen>
             _webSubtitleVisible = !_webSubtitleVisible;
             if (!_webSubtitleVisible) _subtitles = [];
           });
+          unawaited(_applyAssRendering());
           BrowserFeatures.subtitle(
             _webSubtitleVisible
                 ? _webSubtitle!.vtt(
@@ -4671,8 +4783,11 @@ class _PlayerScreenState extends State<PlayerScreen>
     final file = await openFile(acceptedTypeGroups: const [subtitleFiles]);
     if (file == null) return;
     if (kIsWeb) {
-      _webSubtitle = WebSubtitleDocument.parse(await file.readAsString());
+      final text = await file.readAsString();
+      _webAssSource = isAssDocument(text) ? text : null;
+      _webSubtitle = WebSubtitleDocument.parse(text);
       _webSubtitleVisible = true;
+      await _applyAssRendering();
       BrowserFeatures.subtitle(
         _webSubtitle!.vtt(delay: _subtitle.delay, scale: _subtitle.timingScale),
       );
@@ -4751,6 +4866,7 @@ class _PlayerScreenState extends State<PlayerScreen>
         utf8.decode(response.bodyBytes, allowMalformed: true),
       );
       _webSubtitleVisible = true;
+      await _applyAssRendering();
       BrowserFeatures.subtitle(
         _webSubtitle!.vtt(delay: _subtitle.delay, scale: _subtitle.timingScale),
       );
@@ -4775,6 +4891,8 @@ class _PlayerScreenState extends State<PlayerScreen>
   }
 
   Future<void> _showSubtitleSettings() async {
+    await _resolveAutoSubtitle();
+    if (!mounted || _playerTornDown) return;
     _hideTimer?.cancel();
     setState(() => _controlsVisible = false);
     final result = await (kIsWeb
@@ -4790,9 +4908,13 @@ class _PlayerScreenState extends State<PlayerScreen>
                 maxHeight: webPanelHeight(context, desired: 560),
               ),
               child: SubtitleAppearancePanel(
+                assAvailable: _assAvailable,
                 initial: _subtitle,
                 onChanged: (value) {
-                  if (mounted) setState(() => _subtitle = value);
+                  if (mounted) {
+                    setState(() => _subtitle = value);
+                    unawaited(_applyAssRendering());
+                  }
                 },
               ),
             ),
@@ -4803,9 +4925,13 @@ class _PlayerScreenState extends State<PlayerScreen>
             backgroundColor: MovieColors.surface,
             builder: (context) => SubtitleAppearancePanel(
               twoColumnLayout: !isLargeScreenDevice,
+              assAvailable: _assAvailable,
               initial: _subtitle,
               onChanged: (value) {
-                if (mounted) setState(() => _subtitle = value);
+                if (mounted) {
+                  setState(() => _subtitle = value);
+                  unawaited(_applyAssRendering());
+                }
               },
             ),
           ));

@@ -27,14 +27,29 @@ class WebSubtitleDocument {
     return parts.fold<double>(0, (sum, part) => sum * 60 + part!);
   }
 
-  static String _plain(String text) => text
-      .replaceAll(RegExp(r'\{[^}]*\}|<[^>]*>'), '')
-      .replaceAll(r'\N', '\n')
-      .replaceAll(r'\n', '\n')
-      .replaceAll('&amp;', '&')
-      .replaceAll('&lt;', '<')
-      .replaceAll('&gt;', '>')
-      .trim();
+  static String _plain(String text) {
+    // ASS vector paths belong to the original renderer, not the text overlay.
+    var drawing = false, offset = 0;
+    final plain = StringBuffer();
+    for (final tag in RegExp(r'\{[^}]*\}').allMatches(text)) {
+      if (!drawing) plain.write(text.substring(offset, tag.start));
+      for (final mode in RegExp(r'\\p(\d+)\b').allMatches(tag.group(0)!)) {
+        drawing = int.parse(mode.group(1)!) != 0;
+      }
+      offset = tag.end;
+    }
+    if (!drawing) plain.write(text.substring(offset));
+    return plain
+        .toString()
+        .replaceAll(RegExp(r'\{[^}]*\}|<[^>]*>'), '')
+        .replaceAll(r'\N', '\n')
+        .replaceAll(r'\n', '\n')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .trim();
+  }
+
   factory WebSubtitleDocument.parse(String source) {
     final normalized = source.replaceAll('\r', '').replaceAll('\uFEFF', '');
     final cues = <WebSubtitleCue>[];
@@ -91,7 +106,7 @@ class WebSubtitleDocument {
       index--
     ) {
       final cue = cues[index];
-      if (cue.end > time) result.add(cue.text);
+      if (cue.end > time && cue.text.isNotEmpty) result.add(cue.text);
     }
     return result.reversed.toList(growable: false);
   }

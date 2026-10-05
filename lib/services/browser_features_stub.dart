@@ -1,8 +1,15 @@
 import 'dart:typed_data';
+
 abstract final class BrowserFeatures {
+  static Future<void> ass(
+    String source, {
+    List<String> fonts = const [],
+  }) async {}
+  static void clearAss() {}
   static bool get isMobileBrowser => false;
   static bool get isAppleMobile => false;
-  static Future<bool> play({int? handle, bool Function()? active}) async => false;
+  static Future<bool> play({int? handle, bool Function()? active}) async =>
+      false;
   static void attachVideo(Object video) {}
   static void detachVideo(Object video) {}
   static bool get castSupported => false;

@@ -2,6 +2,19 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mbnmovie/core/web_subtitles.dart';
 
 void main() {
+  test(
+    'plain ASS hides vector paths and preserves text after drawing mode ends',
+    () {
+      final doc = WebSubtitleDocument.parse(
+        r'Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,{\p1}m 0 0 l 30 0 30 30{\p0}سلام'
+        '\n'
+        r'Dialogue: 1,0:00:00.00,0:00:05.00,Default,,0,0,0,,{\p1}m 0 0 l 40 40',
+      );
+      expect(doc.at(const Duration(seconds: 1)), ['سلام']);
+      expect(doc.vtt(), isNot(contains('m 0 0')));
+    },
+  );
+
   test('Persian SRT, overlapping cues, delay and scale', () {
     final doc = WebSubtitleDocument.parse(
       '1\n00:00:01,000 --> 00:00:03,000\n<b>سلام</b>\n\n2\n00:00:02,000 --> 00:00:04,000\nدوم',
