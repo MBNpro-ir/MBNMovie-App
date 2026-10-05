@@ -77,5 +77,12 @@ void main() {
       expect(normalizePersianSubtitle(''), '');
       expect(normalizePersianSubtitle('Hello 123'), 'Hello 123');
     });
+
+    test('isolates Latin runs inside Persian text', () {
+      expect(
+        normalizePersianSubtitle('بیمار MRI دارد'),
+        'بیمار \u2066MRI\u2069 دارد',
+      );
+    });
   });
 }
