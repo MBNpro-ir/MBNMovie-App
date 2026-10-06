@@ -1,3 +1,5 @@
+import '../services/account_profile.dart';
+import '../core/watch_clock.dart';
 import '../core/player_track_label.dart';
 import '../core/ass_subtitles.dart';
 import '../widgets/subtitle_appearance_panel.dart';
@@ -2361,6 +2363,24 @@ class PlayerScreen extends StatefulWidget {
 
 class _PlayerScreenState extends State<PlayerScreen>
     with WindowListener, WidgetsBindingObserver {
+  final _watchClock = WatchClock();
+  final _watchOwner = AccountProfile.owner;
+  void _saveWatch({String? episodeId, bool force = false}) {
+    if (!force && _watchClock.pending < 30000) return;
+    final ms = _watchClock.take();
+    if (_watchOwner == null || _watchOwner != AccountProfile.owner) return;
+    if (ms > 0) {
+      unawaited(
+        AccountProfile.record(
+          widget.content.id,
+          episodeId ?? _episodeCatalog.groupFor(_episode)?.id ?? _episode.id,
+          widget.content.kind.name,
+          ms, expectedOwner: _watchOwner,
+        ),
+      );
+    }
+  }
+
   late final Player _player;
   late final VideoController _video;
   late final EpisodeCatalog _episodeCatalog;
@@ -2808,6 +2828,15 @@ class _PlayerScreenState extends State<PlayerScreen>
     Duration? duration,
     String? episodeId,
   }) {
+    _saveWatch(
+      episodeId: episodeId,
+      force:
+          _transitioning ||
+          _exitingPlayer ||
+          _playerTornDown ||
+          markWatched ||
+          at != null,
+    );
     final position = at ?? _position;
     if (position <= Duration.zero && !markWatched) return Future.value();
     return _progressStore.save(
@@ -2841,6 +2870,11 @@ class _PlayerScreenState extends State<PlayerScreen>
     }
 
     watchQuiet(_player.stream.position, (value) {
+      _watchClock.tick(
+        value,
+        active: _playing && !_buffering && !_transitioning && !_playerTornDown,
+        rate: _rate,
+      );
       _position = value;
       if (kIsWeb && _webSubtitle != null && mounted) {
         final lines = _webSubtitleVisible

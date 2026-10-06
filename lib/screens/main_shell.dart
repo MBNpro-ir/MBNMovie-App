@@ -1,3 +1,4 @@
+import '../widgets/account_profile_panel.dart';
 import '../core/title_language.dart';
 import '../services/device_performance.dart';
 import '../services/web_gateway.dart';
@@ -812,14 +813,7 @@ class _MenuDrawer extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(12, 18, 12, 24),
         children: [
-          const Center(child: BrandMark(size: 82)),
-          const SizedBox(height: 12),
-          Text(
-            email,
-            textAlign: TextAlign.center,
-            textDirection: TextDirection.ltr,
-            style: const TextStyle(color: MovieColors.muted),
-          ),
+          DrawerAccountIdentity(server: auth, openProfile: subscription),
           const SizedBox(height: 10),
           _subscriptionBadge(context),
           const SizedBox(height: 14),
@@ -852,15 +846,6 @@ class _MenuDrawer extends StatelessWidget {
             ),
             _tile(Icons.history_rounded, 'بازدیدشده‌ها', history),
             _tile(Icons.queue_music_rounded, 'پلی‌لیست‌ها', playlists),
-          ]),
-          _section('حساب کاربری', [
-            _tile(
-              Icons.workspace_premium_rounded,
-              'مدیریت اشتراک',
-              subscription,
-              tool: true,
-            ),
-            _tile(Icons.logout_rounded, 'خروج از حساب کاربری', logout),
           ]),
           // Support button with Telegram blue color #229ED9
           Container(
@@ -1019,6 +1004,15 @@ class _MenuDrawer extends StatelessWidget {
           const SizedBox(height: 8),
           SizedBox(
             width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: subscription,
+              icon: const Icon(Icons.workspace_premium_rounded, size: 18),
+              label: const Text('مدیریت اشتراک'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
             height: 34,
             child: FilledButton.icon(
               style: FilledButton.styleFrom(
@@ -1039,6 +1033,11 @@ class _MenuDrawer extends StatelessWidget {
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
               ),
             ),
+          ),
+          TextButton.icon(
+            onPressed: logout,
+            icon: const Icon(Icons.logout_rounded, size: 17),
+            label: const Text('خارج شدن از اشتراک'),
           ),
         ],
       ),

@@ -1,3 +1,4 @@
+import '../widgets/account_profile_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -203,6 +204,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
                   children: [
+                    const AccountProfilePanel(),
                     // Hero Subscription Card
                     Container(
                       decoration: BoxDecoration(
