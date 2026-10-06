@@ -98,10 +98,12 @@ class AccountProfile {
     final owner = _owner;
     try {
       await _writes;
+      if (owner != _owner || !identical(source, server)) return;
       final prefs = await SharedPreferences.getInstance();
       final pending = jsonDecode(prefs.getString(key) ?? '[]') as List;
       if (pending.isEmpty) return;
       final batch = pending.take(100).toList();
+      if (owner != _owner || !identical(source, server)) return;
       final body = await source.postJson('/api/me/watch', {
         'app': app,
         'events': batch,
