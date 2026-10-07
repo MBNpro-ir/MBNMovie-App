@@ -133,16 +133,27 @@ abstract final class WebGateway {
 }
 
 class WebCatalogClient extends http.BaseClient {
-  final http.Client _inner = http.Client();
+  WebCatalogClient({http.Client? client, Uri? endpoint})
+    : _inner = client ?? http.Client(),
+      _endpoint =
+          endpoint ??
+          (kIsWeb
+              ? WebGateway.endpoint('/api/web/proxy')
+              : Uri.parse('https://login.m.mbnpro.ir/api/web/proxy'));
+  final http.Client _inner;
+  final Uri _endpoint;
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     final body = await request.finalize().toBytes();
     final generation = WebGateway._generation;
     final credential = WebGateway.token;
+    if (credential == null) {
+      throw http.ClientException('نشست شما پایان یافته است.');
+    }
     final response = await sendBuffered(
       _inner,
       'POST',
-      WebGateway.endpoint('/api/web/proxy'),
+      _endpoint,
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $credential',

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'web_gateway.dart';
 import 'network_gate.dart';
 import 'dart:convert';
@@ -101,7 +100,7 @@ abstract interface class ContentApi {
 /// Connects the existing MBNMovie interface to the film catalog service.
 class MovieApi implements ContentApi {
   MovieApi({http.Client? client, Future<String> Function()? indexLoader})
-    : _client = client ?? (kIsWeb ? WebCatalogClient() : http.Client()),
+    : _client = client ?? WebCatalogClient(),
       _indexLoader = indexLoader ?? _loadBundledIndex;
 
   static Future<String> _loadBundledIndex() =>

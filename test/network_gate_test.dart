@@ -6,8 +6,50 @@ import 'package:http/io_client.dart';
 import 'package:http/testing.dart';
 import 'package:mbnmovie/services/network_gate.dart';
 import 'package:mbnmovie/services/mbn_auth.dart';
+import 'package:mbnmovie/services/web_gateway.dart';
+import 'dart:convert';
 
 void main() {
+  test(
+    'native catalog credentials travel only over the authenticated HTTPS bridge',
+    () async {
+      WebGateway.token = 'test-token';
+      final client = WebCatalogClient(
+        client: MockClient((request) async {
+          expect(
+            request.url.toString(),
+            'https://login.m.mbnpro.ir/api/web/proxy',
+          );
+          expect(request.headers['authorization'], 'Bearer test-token');
+          expect(request.followRedirects, false);
+          final body = jsonDecode(request.body) as Map;
+          expect(
+            body['url'],
+            'http://googfilmazappfordownfilmmedis.xyz/app-plus/users.php',
+          );
+          expect(
+            utf8.decode(base64Decode(body['body'])),
+            contains('pass=private-password'),
+          );
+          return http.Response('{}', 200);
+        }),
+      );
+      try {
+        final response = await sendBuffered(
+          client,
+          'POST',
+          Uri.parse(
+            'http://googfilmazappfordownfilmmedis.xyz/app-plus/users.php',
+          ),
+          body: {'pass': 'private-password'},
+        );
+        expect(response.statusCode, 200);
+      } finally {
+        client.close();
+        WebGateway.token = null;
+      }
+    },
+  );
   test('deduplicates reads and caps concurrent operations', () async {
     final gate = NetworkRequestGate(maxConcurrent: 2);
     final release = <Completer<void>>[];
