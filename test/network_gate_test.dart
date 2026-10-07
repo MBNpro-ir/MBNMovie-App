@@ -29,7 +29,9 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     expect(calls, 2);
     expect(peak, 2);
-    for (final done in release) done.complete();
+    for (final done in release) {
+      done.complete();
+    }
     expect(await a, 42);
     expect(await b, 42);
     expect(await c, 42);

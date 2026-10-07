@@ -111,6 +111,7 @@ class MovieApi implements ContentApi {
   String _delfanPassword = '';
 
   void bindDelfanSession({required String mobile, required String password}) {
+    _sessionGeneration++;
     _delfanMobile = mobile;
     _delfanPassword = password;
     _homeData = null;
@@ -400,6 +401,7 @@ class MovieApi implements ContentApi {
   static const _wireApp = 'Delfan';
   static const _headers = {'User-Agent': 'Mozilla/5.0 (Linux; Android 15)'};
   final http.Client _client;
+  int _sessionGeneration = 0;
   // The provider consumes each guest nonce once, so catalog pairs stay serial.
   // Bound waiting work instead of growing a Future chain indefinitely.
   final NetworkRequestGate _requests = NetworkRequestGate(maxConcurrent: 1);
@@ -450,18 +452,30 @@ class MovieApi implements ContentApi {
   ]) async {
     final fields = extra.entries.toList()
       ..sort((a, b) => a.key.compareTo(b.key));
+    final generation = _sessionGeneration;
     final key = jsonEncode([
       action,
-      _delfanMobile,
+      generation,
       TitleLanguage.english,
       {for (final field in fields) field.key: field.value},
     ]);
     try {
-      return await _requests.run(key, () => _send(action, extra));
+      final result = await _requests.run(key, () {
+        _checkSession(generation);
+        return _send(action, extra, generation);
+      });
+      _checkSession(generation);
+      return result;
     } on NetworkQueueException {
       throw const FormatException(
         'درخواست‌های زیادی در انتظار است؛ دوباره تلاش کنید.',
       );
+    }
+  }
+
+  void _checkSession(int generation) {
+    if (_sessionGeneration != generation) {
+      throw const FormatException('حساب تغییر کرده است؛ دوباره تلاش کنید.');
     }
   }
 
@@ -511,9 +525,12 @@ class MovieApi implements ContentApi {
   Future<Map<String, dynamic>> _send(
     String action,
     Map<String, String> extra,
+    int generation,
   ) async {
     for (var attempt = 0; attempt < 2; attempt++) {
+      _checkSession(generation);
       final init = await _loginInit();
+      _checkSession(generation);
       final nonce = DateTime.now().microsecondsSinceEpoch % 500;
       final body =
           '${_md5('${nonce}cotation')}${init.auth}'
@@ -537,6 +554,7 @@ class MovieApi implements ContentApi {
         },
         timeout: const Duration(seconds: 30),
       );
+      _checkSession(generation);
       if (response.statusCode != 200 || response.bodyBytes.isEmpty) {
         throw const FormatException('سرور پاسخ نداد');
       }
