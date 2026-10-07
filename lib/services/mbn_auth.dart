@@ -10,6 +10,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'cross_app_auth.dart';
+import 'network_gate.dart';
 
 class MbnAuthException implements Exception {
   const MbnAuthException(this.message, {this.statusCode, this.details});
@@ -79,10 +80,13 @@ class MbnAuth {
   static const _secureStorage = FlutterSecureStorage();
 
   final http.Client _client;
+  final NetworkRequestGate _requests = NetworkRequestGate();
   final String baseUrl;
   String? _token;
+  int _generation = 0;
   String? get token => _token;
   set token(String? value) {
+    if (_token != value) _generation++;
     _token = value;
     WebGateway.token = value;
   }
@@ -93,74 +97,80 @@ class MbnAuth {
   Uri _uri(String path, [Map<String, String>? query]) =>
       Uri.parse(baseUrl).replace(path: path, queryParameters: query);
 
-  Future<Map<String, dynamic>> _post(
-    String path,
-    Map<String, dynamic> body,
-  ) async {
-    final response = await _client
-        .post(
-          _uri(path),
-          headers: {
-            'X-MBN-Platform': kIsWeb
-                ? 'web'
-                : isAndroidTv
-                ? 'android_tv'
-                : Platform.operatingSystem,
-            'Content-Type': 'application/json',
-            if (token != null) 'Authorization': 'Bearer $token',
-          },
-          body: jsonEncode(body),
-        )
-        .timeout(const Duration(seconds: 30));
-    return _decode(response);
+  Map<String, String> _headers(String? credential, {bool json = false}) => {
+    'X-MBN-Platform': kIsWeb
+        ? 'web'
+        : isAndroidTv
+        ? 'android_tv'
+        : Platform.operatingSystem,
+    if (json) 'Content-Type': 'application/json',
+    if (credential != null) 'Authorization': 'Bearer $credential',
+  };
+
+  Future<Map<String, dynamic>> _requestJson(
+    String method,
+    String path, {
+    Map<String, String>? query,
+    Map<String, dynamic>? body,
+  }) async {
+    final credential = token;
+    final generation = _generation;
+    final uri = _uri(path, query);
+    final headers = _headers(credential, json: body != null);
+    final encoded = body == null ? null : jsonEncode(body);
+    try {
+      final response = await _requests.run<http.Response>(
+        '$method $uri $generation',
+        () async {
+          if (_generation != generation) {
+            throw http.ClientException('حساب تغییر کرده است.');
+          }
+          Future<http.Response> send() {
+            if (_generation != generation) {
+              throw http.ClientException('حساب تغییر کرده است.');
+            }
+            return sendBuffered(
+              _client,
+              method,
+              uri,
+              headers: headers,
+              body: encoded,
+              followRedirects: false,
+            );
+          }
+
+          return method == 'GET' ? readWithRetry(send) : send();
+        },
+        dedupe: method == 'GET',
+      );
+      if (_generation != generation) {
+        throw http.ClientException('حساب تغییر کرده است.');
+      }
+      return _decode(response);
+    } on MbnAuthException {
+      rethrow;
+    } catch (_) {
+      throw const MbnAuthException(
+        'اتصال به سرور برقرار نشد؛ دوباره تلاش کنید.',
+      );
+    }
   }
 
   Future<Map<String, dynamic>> postJson(
     String path,
     Map<String, dynamic> body,
-  ) => _post(path, body);
-
+  ) => _requestJson('POST', path, body: body);
   Future<Map<String, dynamic>> getJson(
     String path, {
     Map<String, String>? query,
-  }) async {
-    final response = await _client
-        .get(
-          _uri(path, query),
-          headers: {
-            'X-MBN-Platform': kIsWeb
-                ? 'web'
-                : isAndroidTv
-                ? 'android_tv'
-                : Platform.operatingSystem,
-            if (token != null) 'Authorization': 'Bearer $token',
-          },
-        )
-        .timeout(const Duration(seconds: 30));
-    return _decode(response);
-  }
-
+  }) => _requestJson('GET', path, query: query);
   Future<Map<String, dynamic>> putJson(
     String path,
     Map<String, dynamic> body,
-  ) async {
-    final response = await _client
-        .put(
-          _uri(path),
-          headers: {
-            'X-MBN-Platform': kIsWeb
-                ? 'web'
-                : isAndroidTv
-                ? 'android_tv'
-                : Platform.operatingSystem,
-            'Content-Type': 'application/json',
-            if (token != null) 'Authorization': 'Bearer $token',
-          },
-          body: jsonEncode(body),
-        )
-        .timeout(const Duration(seconds: 30));
-    return _decode(response);
-  }
+  ) => _requestJson('PUT', path, body: body);
+
+  Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> body) =>
+      postJson(path, body);
 
   Map<String, dynamic> _decode(http.Response response) {
     Map<String, dynamic> data;
@@ -306,20 +316,21 @@ class MbnAuth {
   Future<void> logout() async {
     final oldToken = token;
     if (oldToken != null) {
-      _client
-          .post(
-            _uri('/api/auth/logout'),
-            headers: {
-              'X-MBN-Platform': kIsWeb
-                  ? 'web'
-                  : isAndroidTv
-                  ? 'android_tv'
-                  : Platform.operatingSystem,
-              'Authorization': 'Bearer $oldToken',
-            },
-          )
-          .timeout(const Duration(seconds: 5))
-          .then((_) {}, onError: (Object _) {});
+      sendBuffered(
+        _client,
+        'POST',
+        _uri('/api/auth/logout'),
+        headers: {
+          'X-MBN-Platform': kIsWeb
+              ? 'web'
+              : isAndroidTv
+              ? 'android_tv'
+              : Platform.operatingSystem,
+          'Authorization': 'Bearer $oldToken',
+        },
+        timeout: const Duration(seconds: 5),
+        followRedirects: false,
+      ).then((_) {}, onError: (Object _) {});
     }
     token = null;
     profile = null;

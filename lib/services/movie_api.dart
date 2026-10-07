@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'web_gateway.dart';
+import 'network_gate.dart';
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
@@ -399,7 +400,9 @@ class MovieApi implements ContentApi {
   static const _wireApp = 'Delfan';
   static const _headers = {'User-Agent': 'Mozilla/5.0 (Linux; Android 15)'};
   final http.Client _client;
-  Future<void> _tail = Future<void>.value();
+  // The provider consumes each guest nonce once, so catalog pairs stay serial.
+  // Bound waiting work instead of growing a Future chain indefinitely.
+  final NetworkRequestGate _requests = NetworkRequestGate(maxConcurrent: 1);
   Map<String, dynamic>? _homeData;
   final Map<String, List<MovieContent>> _catalogPageCache = {};
   final Map<String, ({List<String> genres, List<String> countries})>
@@ -445,54 +448,43 @@ class MovieApi implements ContentApi {
     String action, [
     Map<String, String> extra = const {},
   ]) async {
-    final previous = _tail;
-    final done = Completer<void>();
-    _tail = done.future;
-    await previous;
+    final fields = extra.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    final key = jsonEncode([
+      action,
+      _delfanMobile,
+      TitleLanguage.english,
+      {for (final field in fields) field.key: field.value},
+    ]);
     try {
-      Object? lastError;
-      for (var attempt = 0; attempt < 3; attempt++) {
-        try {
-          return await _send(action, extra);
-        } on FormatException catch (e) {
-          lastError = e;
-        } on TimeoutException catch (e) {
-          lastError = e;
-        } catch (e) {
-          lastError = e;
-        }
-        if (attempt < 2) {
-          await Future<void>.delayed(
-            Duration(milliseconds: 400 * (attempt + 1)),
-          );
-        }
-      }
-      if (lastError is FormatException) throw lastError;
-      throw const FormatException('پاسخ نامعتبر');
-    } finally {
-      done.complete();
+      return await _requests.run(key, () => _send(action, extra));
+    } on NetworkQueueException {
+      throw const FormatException(
+        'درخواست‌های زیادی در انتظار است؛ دوباره تلاش کنید.',
+      );
     }
   }
 
   Future<_AuthInit> _loginInit() async {
     // The catalog service consumes the guest auth for one vp1 request.
     // Reusing it makes every subsequent action fail with state_all=F.
-    final login = await _client
-        .post(
-          Uri.parse('${_base}users.php?key=$_key&action=login'),
-          headers: _headers,
-          body: {
-            'user_name': _delfanMobile,
-            if (_delfanMobile.isNotEmpty) 'pass': _delfanPassword,
-            'token': '',
-            'android_id': '',
-            'app_verion': '2',
-            'version_sp': 'ورژن 2',
-            'is_tv': '',
-            'apname': _delfanMobile.isEmpty ? _wireApp : 'Delfan',
-          },
-        )
-        .timeout(const Duration(seconds: 20));
+    final login = await sendBuffered(
+      _client,
+      'POST',
+      Uri.parse('${_base}users.php?key=$_key&action=login'),
+      headers: _headers,
+      body: {
+        'user_name': _delfanMobile,
+        if (_delfanMobile.isNotEmpty) 'pass': _delfanPassword,
+        'token': '',
+        'android_id': '',
+        'app_verion': '2',
+        'version_sp': 'ورژن 2',
+        'is_tv': '',
+        'apname': _delfanMobile.isEmpty ? _wireApp : 'Delfan',
+      },
+      timeout: const Duration(seconds: 20),
+    );
     final init = _map(jsonDecode(utf8.decode(login.bodyBytes)));
     final info = _map(_list(init['infos']).firstOrNull);
     if (_delfanMobile.isNotEmpty && _text(info['login']) != 'T') {
@@ -527,23 +519,24 @@ class MovieApi implements ContentApi {
           '${_md5('${nonce}cotation')}${init.auth}'
           'fdaa94a151e2c5d474a290e8${init.auth}y87mdjsodon'
           'c215sfxd545fgs${_md5('${DateTime.now().toUtc()}cotation')}';
-      final response = await _client
-          .post(
-            Uri.parse('${_base}vp1.php?key=$_key&action=$action'),
-            headers: _headers,
-            body: {
-              'user_name': init.mobile,
-              'token': init.token,
-              'body': body,
-              'an': _md5('${init.q1 + init.q2 + 101}'),
-              'langueg': TitleLanguage.english ? 'EN' : 'Fa',
-              'u_s': init.night,
-              's_n': init.tx,
-              'apname': init.mobile.isEmpty ? _wireApp : 'Delfan',
-              ...extra,
-            },
-          )
-          .timeout(const Duration(seconds: 60));
+      final response = await sendBuffered(
+        _client,
+        'POST',
+        Uri.parse('${_base}vp1.php?key=$_key&action=$action'),
+        headers: _headers,
+        body: {
+          'user_name': init.mobile,
+          'token': init.token,
+          'body': body,
+          'an': _md5('${init.q1 + init.q2 + 101}'),
+          'langueg': TitleLanguage.english ? 'EN' : 'Fa',
+          'u_s': init.night,
+          's_n': init.tx,
+          'apname': init.mobile.isEmpty ? _wireApp : 'Delfan',
+          ...extra,
+        },
+        timeout: const Duration(seconds: 30),
+      );
       if (response.statusCode != 200 || response.bodyBytes.isEmpty) {
         throw const FormatException('سرور پاسخ نداد');
       }
@@ -634,7 +627,8 @@ class MovieApi implements ContentApi {
         final result = await fetch();
         if (result.isNotEmpty) return result;
       } catch (_) {
-        if (attempt == maxAttempts - 1) rethrow;
+        // Queue saturation and connectivity failures must not multiply reads.
+        rethrow;
       }
       if (attempt < maxAttempts - 1) {
         await Future<void>.delayed(Duration(milliseconds: 400 * (attempt + 1)));

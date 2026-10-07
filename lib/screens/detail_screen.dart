@@ -4886,14 +4886,8 @@ class _PlayerScreenState extends State<PlayerScreen>
       return;
     }
     if (kIsWeb) {
-      final response = await http.post(
-        WebGateway.endpoint('/api/web/subtitle'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ${WebGateway.token}',
-        },
-        body: jsonEncode({'url': url}),
-      );
+      final response = await WebGateway.subtitle(url);
+      if (!mounted) return;
       if (response.statusCode != 200) {
         throw const FormatException('زیرنویس قابل دریافت نیست.');
       }

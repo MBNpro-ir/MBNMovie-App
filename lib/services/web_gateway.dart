@@ -2,13 +2,21 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'network_gate.dart';
 
 /// Browser traffic stays on HTTPS and uses the account server's catalog bridge.
 abstract final class WebGateway {
   static String? _token;
+  static int _generation = 0;
+  static final http.Client _client = http.Client();
+  static final NetworkRequestGate _requests = NetworkRequestGate();
+  static int _preparingCount = 0;
   static String? get token => _token;
   static set token(String? value) {
-    if (value != _token) mediaTracks.clear();
+    if (value != _token) {
+      _generation++;
+      mediaTracks.clear();
+    }
     _token = value;
   }
 
@@ -21,6 +29,44 @@ abstract final class WebGateway {
       : endpoint('/api/web/image', {'url': url}).toString();
   static Future<String> externalAudio(String url) =>
       media(url, externalAudio: true);
+  static Future<http.Response> _request(
+    String path,
+    Map<String, dynamic> body, {
+    bool Function()? active,
+  }) async {
+    final generation = _generation;
+    final credential = token;
+    final encoded = jsonEncode(body);
+    void check() {
+      if (generation != _generation ||
+          credential == null ||
+          active?.call() == false) {
+        throw StateError('جلسه پایان یافت.');
+      }
+    }
+
+    final response = await _requests.run('$generation $path $encoded', () {
+      check();
+      return sendBuffered(
+        _client,
+        'POST',
+        endpoint(path),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $credential',
+        },
+        body: encoded,
+        timeout: const Duration(seconds: 25),
+        maxBytes: 2 * 1024 * 1024,
+        followRedirects: false,
+      );
+    });
+    check();
+    return response;
+  }
+
+  static Future<http.Response> subtitle(String url) =>
+      _request('/api/web/subtitle', {'url': url});
   static Future<String> media(
     String url, {
     bool externalAudio = false,
@@ -28,14 +74,11 @@ abstract final class WebGateway {
     bool Function()? active,
   }) async {
     if (!kIsWeb || !url.startsWith('http')) return url;
-    final response = await http.post(
-      endpoint('/api/web/media-ticket'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-      body: jsonEncode({'url': url, if (externalAudio) 'external_audio': true}),
-    );
+    final initialGeneration = _generation;
+    final response = await _request('/api/web/media-ticket', {
+      'url': url,
+      if (externalAudio) 'external_audio': true,
+    }, active: active);
     final data = jsonDecode(response.body) as Map;
     if (response.statusCode != 200) {
       throw StateError(data['error']?.toString() ?? 'پخش در دسترس نیست.');
@@ -43,26 +86,21 @@ abstract final class WebGateway {
     var ticket = data['ticket'].toString();
     final extension = Uri.parse(url).path.toLowerCase();
     if (!externalAudio && includeTracks && !extension.endsWith('.m3u8')) {
+      _preparingCount++;
       preparingVideo.value = true;
       try {
-        final initialToken = token;
         var ready = false;
         final deadline = DateTime.now().add(const Duration(minutes: 30));
         while (DateTime.now().isBefore(deadline)) {
-          if (token != initialToken ||
+          if (_generation != initialGeneration ||
               token == null ||
               active?.call() == false) {
             throw StateError('جلسه پایان یافت.');
           }
-          final prepared = await http.post(
-            endpoint('/api/web/media-prepare'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer $token',
-            },
-            body: jsonEncode({'ticket': ticket}),
-          );
-          if (token != initialToken || active?.call() == false) {
+          final prepared = await _request('/api/web/media-prepare', {
+            'ticket': ticket,
+          }, active: active);
+          if (_generation != initialGeneration || active?.call() == false) {
             throw StateError('Playback ended');
           }
           final result = jsonDecode(prepared.body) as Map;
@@ -83,7 +121,8 @@ abstract final class WebGateway {
         }
         if (!ready) throw StateError('آماده‌سازی پخش بیش از حد طول کشید.');
       } finally {
-        preparingVideo.value = false;
+        _preparingCount--;
+        preparingVideo.value = _preparingCount > 0;
       }
     }
     return endpoint('/api/web/media', {
@@ -98,11 +137,15 @@ class WebCatalogClient extends http.BaseClient {
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     final body = await request.finalize().toBytes();
-    final response = await _inner.post(
+    final generation = WebGateway._generation;
+    final credential = WebGateway.token;
+    final response = await sendBuffered(
+      _inner,
+      'POST',
       WebGateway.endpoint('/api/web/proxy'),
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer ${WebGateway.token}',
+        'Authorization': 'Bearer $credential',
       },
       body: jsonEncode({
         'url': request.url.toString(),
@@ -118,7 +161,13 @@ class WebCatalogClient extends http.BaseClient {
         ),
         'body': base64Encode(body),
       }),
+      timeout: const Duration(seconds: 35),
+      followRedirects: false,
+      abortTrigger: request is http.Abortable ? request.abortTrigger : null,
     );
+    if (generation != WebGateway._generation) {
+      throw http.ClientException('حساب تغییر کرده است.');
+    }
     final headers = Map<String, String>.from(response.headers);
     if (headers['x-upstream-cookie'] != null) {
       headers['set-cookie'] = headers['x-upstream-cookie']!;

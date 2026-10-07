@@ -36,10 +36,21 @@ class MbnSync {
   Timer? _pendingProgressPush;
   Timer? _pendingPreferencesPush;
   bool _syncing = false;
+  int _generation = 0;
+  final Set<String> _pendingPushes = {};
+  Future<void>? _pushing;
+
+  void _invalidateNetworkWork() {
+    _generation++;
+    _pendingPushes.clear();
+    _pushing = null;
+  }
+
   bool _resettingProgress = false;
   static const _pendingResetKey = 'mbn_progress_resets_v1';
 
   void configure({required MbnAuth auth}) {
+    _invalidateNetworkWork();
     _auth = auth;
     AccountProfile.configure(auth);
     if (AccountProfile.owner != null) {
@@ -52,6 +63,7 @@ class MbnSync {
   }
 
   void clear() {
+    _invalidateNetworkWork();
     AccountProfile.configure(null);
     _pendingProgressPush?.cancel();
     _pendingPreferencesPush?.cancel();
@@ -156,18 +168,24 @@ class MbnSync {
   Future<void> syncAll() async {
     final auth = _auth;
     if (auth?.token == null || _syncing) return;
+    final generation = _generation;
+    final credential = auth!.token;
     _syncing = true;
     try {
       if (!await _flushEpisodeResets()) return;
+      if (generation != _generation || auth.token != credential) return;
       final server = await auth!.getJson('/api/sync', query: {'app': _app});
+      if (generation != _generation || auth.token != credential) return;
       final lib = LibraryStore();
       final lists = PlaylistStore();
       for (final category in _categories) {
+        if (generation != _generation || auth.token != credential) return;
         final row = (server[category] as Map?)?.cast<String, dynamic>();
         final serverTs = (row?['updated_at'] as num?)?.toInt() ?? 0;
         final localTs = await _localTs(category);
         final prefs = await SharedPreferences.getInstance();
         final dirty = prefs.getBool('mbn_sync_dirty_$category') ?? false;
+        if (generation != _generation || auth.token != credential) return;
         if (dirty) {
           await _pushCategories([category]);
         } else if (serverTs > localTs) {
@@ -205,9 +223,32 @@ class MbnSync {
     } catch (_) {}
   }
 
-  Future<void> _pushCategories(List<String> targets) async {
+  Future<void> _pushCategories(List<String> targets) {
+    if (_auth?.token == null) return Future.value();
+    _pendingPushes.addAll(targets);
+    if (_pushing != null) return _pushing!;
+    final generation = _generation;
+    Future<void> drain() async {
+      while (generation == _generation && _pendingPushes.isNotEmpty) {
+        final batch = _pendingPushes.toList();
+        _pendingPushes.clear();
+        await _sendCategories(batch);
+      }
+    }
+
+    late final Future<void> work;
+    work = drain().whenComplete(() {
+      if (identical(_pushing, work)) _pushing = null;
+    });
+    _pushing = work;
+    return work;
+  }
+
+  Future<void> _sendCategories(List<String> targets) async {
     final auth = _auth;
     if (auth?.token == null) return;
+    final generation = _generation;
+    final credential = auth!.token;
     if (targets.contains('progress') && !await _flushEpisodeResets()) return;
     final lib = LibraryStore();
     final lists = PlaylistStore();
@@ -219,11 +260,14 @@ class MbnSync {
       data[category] = await _localBundle(category, lib, lists);
     }
     try {
-      final updated = await auth!.putJson('/api/sync', {
+      if (generation != _generation || auth.token != credential) return;
+      final updated = await auth.putJson('/api/sync', {
         'app': _app,
         'data': data,
       });
+      if (generation != _generation || auth.token != credential) return;
       for (final category in targets) {
+        if (generation != _generation || auth.token != credential) return;
         final row = (updated[category] as Map?)?.cast<String, dynamic>();
         final ts = (row?['updated_at'] as num?)?.toInt() ?? 0;
         await _setLocalTs(category, ts);
@@ -266,14 +310,21 @@ class MbnSync {
     final prefs = await SharedPreferences.getInstance();
     if ((prefs.getStringList(_pendingResetKey) ?? []).isEmpty) return true;
     if (_auth?.token == null || _resettingProgress) return false;
+    final source = _auth;
+    final generation = _generation;
+    final credential = source?.token;
     _resettingProgress = true;
     try {
       while ((prefs.getStringList(_pendingResetKey) ?? []).isNotEmpty) {
+        if (generation != _generation || source?.token != credential)
+          return false;
         final entry = prefs.getStringList(_pendingResetKey)!.first;
-        await _auth!.postJson(
+        await source!.postJson(
           '/api/sync/progress/reset-episode',
           Map<String, dynamic>.from(jsonDecode(entry) as Map),
         );
+        if (generation != _generation || source.token != credential)
+          return false;
         final remaining = prefs.getStringList(_pendingResetKey) ?? [];
         remaining.remove(entry);
         await prefs.setStringList(_pendingResetKey, remaining);

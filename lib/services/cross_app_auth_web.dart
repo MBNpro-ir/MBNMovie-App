@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'network_gate.dart';
 import 'package:http/browser_client.dart';
 
 /// Both web origins use a host-only HttpOnly cookie on the account host.
@@ -15,16 +16,19 @@ abstract final class CrossAppAuth {
     }
     final client = BrowserClient()..withCredentials = true;
     try {
-      final response = await client
-          .post(
-            Uri.parse('https://login.a.mbnpro.ir/api/auth/shared'),
-            headers: {
-              'Content-Type': 'application/json',
-              if (token != null) 'Authorization': 'Bearer $token',
-            },
-            body: jsonEncode({'target_app': _app, ...body}),
-          )
-          .timeout(const Duration(seconds: 8));
+      final response = await sendBuffered(
+        client,
+        'POST',
+        Uri.parse('https://login.a.mbnpro.ir/api/auth/shared'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'target_app': _app, ...body}),
+        timeout: const Duration(seconds: 8),
+        followRedirects: false,
+        maxBytes: 64 * 1024,
+      );
       if (response.statusCode != 200) return null;
       return (jsonDecode(response.body) as Map<String, dynamic>)['token']
           as String?;
