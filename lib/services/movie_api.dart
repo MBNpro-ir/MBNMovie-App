@@ -1183,7 +1183,7 @@ class MovieApi implements ContentApi {
     final cached = _groupDetailCache[item.id];
     if (cached != null) return cached;
     try {
-      final data = await _send('detials', {'id': item.id, 'is_mobile': '1'});
+      final data = await _request('detials', {'id': item.id, 'is_mobile': '1'});
       final row = _map(_list(data['detiles']).firstOrNull);
       if (row.isEmpty) return null;
       List<String> values(Object? raw) => _text(raw)
