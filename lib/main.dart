@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'core/app_platform.dart';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:window_manager/window_manager.dart';
@@ -16,8 +17,13 @@ import 'services/app_links.dart';
 import 'services/download_manager.dart';
 import 'services/device_bridge.dart';
 
+SemanticsHandle? _webSemantics;
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Initialize accessible hit targets before Safari receives its first touch.
+  // Retain the handle for the lifetime of the web application.
+  if (kIsWeb) _webSemantics ??= SemanticsBinding.instance.ensureSemantics();
   MediaKit.ensureInitialized();
   DeviceBridge.initialize();
   await initializeDeviceLayout();

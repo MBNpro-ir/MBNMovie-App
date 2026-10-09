@@ -5,18 +5,22 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/mbn_sync.dart';
 
+enum WatchStatus { unwatched, partial, watched }
+
 /// Saved playback position of a single episode.
 class SavedWatchProgress {
   const SavedWatchProgress({
     required this.positionMs,
     required this.durationMs,
     this.watched = false,
+    this.manualStatus,
     this.updatedAtMs = 0,
   });
 
   final int positionMs;
   final int durationMs;
   final bool watched;
+  final WatchStatus? manualStatus;
 
   /// Last write time (epoch ms). Picks the most-recently watched episode of
   /// a title for its «ادامه تماشا» button. 0 = written before tracking.
@@ -49,6 +53,8 @@ class WatchProgressStore {
       'watch_dur_${contentId}_$episodeId';
   static String _watchedKey(String contentId, String episodeId) =>
       'watch_done_${contentId}_$episodeId';
+  static String _statusKey(String contentId, String episodeId) =>
+      'watch_status_${contentId}_$episodeId';
   static String _timeKey(String contentId, String episodeId) =>
       'watch_time_${contentId}_$episodeId';
 
@@ -60,16 +66,23 @@ class WatchProgressStore {
     bool markWatched = false,
   }) async {
     final prefs = await SharedPreferences.getInstance();
+    if (position > Duration.zero) {
+      await prefs.remove(_statusKey(contentId, episodeId));
+    }
     await prefs.setInt(_posKey(contentId, episodeId), position.inMilliseconds);
     await prefs.setInt(_durKey(contentId, episodeId), duration.inMilliseconds);
     await prefs.setInt(
       _timeKey(contentId, episodeId),
-      DateTime.now().millisecondsSinceEpoch,
+      (prefs.getInt(_timeKey(contentId, episodeId)) ?? 0) >=
+              DateTime.now().millisecondsSinceEpoch
+          ? (prefs.getInt(_timeKey(contentId, episodeId)) ?? 0) + 1
+          : DateTime.now().millisecondsSinceEpoch,
     );
     final reachedEnd =
         duration > Duration.zero &&
         position >= duration - const Duration(seconds: 10);
     if (markWatched || reachedEnd) {
+      await prefs.remove(_statusKey(contentId, episodeId));
       await prefs.setBool(_watchedKey(contentId, episodeId), true);
     }
     unawaited(MbnSync.instance.pushProgressThrottled());
@@ -82,12 +95,18 @@ class WatchProgressStore {
     final prefs = await SharedPreferences.getInstance();
     final pos = prefs.getInt(_posKey(contentId, episodeId));
     final watched = prefs.getBool(_watchedKey(contentId, episodeId)) ?? false;
-    if ((pos == null || pos <= 0) && !watched) return null;
+    final status = WatchStatus.values
+        .where(
+          (s) => s.name == prefs.getString(_statusKey(contentId, episodeId)),
+        )
+        .firstOrNull;
+    if ((pos == null || pos <= 0) && !watched && status == null) return null;
     final dur = prefs.getInt(_durKey(contentId, episodeId)) ?? 0;
     return SavedWatchProgress(
       positionMs: pos ?? 0,
       durationMs: dur,
       watched: watched,
+      manualStatus: status,
       updatedAtMs: prefs.getInt(_timeKey(contentId, episodeId)) ?? 0,
     );
   }
@@ -99,6 +118,7 @@ class WatchProgressStore {
     required Set<String> episodeIds,
     required Set<String> fileUrls,
     bool hentai = false,
+    bool sync = true,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     for (final id in episodeIds) {
@@ -106,6 +126,7 @@ class WatchProgressStore {
         _posKey(contentId, id),
         _durKey(contentId, id),
         _watchedKey(contentId, id),
+        _statusKey(contentId, id),
         _timeKey(contentId, id),
       ]) {
         await prefs.remove(key);
@@ -127,7 +148,49 @@ class WatchProgressStore {
     }
     changes.value++;
     if (hentai) return true;
+    if (!sync) return true;
     return MbnSync.instance.resetEpisodeProgress(contentId, episodeIds);
+  }
+
+  /// A manual marker does not invent a duration or watched minutes.
+  Future<bool> setStatus({
+    required String contentId,
+    required String episodeId,
+    required Set<String> episodeIds,
+    required Set<String> fileUrls,
+    required WatchStatus status,
+  }) async {
+    final old = await load(contentId: contentId, episodeId: episodeId);
+    await resetEpisode(
+      contentId: contentId,
+      episodeIds: episodeIds,
+      fileUrls: fileUrls,
+      sync: false,
+    );
+    final prefs = await SharedPreferences.getInstance();
+    final pos = status == WatchStatus.partial && old?.isResumable == true
+        ? old!.positionMs
+        : 0;
+    final duration = old?.durationMs ?? 0;
+    final written = DateTime.now().millisecondsSinceEpoch;
+    await prefs.setInt(_posKey(contentId, episodeId), pos);
+    await prefs.setInt(_durKey(contentId, episodeId), duration);
+    await prefs.setBool(
+      _watchedKey(contentId, episodeId),
+      status == WatchStatus.watched,
+    );
+    await prefs.setString(_statusKey(contentId, episodeId), status.name);
+    await prefs.setInt(_timeKey(contentId, episodeId), written);
+    changes.value++;
+    return MbnSync.instance.setEpisodeStatus(
+      contentId,
+      episodeId,
+      episodeIds,
+      status.name,
+      pos,
+      duration,
+      written,
+    );
   }
 
   Future<void> clear({
@@ -138,6 +201,7 @@ class WatchProgressStore {
     await prefs.remove(_posKey(contentId, episodeId));
     await prefs.remove(_durKey(contentId, episodeId));
     await prefs.remove(_watchedKey(contentId, episodeId));
+    await prefs.remove(_statusKey(contentId, episodeId));
     await prefs.remove(_timeKey(contentId, episodeId));
     unawaited(MbnSync.instance.pushProgressThrottled());
   }

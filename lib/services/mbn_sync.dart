@@ -102,6 +102,7 @@ class MbnSync {
       key.startsWith('watch_pos_') ||
       key.startsWith('watch_dur_') ||
       key.startsWith('watch_done_') ||
+      key.startsWith('watch_status_') ||
       key.startsWith('watch_time_') ||
       key == 'watch_last_v1';
 
@@ -306,6 +307,40 @@ class MbnSync {
     return synced;
   }
 
+  Future<bool> setEpisodeStatus(
+    String contentId,
+    String episodeId,
+    Set<String> episodeIds,
+    String status,
+    int positionMs,
+    int durationMs,
+    int written,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    final pending = prefs.getStringList(_pendingResetKey) ?? [];
+    pending.add(
+      jsonEncode({
+        'app': _app,
+        'content_id': contentId,
+        'episode_id': episodeId,
+        'episode_ids': episodeIds.toList(),
+        'status': status,
+        'position_ms': positionMs,
+        'duration_ms': durationMs,
+        'written_at_ms': written,
+      }),
+    );
+    await prefs.setStringList(_pendingResetKey, pending);
+    await _touchLocal('progress');
+    final synced = await _flushEpisodeResets();
+    if (synced) {
+      await _pushCategories(['progress']);
+    } else {
+      _scheduleProgressPush();
+    }
+    return synced;
+  }
+
   Future<bool> _flushEpisodeResets() async {
     final prefs = await SharedPreferences.getInstance();
     if ((prefs.getStringList(_pendingResetKey) ?? []).isEmpty) return true;
@@ -320,12 +355,34 @@ class MbnSync {
           return false;
         }
         final entry = prefs.getStringList(_pendingResetKey)!.first;
-        await source!.postJson(
-          '/api/sync/progress/reset-episode',
-          Map<String, dynamic>.from(jsonDecode(entry) as Map),
+        final body = Map<String, dynamic>.from(jsonDecode(entry) as Map);
+        final response = await source!.postJson(
+          body.containsKey('status')
+              ? '/api/sync/progress/set-status'
+              : '/api/sync/progress/reset-episode',
+          body,
         );
         if (generation != _generation || source.token != credential) {
           return false;
+        }
+        if (body.containsKey('status')) {
+          final suffix = '${body['content_id']}_${body['episode_id']}';
+          final serverTime =
+              ((response['progress'] as Map?)?['payload']
+                  as Map?)?['watch_time_$suffix'];
+          if (serverTime is int) {
+            final current = prefs.getInt('watch_time_$suffix') ?? 0;
+            if (current == body['written_at_ms']) {
+              await prefs.setInt('watch_time_$suffix', serverTime);
+            } else if (current > body['written_at_ms'] &&
+                prefs.getString('watch_status_$suffix') == null) {
+              // Playback resumed while this manual marker was queued offline.
+              await prefs.setInt(
+                'watch_time_$suffix',
+                current > serverTime ? current : serverTime + 1,
+              );
+            }
+          }
         }
         final remaining = prefs.getStringList(_pendingResetKey) ?? [];
         remaining.remove(entry);

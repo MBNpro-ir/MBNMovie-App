@@ -5,6 +5,29 @@ import 'dart:typed_data';
 import 'package:web/web.dart' as web;
 
 abstract final class BrowserFeatures {
+  static bool get isAndroidBrowser =>
+      web.window.navigator.userAgent.toLowerCase().contains('android');
+  static bool openExternal(Uri uri) {
+    // Call before any await in the button's handler to retain Safari's gesture.
+    web.window.location.assign(uri.toString());
+    return true;
+  }
+
+  static double _audioDelay = 0;
+  static void setAudioDelay(double value) {
+    _audioDelay = value.clamp(-3.0, 3.0);
+    final video = _audioVideo;
+    if (video != null && _audio != null) {
+      _audio!.currentTime = _audioTarget(video);
+    }
+  }
+
+  static double _audioTarget(web.HTMLVideoElement video) =>
+      (video.currentTime - _audioDelay * video.playbackRate).clamp(
+        0.0,
+        double.infinity,
+      );
+
   static bool get isMobileBrowser {
     final nav = web.window.navigator;
     final ua = nav.userAgent.toLowerCase();
@@ -306,7 +329,8 @@ abstract final class BrowserFeatures {
     if (_video != null) _video!.muted = false;
   }
 
-  static Future<void> externalAudio(String url) async {
+  static Future<void> externalAudio(String url, {double delay = 0}) async {
+    _audioDelay = delay.clamp(-3.0, 3.0);
     clearAudio();
     final video = _video;
     if (video == null) throw StateError('No video');
@@ -315,7 +339,7 @@ abstract final class BrowserFeatures {
       ..preload = 'auto';
     _audio = audio;
     web.document.body!.appendChild(audio);
-    audio.currentTime = video.currentTime;
+    audio.currentTime = _audioTarget(video);
     audio.playbackRate = video.playbackRate;
     audio.volume = video.volume;
     try {
@@ -345,7 +369,7 @@ abstract final class BrowserFeatures {
       button.addEventListener(
         'click',
         ((web.Event _) {
-          audio.currentTime = video.currentTime;
+          audio.currentTime = _audioTarget(video);
           audio
               .play()
               .toDart
@@ -372,8 +396,9 @@ abstract final class BrowserFeatures {
       if (_audio != audio) return;
       audio.playbackRate = video.playbackRate;
       audio.volume = video.volume;
-      if ((audio.currentTime - video.currentTime).abs() > .4) {
-        audio.currentTime = video.currentTime;
+      final drift = audio.currentTime - _audioTarget(video);
+      if (drift.abs() > .12) {
+        audio.currentTime = _audioTarget(video);
       }
       if (video.paused || video.ended || video.readyState < 3) {
         audio.pause();

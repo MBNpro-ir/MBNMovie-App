@@ -5,6 +5,7 @@
 #include "flutter_window.h"
 #include "utils.h"
 #include "media_kit_debug_cache.h"
+#include "web_player_handoff.h"
 
 namespace {
 
@@ -33,6 +34,10 @@ void ActivateRunningWindow() {
 
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {
+  const auto launch_args = GetCommandLineArguments();
+  if (launch_args.size() == 2 && launch_args[0] == "--web-player") {
+    return LaunchWebVlc(launch_args[1], "mbnmovie-player") ? EXIT_SUCCESS : EXIT_FAILURE;
+  }
   HANDLE instance_mutex = ::CreateMutexW(nullptr, FALSE, kMutexName);
   if (instance_mutex == nullptr) {
     return EXIT_FAILURE;

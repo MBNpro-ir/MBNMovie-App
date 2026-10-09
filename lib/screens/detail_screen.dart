@@ -35,6 +35,7 @@ import 'package:window_manager/window_manager.dart';
 import '../core/platform_ui.dart';
 import '../core/episode_catalog.dart';
 import '../core/player_preferences.dart';
+import '../widgets/audio_sync_control.dart';
 import '../core/subtitle_layout.dart';
 import '../core/theme.dart';
 import '../core/title_language.dart';
@@ -2375,7 +2376,8 @@ class _PlayerScreenState extends State<PlayerScreen>
           widget.content.id,
           episodeId ?? _episodeCatalog.groupFor(_episode)?.id ?? _episode.id,
           widget.content.kind.name,
-          ms, expectedOwner: _watchOwner,
+          ms,
+          expectedOwner: _watchOwner,
         ),
       );
     }
@@ -2415,6 +2417,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   double _volume = 100;
   double _lastVolume = 100;
   double _rate = 1;
+  double _audioDelay = 0;
   double _screenBrightness = .5;
   double _systemMediaVolume = 1;
   bool _brightnessGesture = false;
@@ -2651,6 +2654,16 @@ class _PlayerScreenState extends State<PlayerScreen>
       ++_assRenderingGeneration;
       BrowserFeatures.clearAss();
       _nativeSubtitleRendering = false;
+    }
+    _audioDelay = await PlaybackPreferenceStore.audioDelay();
+    if (!_isCurrentMediaOp(generation)) return;
+    if (!kIsWeb) {
+      await setNativePlayerProperty(_player.platform!, 'video-sync', 'audio');
+      await setNativePlayerProperty(
+        _player.platform!,
+        'audio-delay',
+        _audioDelay.toStringAsFixed(3),
+      );
     }
     final routed = kIsWeb
         ? await WebGateway.media(
@@ -3058,6 +3071,22 @@ class _PlayerScreenState extends State<PlayerScreen>
       _autoNativeSubtitle = null;
       _track = Track();
     });
+    if (_audioDelay != 0) {
+      final audioTrack = _tracks.audio
+          .where((a) => a.id.startsWith('http'))
+          .firstOrNull;
+      if (audioTrack != null) {
+        // Optional calibration must never fail or block video preparation.
+        unawaited(
+          BrowserFeatures.externalAudio(
+            audioTrack.id,
+            delay: _audioDelay,
+          ).catchError((Object _) {
+            BrowserFeatures.clearAudio();
+          }),
+        );
+      }
+    }
     BrowserFeatures.subtitle('WEBVTT\n\n');
     if (_webAutoSubtitle != null) {
       try {
@@ -3119,6 +3148,44 @@ class _PlayerScreenState extends State<PlayerScreen>
     );
   }
 
+  Future<void> _applyAudioDelay(double seconds) async {
+    _audioDelay = seconds.clamp(-3.0, 3.0);
+    await PlaybackPreferenceStore.setAudioDelay(_audioDelay);
+    if (!mounted || _playerTornDown) return;
+    try {
+      if (kIsWeb) {
+        BrowserFeatures.setAudioDelay(_audioDelay);
+        if (_track.audio.id == 'auto') {
+          if (_audioDelay == 0) {
+            BrowserFeatures.clearAudio();
+          } else {
+            final track = _tracks.audio
+                .where((a) => a.id.startsWith('http'))
+                .firstOrNull;
+            if (track == null) throw StateError('No separate audio');
+            await BrowserFeatures.externalAudio(track.id, delay: _audioDelay);
+          }
+        }
+      } else {
+        await setNativePlayerProperty(
+          _player.platform!,
+          'audio-delay',
+          _audioDelay.toStringAsFixed(3),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'تنظیم زمان صدا برای این فایل انجام نشد؛ صدای پیش‌فرض حفظ شد.',
+            ),
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _selectAudioTrack(AudioTrack track) async {
     if (kIsWeb) {
       final selection = ++_webAudioSelection;
@@ -3126,8 +3193,11 @@ class _PlayerScreenState extends State<PlayerScreen>
       if (track.id == 'auto' || track.id == 'no') {
         BrowserFeatures.clearAudio();
         BrowserFeatures.muteOriginal(track.id == 'no');
+        if (track.id == 'auto' && _audioDelay != 0) {
+          await _applyAudioDelay(_audioDelay);
+        }
       } else {
-        await BrowserFeatures.externalAudio(track.id);
+        await BrowserFeatures.externalAudio(track.id, delay: _audioDelay);
       }
       if (_isCurrentMediaOp(generation) && selection == _webAudioSelection) {
         setState(() => _track = _track.copyWith(audio: track));
@@ -4583,7 +4653,7 @@ class _PlayerScreenState extends State<PlayerScreen>
                   ? webPanelHeight(
                       sheetContext,
                       desired:
-                          230 +
+                          340 +
                           (_tracks.audio.length > _tracks.subtitle.length
                                   ? _tracks.audio.length
                                   : _tracks.subtitle.length) *
@@ -4638,14 +4708,17 @@ class _PlayerScreenState extends State<PlayerScreen>
                   Expanded(
                     child: TabBarView(
                       children: [
-                        Column(
+                        ListView(
                           children: [
-                            Expanded(
-                              child: _AudioTracks(
-                                onSelected: _selectAudioTrack,
-                                tracks: _tracks.audio,
-                                selected: _track.audio,
-                              ),
+                            AudioSyncControl(
+                              initial: _audioDelay,
+                              onApply: _applyAudioDelay,
+                            ),
+                            _AudioTracks(
+                              onSelected: _selectAudioTrack,
+                              tracks: _tracks.audio,
+                              selected: _track.audio,
+                              nested: true,
                             ),
                             AudioSourceActions(
                               onSelected: (track) async {
@@ -4653,7 +4726,10 @@ class _PlayerScreenState extends State<PlayerScreen>
                                   final uri = track.id.startsWith('http')
                                       ? await WebGateway.externalAudio(track.id)
                                       : track.id;
-                                  await BrowserFeatures.externalAudio(uri);
+                                  await BrowserFeatures.externalAudio(
+                                    uri,
+                                    delay: _audioDelay,
+                                  );
                                 } else {
                                   await _player.setAudioTrack(track);
                                 }
@@ -5858,10 +5934,12 @@ class _AudioTracks extends StatelessWidget {
     required this.onSelected,
     required this.tracks,
     required this.selected,
+    this.nested = false,
   });
   final Future<void> Function(AudioTrack) onSelected;
   final List<AudioTrack> tracks;
   final AudioTrack selected;
+  final bool nested;
   @override
   Widget build(BuildContext context) => tracks.isEmpty
       ? const _EmptyTrackState(
@@ -5869,6 +5947,8 @@ class _AudioTracks extends StatelessWidget {
           text: 'ترک صدایی در این فایل پیدا نشد',
         )
       : ListView(
+          shrinkWrap: nested,
+          physics: nested ? const NeverScrollableScrollPhysics() : null,
           padding: const EdgeInsets.symmetric(vertical: 8),
           children: tracks
               .map(

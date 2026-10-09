@@ -88,6 +88,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _syncSettingsEnabled = true;
   double _volume = 100;
   double _rate = 1;
+  double _audioDelay = 0;
   bool _fitCover = false;
   bool _englishTitles = false;
   bool _customBrightness = false;
@@ -99,10 +100,8 @@ class _SettingsScreenState extends State<SettingsScreen>
   Map<String, String> get _players => {
     PlaybackPreferenceStore.askEveryTime: 'هر بار از من بپرس',
     PlaybackPreferenceStore.internalPlayer: 'پلیر داخلی (پیشنهادی)',
-    ExternalVideoPlayer.vlc.name: 'VLC',
-    if (Platform.isAndroid) ExternalVideoPlayer.mxPlayer.name: 'MX Player',
-    if (Platform.isAndroid)
-      ExternalVideoPlayer.mxPlayerPro.name: 'MX Player Pro',
+    for (final player in ExternalApps.availablePlayers)
+      player.name: ExternalApps.playerName(player),
   };
 
   @override
@@ -137,6 +136,11 @@ class _SettingsScreenState extends State<SettingsScreen>
     setState(() {
       _volume = (prefs.getDouble('player_volume') ?? 100).clamp(0, 100);
       _rate = (prefs.getDouble('player_rate') ?? 1).clamp(.5, 4.0);
+      _audioDelay =
+          (prefs.getDouble(PlaybackPreferenceStore.audioDelayKey) ?? 0).clamp(
+            -3.0,
+            3.0,
+          );
       _fitCover = prefs.getBool('player_fit_cover') ?? false;
       _englishTitles = TitleLanguage.english;
       _customBrightness = brightness != null;
@@ -182,6 +186,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     setState(() {
       _volume = 100;
       _rate = 1;
+      _audioDelay = 0;
       _fitCover = false;
       _englishTitles = false;
       _customBrightness = false;
@@ -193,6 +198,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     });
     await prefs.setDouble('player_volume', 100);
     await prefs.setDouble('player_rate', 1);
+    await PlaybackPreferenceStore.setAudioDelay(0);
     await prefs.setBool('player_fit_cover', false);
     await TitleLanguage.setEnglish(true);
     await prefs.remove('player_screen_brightness');
@@ -512,6 +518,22 @@ class _SettingsScreenState extends State<SettingsScreen>
                                 ),
                               ),
                               const SizedBox(height: 12),
+                              _slider(
+                                label: 'جبران تأخیر صدا / بلوتوث',
+                                value: _audioDelay,
+                                min: -3,
+                                max: 3,
+                                divisions: 120,
+                                suffix: '${(_audioDelay * 1000).round()} ms',
+                                onChanged: (value) {
+                                  setState(() => _audioDelay = value);
+                                  PlaybackPreferenceStore.setAudioDelay(value);
+                                },
+                              ),
+                              const Text(
+                                'اگر صدا عقب است، مقدار را منفی کن؛ صفر از همگام‌سازی سیستم استفاده می‌کند. این تنظیم مخصوص همین دستگاه است.',
+                                style: TextStyle(fontSize: 11),
+                              ),
                               SwitchListTile(
                                 contentPadding: EdgeInsets.zero,
                                 title: const Text('پر کردن صفحه با تصویر'),

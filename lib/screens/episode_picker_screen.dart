@@ -14,6 +14,7 @@ import '../core/watch_progress.dart';
 import '../core/player_preferences.dart';
 import '../models/movie_content.dart';
 import '../services/external_apps.dart';
+import '../services/web_gateway.dart';
 import '../widgets/ambient_background.dart';
 import '../widgets/smart_cast_sheet.dart';
 import '../widgets/download_choice.dart';
@@ -248,16 +249,10 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
   }
 
   Future<void> _showPlayback(EpisodeGroup group) async {
-    if (kIsWeb) {
-      await _tapEpisode(group, group.variantFor(_selectedQuality));
-      return;
-    }
     final variant = group.variantFor(_selectedQuality);
     final allowedPlayers = <String>{
       PlaybackPreferenceStore.internalPlayer,
-      ExternalVideoPlayer.vlc.name,
-      if (Platform.isAndroid) ExternalVideoPlayer.mxPlayer.name,
-      if (Platform.isAndroid) ExternalVideoPlayer.mxPlayerPro.name,
+      ...ExternalApps.availablePlayers.map((p) => p.name),
     };
     String? choice = await PlaybackPreferenceStore.defaultPlayer();
     var selectedManually = false;
@@ -287,34 +282,45 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
                       leading: const Icon(Icons.open_in_new),
                       title: const Text('پلیرهای خارجی'),
                       children: [
-                        for (final player in ExternalVideoPlayer.values)
-                          if (Platform.isAndroid ||
-                              player == ExternalVideoPlayer.vlc)
-                            ListTile(
-                              title: Text(ExternalApps.playerName(player)),
-                              onTap: () => Navigator.pop(context, player.name),
+                        for (final player in ExternalApps.availablePlayers)
+                          ListTile(
+                            title: Text(ExternalApps.playerName(player)),
+                            trailing: IconButton(
+                              tooltip: 'پین به‌عنوان پلیر پیش‌فرض',
+                              icon: const Icon(Icons.push_pin_outlined),
+                              onPressed: () async {
+                                await PlaybackPreferenceStore.setDefaultPlayer(
+                                  player.name,
+                                );
+                                if (context.mounted) {
+                                  Navigator.pop(context, player.name);
+                                }
+                              },
                             ),
+                            onTap: () => Navigator.pop(context, player.name),
+                          ),
                       ],
                     ),
-                    ListTile(
-                      leading: const Icon(Icons.cast),
-                      title: const Text('تلویزیون یا مانیتور بدون سیم'),
-                      onTap: () async {
-                        // Keep this menu underneath its child: Back pops one level.
-                        final destination = await showWirelessDisplaySheet(
-                          context,
-                          onCast: (initialDestination) => showSmartCastSheet(
+                    if (!kIsWeb)
+                      ListTile(
+                        leading: const Icon(Icons.cast),
+                        title: const Text('تلویزیون یا مانیتور بدون سیم'),
+                        onTap: () async {
+                          // Keep this menu underneath its child: Back pops one level.
+                          final destination = await showWirelessDisplaySheet(
                             context,
-                            content: widget.content,
-                            episode: variant.episode,
-                            initialDestination: initialDestination,
-                          ),
-                        );
-                        if (destination != null && context.mounted) {
-                          Navigator.pop(context, destination);
-                        }
-                      },
-                    ),
+                            onCast: (initialDestination) => showSmartCastSheet(
+                              context,
+                              content: widget.content,
+                              episode: variant.episode,
+                              initialDestination: initialDestination,
+                            ),
+                          );
+                          if (destination != null && context.mounted) {
+                            Navigator.pop(context, destination);
+                          }
+                        },
+                      ),
                   ],
                 ),
               ),
@@ -347,6 +353,53 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
     MovieEpisode episode,
     ExternalVideoPlayer player,
   ) async {
+    if (kIsWeb) {
+      try {
+        final url = await WebGateway.media(
+          episode.fileUrl,
+          active: () => mounted,
+        );
+        if (!mounted) return;
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text('پخش در ${ExternalApps.playerName(player)}'),
+            content: Text(
+              BrowserFeatures.isAppleMobile
+                  ? 'پلیر باید روی آیفون نصب باشد. مرورگر ممکن است تأیید بازکردن برنامه را بخواهد.'
+                  : 'VLC و نسخهٔ ویندوز همین برنامه باید نصب باشند. برنامهٔ ویندوز را یک‌بار باز کن تا ارتباط با مرورگر فعال شود.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('انصراف'),
+              ),
+              TextButton(
+                onPressed: () => ExternalApps.openOfficialDownload(
+                  ExternalApps.playerInstallUrl(player),
+                ),
+                child: const Text('دانلود پلیر'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  // This tap, not the async media preparation, owns Safari's gesture.
+                  ExternalApps.playVideo(
+                    player: player,
+                    url: url,
+                    title: '${widget.content.title} · ${episode.name}',
+                  );
+                  Navigator.pop(dialogContext);
+                },
+                child: const Text('باز کردن پلیر'),
+              ),
+            ],
+          ),
+        );
+      } catch (_) {
+        if (mounted) _showFailure('لینک پخش دریافت نشد؛ دوباره تلاش کن.');
+      }
+      return;
+    }
     final result = await ExternalApps.playVideo(
       player: player,
       url: episode.fileUrl,
@@ -502,6 +555,35 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
     }
   }
 
+  Future<void> _setEpisodeStatus(EpisodeGroup group, WatchStatus status) async {
+    if (!_resetting.add(group.id)) return;
+    setState(() {});
+    try {
+      final synced = await _progress.setStatus(
+        contentId: widget.content.id,
+        episodeId: group.id,
+        episodeIds: {group.id, ...group.variants.map((v) => v.episode.id)},
+        fileUrls: {for (final v in group.variants) v.episode.fileUrl},
+        status: status,
+      );
+      await _loadSaved();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              synced
+                  ? 'وضعیت قسمت ذخیره شد.'
+                  : 'وضعیت ذخیره شد؛ با اتصال بعدی همگام می‌شود.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      _resetting.remove(group.id);
+      if (mounted) setState(() {});
+    }
+  }
+
   Widget _episodeCard(EpisodeGroup group) {
     final variant = group.variantFor(_selectedQuality);
     final showQualityBadge =
@@ -511,7 +593,8 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
     final saved = _saved[group.id];
     final resumable = saved?.isResumable ?? false;
     final watched = saved?.watched ?? false;
-    final almostWatched = saved?.almostWatched ?? false;
+    final partial = saved?.manualStatus == WatchStatus.partial;
+    final almostWatched = !partial && (saved?.almostWatched ?? false);
     final ratio = (saved != null && saved.durationMs > 0)
         ? (saved.positionMs / saved.durationMs).clamp(0.0, 1.0)
         : null;
@@ -529,6 +612,8 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
         : Icons.radio_button_unchecked_rounded;
     final status = watched
         ? 'تماشا کردی'
+        : partial
+        ? 'نیمه‌دیده'
         : almostWatched
         ? 'تقریباً تماشا کردی'
         : resumable
@@ -621,7 +706,28 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
                             : () => _resetEpisode(group),
                         icon: const Icon(Icons.close_rounded),
                       ),
-                    Icon(statusIcon, size: 20, color: statusColor),
+                    PopupMenuButton<WatchStatus>(
+                      key: Key('episode-status-${group.id}'),
+                      tooltip: 'تغییر وضعیت تماشا',
+                      enabled: !_resetting.contains(group.id),
+                      padding: EdgeInsets.zero,
+                      icon: Icon(statusIcon, size: 20, color: statusColor),
+                      onSelected: (status) => _setEpisodeStatus(group, status),
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(
+                          value: WatchStatus.watched,
+                          child: Text('کامل دیده شده'),
+                        ),
+                        PopupMenuItem(
+                          value: WatchStatus.partial,
+                          child: Text('نیمه‌دیده'),
+                        ),
+                        PopupMenuItem(
+                          value: WatchStatus.unwatched,
+                          child: Text('دیده نشده'),
+                        ),
+                      ],
+                    ),
                     const SizedBox(width: 7),
                     Expanded(
                       child: Text(
@@ -774,8 +880,7 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
                                 if (value != null) _selectSeason(value);
                               },
                             ),
-                          if (seasons.length > 1 &&
-                              displayQualities.isNotEmpty)
+                          if (seasons.length > 1 && displayQualities.isNotEmpty)
                             const SizedBox(height: 10),
                           if (displayQualities.isNotEmpty)
                             _selectorDropdown<String>(
@@ -850,7 +955,7 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
                                           .floor()
                                           .clamp(2, 5),
                                 mainAxisExtent:
-                                    210 +
+                                    238 +
                                     (MediaQuery.textScalerOf(
                                               context,
                                             ).scale(14) -

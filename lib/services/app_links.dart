@@ -64,6 +64,7 @@ abstract final class AppLinks {
     required String exeName,
   }) async {
     if (!Platform.isWindows) return;
+    await registerWebPlayer();
     try {
       final dir = p.dirname(Platform.resolvedExecutable);
       await Process.run('reg', [
@@ -86,6 +87,38 @@ abstract final class AppLinks {
         'REG_SZ',
         '/d',
         exeName,
+        '/f',
+      ]);
+    } catch (_) {}
+  }
+
+  static Future<void> registerWebPlayer() async {
+    if (!Platform.isWindows) return;
+    const key = r'HKCU\Software\Classes\mbnmovie-player';
+    try {
+      await Process.run('reg', [
+        'add',
+        key,
+        '/ve',
+        '/d',
+        'URL:MBNMovie player',
+        '/f',
+      ]);
+      await Process.run('reg', [
+        'add',
+        key,
+        '/v',
+        'URL Protocol',
+        '/d',
+        '',
+        '/f',
+      ]);
+      await Process.run('reg', [
+        'add',
+        '$key\\shell\\open\\command',
+        '/ve',
+        '/d',
+        '"${Platform.resolvedExecutable}" --web-player "%1"',
         '/f',
       ]);
     } catch (_) {}
@@ -185,7 +218,14 @@ abstract final class AppLinks {
     SiblingApp sibling,
   ) async {
     if (kIsWeb) {
-      await launchUrl(Uri.parse(sibling.id == 'MBNMovie' ? 'https://movie.mbnpro.ir/' : 'https://anime.mbnpro.ir/'), webOnlyWindowName: '_self');
+      await launchUrl(
+        Uri.parse(
+          sibling.id == 'MBNMovie'
+              ? 'https://movie.mbnpro.ir/'
+              : 'https://anime.mbnpro.ir/',
+        ),
+        webOnlyWindowName: '_self',
+      );
       return;
     }
     if (Platform.isAndroid) {

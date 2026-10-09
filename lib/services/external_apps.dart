@@ -3,6 +3,9 @@ import '../core/app_platform.dart';
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'device_bridge.dart';
+import 'browser_features.dart';
+import '../core/external_player_link.dart';
+import 'package:flutter/foundation.dart';
 
 enum ExternalVideoPlayer { vlc, mxPlayer, mxPlayerPro }
 
@@ -27,6 +30,15 @@ class ExternalApps {
   static const mxPlayerProStoreUrl =
       'https://play.google.com/store/apps/details?id=com.mxtech.videoplayer.pro';
 
+  static List<ExternalVideoPlayer> get availablePlayers => [
+    if (Platform.isWindows || Platform.isIOS || Platform.isAndroid || kIsWeb)
+      ExternalVideoPlayer.vlc,
+    if (Platform.isAndroid || (kIsWeb && BrowserFeatures.isAndroidBrowser)) ...[
+      ExternalVideoPlayer.mxPlayer,
+      ExternalVideoPlayer.mxPlayerPro,
+    ],
+  ];
+
   static String playerName(ExternalVideoPlayer player) => switch (player) {
     ExternalVideoPlayer.vlc => 'VLC',
     ExternalVideoPlayer.mxPlayer => 'MX Player',
@@ -36,7 +48,10 @@ class ExternalApps {
   static String playerInstallUrl(ExternalVideoPlayer player) =>
       switch (player) {
         ExternalVideoPlayer.vlc =>
-          Platform.isAndroid
+          Platform.isIOS || (kIsWeb && BrowserFeatures.isAppleMobile)
+              ? 'https://apps.apple.com/app/vlc-media-player/id650377962'
+              : Platform.isAndroid ||
+                    (kIsWeb && BrowserFeatures.isAndroidBrowser)
               ? 'https://play.google.com/store/apps/details?id=org.videolan.vlc'
               : vlcDownloadUrl,
         ExternalVideoPlayer.mxPlayer => mxPlayerStoreUrl,
@@ -48,6 +63,32 @@ class ExternalApps {
     required String url,
     required String title,
   }) async {
+    if (kIsWeb || Platform.isIOS) {
+      final uri = externalPlayerLink(
+        player: player.name,
+        platform: BrowserFeatures.isAppleMobile || Platform.isIOS
+            ? 'ios'
+            : BrowserFeatures.isAndroidBrowser
+            ? 'android'
+            : 'windows',
+        url: url,
+        title: title,
+        appScheme: 'mbnmovie-player',
+      );
+      if (uri == null) return ExternalLaunchResult.unsupported;
+      try {
+        if (kIsWeb) {
+          return BrowserFeatures.openExternal(uri)
+              ? ExternalLaunchResult.launched
+              : ExternalLaunchResult.failed;
+        }
+        return await launchUrl(uri, mode: LaunchMode.externalApplication)
+            ? ExternalLaunchResult.launched
+            : ExternalLaunchResult.missing;
+      } catch (_) {
+        return ExternalLaunchResult.failed;
+      }
+    }
     if (Platform.isAndroid) {
       final packageName = switch (player) {
         ExternalVideoPlayer.vlc => 'org.videolan.vlc',

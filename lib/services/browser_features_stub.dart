@@ -7,6 +7,9 @@ abstract final class BrowserFeatures {
   }) async {}
   static void clearAss() {}
   static bool get isMobileBrowser => false;
+  static bool get isAndroidBrowser => false;
+  static bool openExternal(Uri uri) => false;
+  static void setAudioDelay(double value) {}
   static bool get isAppleMobile => false;
   static Future<bool> play({int? handle, bool Function()? active}) async =>
       false;
@@ -26,5 +29,5 @@ abstract final class BrowserFeatures {
   static void clearAudio() {}
   static void clearPlayPrompt() {}
   static void muteOriginal(bool value) {}
-  static Future<void> externalAudio(String url) async {}
+  static Future<void> externalAudio(String url, {double delay = 0}) async {}
 }

@@ -116,6 +116,20 @@ abstract final class PlaybackPreferenceStore {
   static const internalPlayer = 'internal';
   static const miracast = 'miracast';
 
+  // Latency belongs to this audio output/device, not account-wide settings.
+  static const audioDelayKey = 'device_audio_delay_seconds';
+
+  static Future<double> audioDelay() async =>
+      ((await SharedPreferences.getInstance()).getDouble(audioDelayKey) ?? 0)
+          .clamp(-3.0, 3.0);
+
+  static Future<void> setAudioDelay(double seconds) async {
+    await (await SharedPreferences.getInstance()).setDouble(
+      audioDelayKey,
+      seconds.clamp(-3.0, 3.0),
+    );
+  }
+
   static const defaultPlayerKey = 'default_video_player';
   static const defaultStreamerKey = 'default_streamer';
 
