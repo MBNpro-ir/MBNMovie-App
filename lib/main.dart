@@ -1,3 +1,4 @@
+import 'services/browser_features.dart';
 import 'services/device_performance.dart';
 import 'services/android_network_trust.dart';
 import 'package:flutter/foundation.dart';
@@ -21,9 +22,11 @@ SemanticsHandle? _webSemantics;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Initialize accessible hit targets before Safari receives its first touch.
-  // Retain the handle for the lifetime of the web application.
-  if (kIsWeb) _webSemantics ??= SemanticsBinding.instance.ensureSemantics();
+  // Safari enables semantics on demand for assistive technology. Forcing a
+  // second DOM hit-test tree over its video surfaces delays ordinary touches.
+  if (kIsWeb && !BrowserFeatures.isAppleMobile) {
+    _webSemantics ??= SemanticsBinding.instance.ensureSemantics();
+  }
   MediaKit.ensureInitialized();
   DeviceBridge.initialize();
   await initializeDeviceLayout();

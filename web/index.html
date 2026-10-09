@@ -14,6 +14,10 @@
 html,body{background:#080a0f;color:white;margin:0;width:100%;height:100%;overflow:hidden;touch-action:manipulation;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
 flutter-view,flt-glass-pane{touch-action:manipulation!important;pointer-events:auto!important}
 flt-semantics-host{pointer-events:none!important}
+/* Ordinary iPhone touches go through one Flutter gesture arena. Assistive
+   technology can still dispatch semantic clicks without a pointer gesture. */
+.mbn-apple-mobile flt-semantics{pointer-events:none!important}
+.mbn-apple-mobile flt-semantics input,.mbn-apple-mobile flt-semantics textarea{pointer-events:auto!important}
 flt-semantics-placeholder{pointer-events:none!important;width:1px!important;height:1px!important}
 #loading{display:grid;place-items:center;height:100vh;font:20px sans-serif}
 flt-semantics[role="button"]{overflow:hidden!important}

@@ -6,6 +6,9 @@ abstract final class BrowserFeatures {
     List<String> fonts = const [],
   }) async {}
   static void clearAss() {}
+  static void setPlayerActive(bool active) {}
+  static ({double left, double top, double right, double bottom})
+  get safeArea => (left: 0, top: 0, right: 0, bottom: 0);
   static bool get isMobileBrowser => false;
   static bool get isAndroidBrowser => false;
   static bool openExternal(Uri uri) => false;

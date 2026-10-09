@@ -28,6 +28,27 @@ abstract final class BrowserFeatures {
         double.infinity,
       );
 
+  static void setPlayerActive(bool active) =>
+      globalContext.setProperty('mbnPlayerActive'.toJS, active.toJS);
+
+  static web.HTMLDivElement? _safeAreaProbe;
+  static ({double left, double top, double right, double bottom}) get safeArea {
+    final probe = _safeAreaProbe ??= web.HTMLDivElement()
+      ..style.cssText =
+          'position:fixed;visibility:hidden;pointer-events:none;'
+          'padding:env(safe-area-inset-top) env(safe-area-inset-right) '
+          'env(safe-area-inset-bottom) env(safe-area-inset-left);';
+    if (!probe.isConnected) web.document.body!.appendChild(probe);
+    final style = web.window.getComputedStyle(probe);
+    double px(String value) => double.tryParse(value.replaceAll('px', '')) ?? 0;
+    return (
+      left: px(style.paddingLeft),
+      top: px(style.paddingTop),
+      right: px(style.paddingRight),
+      bottom: px(style.paddingBottom),
+    );
+  }
+
   static bool get isMobileBrowser {
     final nav = web.window.navigator;
     final ua = nav.userAgent.toLowerCase();
@@ -138,7 +159,11 @@ abstract final class BrowserFeatures {
   static bool get requiresCompatibleVideo =>
       web.window.navigator.vendor.contains('Apple');
   static web.HTMLVideoElement? _ownedVideo;
-  static void attachVideo(web.HTMLVideoElement video) => _ownedVideo = video;
+  static void attachVideo(web.HTMLVideoElement video) {
+    _ownedVideo = video;
+    if (_pendingSubtitle != null) _installSubtitle(_pendingSubtitle!);
+  }
+
   static void detachVideo(web.HTMLVideoElement video) {
     if (_ownedVideo == video) {
       _clearTapToPlay();
@@ -438,7 +463,9 @@ abstract final class BrowserFeatures {
 
   static web.HTMLTrackElement? _track;
   static String? _subtitleUrl;
+  static String? _pendingSubtitle;
   static void clearSubtitle() {
+    _pendingSubtitle = null;
     clearAss();
     _track?.remove();
     _track = null;
@@ -447,6 +474,11 @@ abstract final class BrowserFeatures {
   }
 
   static void subtitle(String vtt) {
+    _pendingSubtitle = vtt;
+    _installSubtitle(vtt);
+  }
+
+  static void _installSubtitle(String vtt) {
     _track?.remove();
     if (_subtitleUrl != null) web.URL.revokeObjectURL(_subtitleUrl!);
     final video = _video;
@@ -460,6 +492,6 @@ abstract final class BrowserFeatures {
       ..srclang = 'fa'
       ..label = 'فارسی';
     video.appendChild(_track!);
-    _track!.track.mode = 'hidden';
+    _track!.track.mode = _fullscreenVideo == video ? 'showing' : 'hidden';
   }
 }

@@ -1,3 +1,5 @@
+import '../services/accessibility_service.dart';
+import '../widgets/instant_player_tap.dart';
 import '../services/account_profile.dart';
 import '../core/watch_clock.dart';
 import '../core/player_track_label.dart';
@@ -1137,6 +1139,17 @@ class _DetailSummaryCard extends StatelessWidget {
 
   Widget _animatedWatchButton(BuildContext context, {required bool desktop}) {
     final enabled = !loading && hasPlayable;
+    if (DevicePerformance.appleMobileWeb) {
+      return FilledButton.icon(
+        onPressed: enabled
+            ? () => Navigator.of(
+                context,
+              ).push<void>(MaterialPageRoute(builder: pickerBuilder))
+            : null,
+        icon: const Icon(Icons.play_arrow_rounded),
+        label: Text(loading ? 'در حال دریافت لینک پخش…' : 'شروع تماشا'),
+      );
+    }
     return OpenContainer<void>(
       transitionType: ContainerTransitionType.fade,
       transitionDuration: Duration(milliseconds: desktop ? 500 : 300),
@@ -2442,7 +2455,12 @@ class _PlayerScreenState extends State<PlayerScreen>
   bool _isCurrentMediaOp(int generation) =>
       mounted && !_playerTornDown && generation == _mediaGeneration;
   Offset? _doubleTapPosition;
-  List<String> _subtitles = const [];
+  final _subtitleLines = ValueNotifier<List<String>>(const []);
+  List<String> get _subtitles => _subtitleLines.value;
+  set _subtitles(List<String> value) {
+    if (!listEquals(value, _subtitleLines.value)) _subtitleLines.value = value;
+  }
+
   SubtitleTrack? _autoNativeSubtitle;
   SubtitleTrack get _selectedSubtitle => _track.subtitle.id == 'auto'
       ? (_autoNativeSubtitle ?? _track.subtitle)
@@ -2461,7 +2479,13 @@ class _PlayerScreenState extends State<PlayerScreen>
   bool _webSubtitleVisible = true;
   Tracks _tracks = const Tracks();
   Track _track = const Track();
-  SubtitlePreferences _subtitle = SubtitlePreferences.withPlatformDefaults();
+  final _subtitleAppearance = ValueNotifier<SubtitlePreferences>(
+    SubtitlePreferences.withPlatformDefaults(),
+  );
+  SubtitlePreferences get _subtitle => _subtitleAppearance.value;
+  set _subtitle(SubtitlePreferences value) => _subtitleAppearance.value = value;
+  bool _subtitlePanelOpen = false;
+  (String?, double, double)? _appliedWebAss;
   String? _error;
   bool _webNeedsTap = false;
   int _webPlayAttempt = 0;
@@ -2472,6 +2496,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   void initState() {
     super.initState();
     if (kIsWeb) {
+      BrowserFeatures.setPlayerActive(true);
       WidgetsBinding.instance.addObserver(this);
       unawaited(
         BrowserFeatures.fullscreen(true).then((full) {
@@ -2897,7 +2922,7 @@ class _PlayerScreenState extends State<PlayerScreen>
                 scale: _subtitle.timingScale,
               )
             : <String>[];
-        if (!listEquals(lines, _subtitles)) setState(() => _subtitles = lines);
+        if (!listEquals(lines, _subtitles)) _subtitles = lines;
       }
       if ((_playbackErrorTimer != null || _error != null) &&
           playbackContinuedAfterError(
@@ -2934,7 +2959,9 @@ class _PlayerScreenState extends State<PlayerScreen>
         unawaited(_configurePictureInPicture());
       }),
     );
-    watch(_player.stream.buffering, (value) => _buffering = value);
+    watchQuiet(_player.stream.buffering, (value) {
+      if (mounted && value != _buffering) setState(() => _buffering = value);
+    });
     watch(_player.stream.volume, (value) => _volume = value);
     watch(_player.stream.rate, (value) => _rate = value);
     watch(_player.stream.tracks, (value) {
@@ -2950,7 +2977,7 @@ class _PlayerScreenState extends State<PlayerScreen>
       unawaited(_applyAssRendering());
     });
     _subscriptions.add(_player.stream.error.listen(_handlePlaybackError));
-    watch(_player.stream.subtitle, (value) {
+    watchQuiet(_player.stream.subtitle, (value) {
       if (_webSubtitle == null) _subtitles = value;
     });
     watchQuiet(_player.stream.videoParams, (value) {
@@ -3268,6 +3295,14 @@ class _PlayerScreenState extends State<PlayerScreen>
     final generation = ++_assRenderingGeneration;
     final original = _subtitle.originalAss && _assAvailable;
     if (kIsWeb) {
+      final key = (_webAssSource, _subtitle.delay, _subtitle.timingScale);
+      if (original &&
+          _webSubtitleVisible &&
+          _nativeSubtitleRendering &&
+          _appliedWebAss == key) {
+        return;
+      }
+      _appliedWebAss = null;
       BrowserFeatures.clearAss();
       if (original && _webSubtitleVisible) {
         try {
@@ -3280,6 +3315,7 @@ class _PlayerScreenState extends State<PlayerScreen>
             fonts: _webAssFonts,
           );
           if (mounted && generation == _assRenderingGeneration) {
+            _appliedWebAss = key;
             setState(() => _nativeSubtitleRendering = true);
           }
         } catch (_) {
@@ -3312,7 +3348,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   }
 
   Future<void> _applySubtitleTiming(SubtitlePreferences prefs) async {
-    await _applyAssRendering();
+    if (!kIsWeb || prefs.originalAss) await _applyAssRendering();
     if (kIsWeb && _webSubtitle != null) {
       BrowserFeatures.subtitle(
         _webSubtitle!.vtt(delay: prefs.delay, scale: prefs.timingScale),
@@ -4355,6 +4391,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     // continuations abort before creating resources or touching the player.
     _mediaGeneration++;
     _playerTornDown = true;
+    if (kIsWeb) BrowserFeatures.setPlayerActive(false);
     _transitioning = false;
     _changingEpisode = false;
     _switchingQuality = false;
@@ -4393,6 +4430,8 @@ class _PlayerScreenState extends State<PlayerScreen>
     for (final subscription in _subscriptions) {
       subscription.cancel();
     }
+    _subtitleLines.dispose();
+    _subtitleAppearance.dispose();
     final player = _player;
     unawaited(
       Future.delayed(const Duration(milliseconds: 350), () async {
@@ -4422,6 +4461,18 @@ class _PlayerScreenState extends State<PlayerScreen>
         _armHideTimer();
       });
     }
+  }
+
+  EdgeInsets get _playerSafeArea {
+    if (!DevicePerformance.appleMobileWeb) return EdgeInsets.zero;
+    final area = BrowserFeatures.safeArea;
+    final scale = AccessibilityService.instance.uiScale;
+    return EdgeInsets.fromLTRB(
+      area.left / scale,
+      area.top / scale,
+      area.right / scale,
+      area.bottom / scale,
+    );
   }
 
   void _armHideTimer() {
@@ -4996,85 +5047,91 @@ class _PlayerScreenState extends State<PlayerScreen>
   }
 
   Future<void> _showSubtitleSettings() async {
-    await _resolveAutoSubtitle();
-    if (!mounted || _playerTornDown) return;
-    _hideTimer?.cancel();
-    setState(() => _controlsVisible = false);
-    final result = await (kIsWeb && BrowserFeatures.isMobileBrowser
-        ? showTopPlayerPanel<SubtitlePreferences>(
-            fullWidth: true,
-            compactLayout: true,
-            context: context,
-            backgroundColor: MovieColors.surface,
-            builder: (context) => SubtitleAppearancePanel(
-              twoColumnLayout: false,
-              assAvailable: _assAvailable,
-              initial: _subtitle,
-              onChanged: (value) {
-                if (mounted) {
-                  final previous = _subtitle;
-                  setState(() => _subtitle = value);
-                  if (previous.originalAss != value.originalAss) {
-                    unawaited(_applyAssRendering());
-                  }
-                }
-              },
-            ),
-          )
-        : kIsWeb
-        ? showResponsivePlayerPanel<SubtitlePreferences>(
-            containsCloseButton: true,
-            context: context,
-            constraints: BoxConstraints(
-              maxWidth: panelWidth(context, large: 840),
-            ),
-            backgroundColor: MovieColors.surface,
-            builder: (context) => ConstrainedBox(
-              constraints: BoxConstraints(
-                maxHeight: webPanelHeight(context, desired: 560),
-              ),
-              child: SubtitleAppearancePanel(
+    if (_subtitlePanelOpen || _playerTornDown) return;
+    _subtitlePanelOpen = true;
+    try {
+      await _resolveAutoSubtitle();
+      if (!mounted || _playerTornDown) return;
+      _hideTimer?.cancel();
+      setState(() => _controlsVisible = false);
+      final result = await (kIsWeb && BrowserFeatures.isMobileBrowser
+          ? showTopPlayerPanel<SubtitlePreferences>(
+              fullWidth: true,
+              compactLayout: true,
+              context: context,
+              backgroundColor: MovieColors.surface,
+              builder: (context) => SubtitleAppearancePanel(
+                twoColumnLayout: false,
                 assAvailable: _assAvailable,
                 initial: _subtitle,
                 onChanged: (value) {
                   if (mounted) {
                     final previous = _subtitle;
-                    setState(() => _subtitle = value);
+                    _subtitle = value;
                     if (previous.originalAss != value.originalAss) {
                       unawaited(_applyAssRendering());
                     }
                   }
                 },
               ),
-            ),
-          )
-        : showTopPlayerPanel<SubtitlePreferences>(
-            fullWidth: !isLargeScreenDevice,
-            context: context,
-            backgroundColor: MovieColors.surface,
-            builder: (context) => SubtitleAppearancePanel(
-              twoColumnLayout: !isLargeScreenDevice,
-              assAvailable: _assAvailable,
-              initial: _subtitle,
-              onChanged: (value) {
-                if (mounted) {
-                  final previous = _subtitle;
-                  setState(() => _subtitle = value);
-                  if (previous.originalAss != value.originalAss) {
-                    unawaited(_applyAssRendering());
+            )
+          : kIsWeb
+          ? showResponsivePlayerPanel<SubtitlePreferences>(
+              containsCloseButton: true,
+              context: context,
+              constraints: BoxConstraints(
+                maxWidth: panelWidth(context, large: 840),
+              ),
+              backgroundColor: MovieColors.surface,
+              builder: (context) => ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: webPanelHeight(context, desired: 560),
+                ),
+                child: SubtitleAppearancePanel(
+                  assAvailable: _assAvailable,
+                  initial: _subtitle,
+                  onChanged: (value) {
+                    if (mounted) {
+                      final previous = _subtitle;
+                      _subtitle = value;
+                      if (previous.originalAss != value.originalAss) {
+                        unawaited(_applyAssRendering());
+                      }
+                    }
+                  },
+                ),
+              ),
+            )
+          : showTopPlayerPanel<SubtitlePreferences>(
+              fullWidth: !isLargeScreenDevice,
+              context: context,
+              backgroundColor: MovieColors.surface,
+              builder: (context) => SubtitleAppearancePanel(
+                twoColumnLayout: !isLargeScreenDevice,
+                assAvailable: _assAvailable,
+                initial: _subtitle,
+                onChanged: (value) {
+                  if (mounted) {
+                    final previous = _subtitle;
+                    _subtitle = value;
+                    if (previous.originalAss != value.originalAss) {
+                      unawaited(_applyAssRendering());
+                    }
                   }
-                }
-              },
-            ),
-          ));
-    if (!mounted || _playerTornDown) return;
-    if (result != null) {
-      setState(() => _subtitle = result);
-      final prefs = await SharedPreferences.getInstance();
-      await result.save(prefs);
-      await _applySubtitleTiming(result);
+                },
+              ),
+            ));
+      if (!mounted || _playerTornDown) return;
+      if (result != null) {
+        _subtitle = result;
+        final prefs = await SharedPreferences.getInstance();
+        await result.save(prefs);
+        await _applySubtitleTiming(result);
+      }
+      _showControls();
+    } finally {
+      _subtitlePanelOpen = false;
     }
-    _showControls();
   }
 
   Future<void> _showSpeedSettings() async {
@@ -5161,6 +5218,7 @@ class _PlayerScreenState extends State<PlayerScreen>
             },
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
+              excludeFromSemantics: true,
               onTap: () {
                 _pokeCursor();
                 if (_touchLocked) {
@@ -5222,10 +5280,21 @@ class _PlayerScreenState extends State<PlayerScreen>
                       child: ColoredBox(color: Colors.transparent),
                     ),
                   if (!_windowResizing && !_nativeSubtitleRendering)
-                    _AnimeSubtitles(
-                      lines: _subtitles,
-                      prefs: _subtitle,
-                      isPictureInPicture: _isInPip,
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: ValueListenableBuilder<SubtitlePreferences>(
+                          valueListenable: _subtitleAppearance,
+                          builder: (_, prefs, _) =>
+                              ValueListenableBuilder<List<String>>(
+                                valueListenable: _subtitleLines,
+                                builder: (_, lines, _) => _AnimeSubtitles(
+                                  lines: lines,
+                                  prefs: prefs,
+                                  isPictureInPicture: _isInPip,
+                                ),
+                              ),
+                        ),
+                      ),
                     ),
                   PlayerLoadingIndicator(
                     preparing: WebGateway.preparingVideo,
@@ -5256,6 +5325,7 @@ class _PlayerScreenState extends State<PlayerScreen>
                             ),
                           ),
                           child: SafeArea(
+                            minimum: _playerSafeArea,
                             child: Stack(
                               children: [
                                 Positioned(
@@ -5431,9 +5501,15 @@ class _PlayerScreenState extends State<PlayerScreen>
                                   ),
                                 ),
                                 Positioned(
-                                  right: 18,
-                                  left: 18,
-                                  bottom: 10,
+                                  right: DevicePerformance.appleMobileWeb
+                                      ? 40
+                                      : 18,
+                                  left: DevicePerformance.appleMobileWeb
+                                      ? 40
+                                      : 18,
+                                  bottom: DevicePerformance.appleMobileWeb
+                                      ? 22
+                                      : 10,
                                   child: LayoutBuilder(
                                     builder: (context, constraints) {
                                       final compact =
@@ -5635,7 +5711,7 @@ class _RoundControl extends StatelessWidget {
   final VoidCallback onTap;
   final String tooltip;
   @override
-  Widget build(BuildContext context) => _InstantPlayerTap(
+  Widget build(BuildContext context) => InstantPlayerTap(
     onTap: onTap,
     tooltip: tooltip,
     decoration: BoxDecoration(
@@ -5659,7 +5735,7 @@ class _UnlockControl extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => _InstantPlayerTap(
+  Widget build(BuildContext context) => InstantPlayerTap(
     onTap: onTap,
     tooltip: 'باز کردن قفل لمس',
     decoration: BoxDecoration(
@@ -5699,7 +5775,7 @@ class _HeroControl extends StatelessWidget {
   final bool primary;
   final String tooltip;
   @override
-  Widget build(BuildContext context) => _InstantPlayerTap(
+  Widget build(BuildContext context) => InstantPlayerTap(
     onTap: onTap,
     tooltip: tooltip,
     decoration: BoxDecoration(
@@ -5755,7 +5831,7 @@ class _PlayerToolControl extends StatelessWidget {
   final bool compact;
   final String? compactLabel;
   @override
-  Widget build(BuildContext context) => _InstantPlayerTap(
+  Widget build(BuildContext context) => InstantPlayerTap(
     onTap: onTap,
     tooltip: label,
     decoration: BoxDecoration(
@@ -5803,7 +5879,7 @@ class _BareControl extends StatelessWidget {
   final String tooltip;
 
   @override
-  Widget build(BuildContext context) => _InstantPlayerTap(
+  Widget build(BuildContext context) => InstantPlayerTap(
     onTap: onTap,
     tooltip: tooltip,
     padding: const EdgeInsets.all(10),
@@ -5814,118 +5890,6 @@ class _BareControl extends StatelessWidget {
 /// Player actions fire on pointer-down instead of waiting for the complete tap
 /// gesture. The inner no-op gesture owns the arena so the full-screen surface
 /// does not hide the controls after a button press.
-class _InstantPlayerTap extends StatefulWidget {
-  const _InstantPlayerTap({
-    required this.child,
-    required this.onTap,
-    this.padding = EdgeInsets.zero,
-    this.decoration,
-    this.tooltip,
-  });
-
-  final Widget child;
-  final VoidCallback onTap;
-  final EdgeInsetsGeometry padding;
-  final Decoration? decoration;
-  final String? tooltip;
-
-  @override
-  State<_InstantPlayerTap> createState() => _InstantPlayerTapState();
-}
-
-class _InstantPlayerTapState extends State<_InstantPlayerTap> {
-  bool _pressed = false;
-  bool _focused = false;
-
-  void _press(PointerDownEvent event) {
-    if (_pressed || event.buttons != kPrimaryButton) return;
-    setState(() => _pressed = true);
-    if (!kIsWeb) widget.onTap();
-  }
-
-  void _release(PointerEvent _) {
-    if (_pressed && mounted) setState(() => _pressed = false);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    Widget result = Semantics(
-      button: true,
-      label: widget.tooltip,
-      onTap: widget.onTap,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: Listener(
-          behavior: HitTestBehavior.opaque,
-          onPointerDown: _press,
-          onPointerUp: _release,
-          onPointerCancel: _release,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            excludeFromSemantics: true,
-            onTap: kIsWeb ? widget.onTap : () {},
-            // Control taps must not trigger the video's double-tap gesture.
-            onDoubleTap: () {},
-            child: AnimatedScale(
-              scale: _pressed ? .88 : 1,
-              duration: Duration(milliseconds: _pressed ? 55 : 210),
-              curve: _pressed ? Curves.easeOut : Curves.easeOutBack,
-              child: AnimatedOpacity(
-                opacity: _pressed ? .72 : 1,
-                duration: const Duration(milliseconds: 70),
-                // NOTE: no `alignment` on this Container on purpose. A
-                // non-null alignment makes it expand to fill loose
-                // constraints, which turned the unlock control into a
-                // full-screen button. Inner Center keeps content centered.
-                child: Container(
-                  constraints: const BoxConstraints(
-                    minWidth: 46,
-                    minHeight: 46,
-                  ),
-                  padding: widget.padding,
-                  decoration: widget.decoration,
-                  child: Center(
-                    widthFactor: 1,
-                    heightFactor: 1,
-                    child: widget.child,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-    if (widget.tooltip != null) {
-      result = Tooltip(message: widget.tooltip!, child: result);
-    }
-    return FocusableActionDetector(
-      onShowFocusHighlight: (value) => setState(() => _focused = value),
-      shortcuts: const {
-        SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
-      },
-      actions: {
-        ActivateIntent: CallbackAction<ActivateIntent>(
-          onInvoke: (_) {
-            widget.onTap();
-            return null;
-          },
-        ),
-      },
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: _focused ? MovieColors.cyan : Colors.transparent,
-            width: 2,
-          ),
-        ),
-        child: result,
-      ),
-    );
-  }
-}
-
 String _trackLabel(String id, String? title, String? language) =>
     playerTrackLabel(id, title, language, appName: 'MBNMovie');
 
@@ -6399,7 +6363,7 @@ class _AnimeSubtitles extends StatelessWidget {
     if (text.isEmpty) return const SizedBox.shrink();
     return MediaQuery(
       data: MediaQuery.of(context).copyWith(textScaler: TextScaler.noScaling),
-      child: Positioned.fill(
+      child: SizedBox.expand(
         child: LayoutBuilder(
           builder: (context, constraints) {
             final layout = SubtitleLayout.resolve(
@@ -6413,7 +6377,7 @@ class _AnimeSubtitles extends StatelessWidget {
               fit: StackFit.expand,
               children: [
                 AnimatedPositioned(
-                  duration: isDesktopWindow
+                  duration: isDesktopWindow || DevicePerformance.appleMobileWeb
                       ? Duration.zero
                       : const Duration(milliseconds: 200),
                   curve: Curves.easeOutCubic,

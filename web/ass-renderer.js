@@ -1,6 +1,7 @@
 /* Local libass renderer. No worker, canvas or frame loop exists in plain mode. */
 (() => {
   const base = new URL('.', document.currentScript.src);
+  const appleMobile = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.vendor.includes('Apple') && navigator.maxTouchPoints > 1);
   let loading, current, generation = 0;
   function load() {
     if (window.SubtitlesOctopus) return Promise.resolve();
@@ -45,7 +46,7 @@
         const left=rect.left+(rect.width-w)/2, top=rect.top+(rect.height-h)/2;
         Object.assign(canvas.style,{left:left+'px',top:top+'px',width:w+'px',height:h+'px',
           clipPath:`inset(${Math.max(0,rect.top-top)}px ${Math.max(0,left+w-rect.right)}px ${Math.max(0,top+h-rect.bottom)}px ${Math.max(0,rect.left-left)}px)`});
-        const ratio=Math.min(devicePixelRatio||1,2), capped=Math.min(1,1080/(h*ratio));
+        const ratio=Math.min(devicePixelRatio||1,appleMobile?1:2), capped=Math.min(1,(appleMobile?720:1080)/(h*ratio));
         const width=Math.max(1,Math.round(w*ratio*capped)), height=Math.max(1,Math.round(h*ratio*capped));
         if (canvas.width!==width || canvas.height!==height) state.renderer.resize(width,height);
       };
@@ -64,7 +65,7 @@
             workerUrl:new URL('ass/subtitles-octopus-worker.js',base).href,
             fonts:[new URL('assets/assets/fonts/Vazirmatn-Regular.ttf',base).href,...fonts],
             fallbackFont:new URL('assets/assets/fonts/Vazirmatn-Regular.ttf',base).href,
-            targetFps:24,libassMemoryLimit:24,libassGlyphLimit:8,
+            targetFps:appleMobile?15:24,libassMemoryLimit:appleMobile?12:24,libassGlyphLimit:appleMobile?4:8,
             onReady:()=>{clearTimeout(timer);resolve();},
             onError:e=>{clearTimeout(timer);reject(e);}});
         });

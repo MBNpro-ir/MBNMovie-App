@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../core/platform_ui.dart';
+import '../services/device_performance.dart';
 
 bool isWideWebLayout(BuildContext context) =>
     kIsWeb && MediaQuery.sizeOf(context).width >= 900;
@@ -129,7 +130,9 @@ Future<T?> showTopPlayerPanel<T>({
     barrierDismissible: true,
     barrierLabel: 'بستن تنظیمات زیرنویس',
     barrierColor: Colors.black26,
-    transitionDuration: const Duration(milliseconds: 280),
+    transitionDuration: Duration(
+      milliseconds: DevicePerformance.appleMobileWeb ? 0 : 280,
+    ),
     transitionBuilder: (context, animation, secondary, child) =>
         SlideTransition(
           position: Tween(begin: const Offset(0, -1), end: Offset.zero).animate(
@@ -182,7 +185,7 @@ class TopPlayerPanel extends StatelessWidget {
         child: Material(
           key: const Key('top-player-panel'),
           color: color,
-          elevation: 18,
+          elevation: DevicePerformance.appleMobileWeb ? 0 : 18,
           borderRadius: const BorderRadius.vertical(
             bottom: Radius.circular(24),
           ),
