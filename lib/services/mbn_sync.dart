@@ -555,8 +555,16 @@ class MbnSync {
     _pendingProgressPush ??= Timer(const Duration(seconds: 5), () {
       _pendingProgressPush = null;
       _lastHistoryPush = DateTime.now();
-      unawaited(_pushCategories(['progress']));
+      unawaited(_pushPendingProgress());
     });
+  }
+
+  Future<void> _pushPendingProgress() async {
+    final prefs = await SharedPreferences.getInstance();
+    await _pushCategories([
+      if (prefs.getBool('mbn_sync_dirty_history') ?? false) 'history',
+      'progress',
+    ]);
   }
 
   Future<void> pushPreferencesThrottled() async {
