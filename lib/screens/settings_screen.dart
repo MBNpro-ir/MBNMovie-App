@@ -130,8 +130,9 @@ class _SettingsScreenState extends State<SettingsScreen>
   void _onRemoteSync() {
     if (mounted &&
         !_loading &&
-        MbnSync.instance.changedCategories.contains('preferences'))
+        MbnSync.instance.changedCategories.contains('preferences')) {
       unawaited(_load());
+    }
   }
 
   Future<void> _load() async {
@@ -1180,6 +1181,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                                 onChanged: (value) async {
                                   setState(() => _englishTitles = value);
                                   await TitleLanguage.setEnglish(value);
+                                  await MbnSync.instance.pushPreferences();
                                 },
                               ),
                             ],

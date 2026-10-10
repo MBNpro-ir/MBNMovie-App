@@ -69,6 +69,14 @@ class TitleLanguage {
     revision.value++;
   }
 
+  static Future<void> reloadPreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    final value = prefs.getBool(preferenceKey) ?? true;
+    if (english == value) return;
+    english = value;
+    revision.value++;
+  }
+
   static Future<void> setEnglish(bool value) async {
     english = value;
     revision.value++;

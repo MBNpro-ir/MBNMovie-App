@@ -103,7 +103,10 @@ void main() {
         wide ? findsOneWidget : findsNothing,
       );
       expect(find.byTooltip('بستن پنل'), findsOneWidget);
-      final footer = find.byType(OutlinedButton).hitTestable().first;
+      final footer = find
+          .byWidgetPredicate((widget) => widget is OutlinedButton)
+          .hitTestable()
+          .first;
       final rect = tester.getRect(footer);
       expect(rect.bottom, lessThanOrEqualTo(size.height));
       expect(rect.left, greaterThanOrEqualTo(0));
@@ -118,7 +121,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       expect(
-        find.byType(OutlinedButton).hitTestable(),
+        find
+            .byWidgetPredicate((widget) => widget is OutlinedButton)
+            .hitTestable(),
         wide ? findsNWidgets(4) : findsNWidgets(2),
       );
       await tester.tap(find.byTooltip('بستن پنل'));

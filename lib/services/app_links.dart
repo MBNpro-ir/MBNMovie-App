@@ -148,10 +148,7 @@ abstract final class AppLinks {
       return DeviceBridge.isAppInstalled(sibling.androidPackage);
     }
     if (Platform.isWindows) {
-      if (await findSiblingExe(sibling) != null) return true;
-      final appData = Platform.environment['APPDATA'] ?? '';
-      return Directory(p.join(appData, 'com.mbn', sibling.id)).existsSync() ||
-          File(p.join(appData, 'com.mbn', 'shared_auth.json')).existsSync();
+      return await findSiblingExe(sibling) != null;
     }
     return false;
   }

@@ -1,3 +1,4 @@
+import '../core/title_language.dart';
 import 'account_profile.dart';
 import 'app_links.dart';
 import '../core/sync_merge.dart';
@@ -17,9 +18,9 @@ import 'mbn_auth.dart';
 
 /// Server sync for favorites / playlists / history / watch progress.
 ///
-/// Last-write-wins per category using timestamps: the side with the newer
-/// timestamp wins, so an admin-side clear propagates on the next sync and
-/// two devices converge without resurrecting deleted rows.
+/// Server cursors detect remote edits; base snapshots preserve independent
+/// local changes while device revisions prevent delayed responses from
+/// overwriting newer edits.
 class MbnSync {
   MbnSync._();
   static final instance = MbnSync._();
@@ -146,7 +147,8 @@ class MbnSync {
       key == 'player_fit_cover' ||
       key == 'default_video_player' ||
       key == 'default_streamer' ||
-      key == 'preferred_stream_quality';
+      key == 'preferred_stream_quality' ||
+      key == TitleLanguage.preferenceKey;
 
   static bool _isDoublePreferenceKey(String key) =>
       key == 'player_volume' ||
@@ -371,8 +373,14 @@ class MbnSync {
         }
         await _setLocalTs(category, ts);
         await _writeBase(category, remotePayload);
-        await prefs.setBool('mbn_sync_dirty_$category', !unchanged);
-        if (!unchanged) _pendingPushes.add(category);
+        final editedDuringApply =
+            (prefs.getInt('mbn_sync_rev_$category') ?? 0) !=
+            revisions[category];
+        await prefs.setBool(
+          'mbn_sync_dirty_$category',
+          !unchanged || editedDuringApply,
+        );
+        if (!unchanged || editedDuringApply) _pendingPushes.add(category);
       }
       _changed(changed);
     } catch (_) {}
@@ -789,6 +797,7 @@ class MbnSync {
 
     if (targetPayload == null || targetPayload.isEmpty) return false;
 
+    final writes = <Future<bool>>[];
     for (final entry in targetPayload.entries) {
       final key = '${entry.key}';
       if (!_isPreferenceKey(key)) continue;
@@ -805,7 +814,7 @@ class MbnSync {
           d = double.tryParse(value);
         }
         if (d != null) {
-          await prefs.setDouble(key, d);
+          writes.add(prefs.setDouble(key, d));
         }
       } else if (_isIntPreferenceKey(key)) {
         int? i;
@@ -815,15 +824,17 @@ class MbnSync {
           i = int.tryParse(value);
         }
         if (i != null) {
-          await prefs.setInt(key, i);
+          writes.add(prefs.setInt(key, i));
         }
       } else if (value is bool) {
-        await prefs.setBool(key, value);
+        writes.add(prefs.setBool(key, value));
       } else if (value is String) {
-        await prefs.setString(key, value);
+        writes.add(prefs.setString(key, value));
       }
     }
 
+    await Future.wait(writes);
+    await TitleLanguage.reloadPreference();
     try {
       await AccessibilityService.instance.reloadFromStore();
     } catch (_) {}
@@ -848,12 +859,13 @@ class MbnSync {
     if (payload is! Map) return;
     try {
       final prefs = await SharedPreferences.getInstance();
+      final writes = <Future<bool>>[];
       final received = payload.keys
           .map((key) => '$key')
           .where(_isProgressKey)
           .toSet();
       for (final key in prefs.getKeys().where(_isProgressKey).toList()) {
-        if (!received.contains(key)) await prefs.remove(key);
+        if (!received.contains(key)) writes.add(prefs.remove(key));
       }
       for (final entry in payload.entries) {
         final key = '${entry.key}';
@@ -861,17 +873,18 @@ class MbnSync {
         final isWatchKey = _isProgressKey(key);
         if (!isWatchKey) continue;
         if (value is int) {
-          await prefs.setInt(key, value);
+          writes.add(prefs.setInt(key, value));
         } else if (value is double) {
-          await prefs.setDouble(key, value);
+          writes.add(prefs.setDouble(key, value));
         } else if (value is bool) {
-          await prefs.setBool(key, value);
+          writes.add(prefs.setBool(key, value));
         } else if (value is String) {
-          await prefs.setString(key, value);
+          writes.add(prefs.setString(key, value));
         } else {
           continue;
         }
       }
+      await Future.wait(writes);
     } catch (_) {}
   }
 
