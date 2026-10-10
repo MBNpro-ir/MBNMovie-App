@@ -71,23 +71,40 @@ class _MainShellState extends State<MainShell> {
   @override
   void initState() {
     super.initState();
+    MbnSync.instance.changes.addListener(_onRemoteSync);
     _pageController = PageController();
     TitleLanguage.revision.addListener(_titleLanguageChanged);
     _restore();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        unawaited(
-          AnnouncementService.checkAndShow(context, widget.auth, app: 'movie'),
-        );
+        unawaited(_showStartupDialogs(context, widget.auth, app: 'movie'));
       }
     });
   }
 
+  Future<void> _showStartupDialogs(
+    BuildContext context,
+    dynamic source, {
+    required String app,
+  }) async {
+    await MbnSync.instance.checkOtherAppSettingsPrompt(context);
+    if (context.mounted) {
+      await AnnouncementService.checkAndShow(context, source, app: app);
+    }
+  }
+
   @override
   void dispose() {
+    MbnSync.instance.changes.removeListener(_onRemoteSync);
     TitleLanguage.revision.removeListener(_titleLanguageChanged);
     _pageController.dispose();
     super.dispose();
+  }
+
+  void _onRemoteSync() {
+    if (!mounted) return;
+    unawaited(_restore());
+    unawaited(_homeKey.currentState?.refreshContinueWatch());
   }
 
   void _titleLanguageChanged() {
@@ -95,10 +112,14 @@ class _MainShellState extends State<MainShell> {
     setState(() {});
   }
 
+  int _restoreGeneration = 0;
   Future<void> _restore() async {
+    final generation = ++_restoreGeneration;
     final values = await Future.wait([_store.favorites(), _store.history()]);
-    if (!mounted) return;
+    if (!mounted || generation != _restoreGeneration) return;
     setState(() {
+      _favorites.clear();
+      _history.clear();
       _favorites.addEntries(
         values[0]
             .where((item) => !MovieApi.isPromotionalContent(item))

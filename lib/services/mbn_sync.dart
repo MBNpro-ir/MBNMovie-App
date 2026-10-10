@@ -1,4 +1,7 @@
 import 'account_profile.dart';
+import 'app_links.dart';
+import '../core/sync_merge.dart';
+import '../core/watch_progress.dart';
 import 'dart:convert';
 import 'dart:async';
 import '../core/platform_ui.dart' show settingsDeviceProfile;
@@ -20,6 +23,15 @@ import 'mbn_auth.dart';
 class MbnSync {
   MbnSync._();
   static final instance = MbnSync._();
+  final changes = ValueNotifier<int>(0);
+  Set<String> changedCategories = const {};
+  bool _settingsChoicePending = false;
+  bool _prompting = false;
+  int _loginChoice = 0;
+  void beginSettingsChoice() {
+    _settingsChoicePending = true;
+    _loginChoice++;
+  }
 
   static const _app = 'movie';
   static const _tsPrefix = 'mbn_sync_ts_';
@@ -36,12 +48,20 @@ class MbnSync {
   Timer? _pendingProgressPush;
   Timer? _pendingPreferencesPush;
   bool _syncing = false;
+  bool _resyncRequested = false;
   int _generation = 0;
   final Set<String> _pendingPushes = {};
+  final Map<String, Object?> _baseSnapshots = {};
   Future<void>? _pushing;
 
   void _invalidateNetworkWork() {
     _generation++;
+    _baseSnapshots.clear();
+    _pendingProgressPush?.cancel();
+    _pendingPreferencesPush?.cancel();
+    _pendingProgressPush = null;
+    _pendingPreferencesPush = null;
+    _lastHistoryPush = null;
     _pendingPushes.clear();
     _pushing = null;
   }
@@ -64,18 +84,29 @@ class MbnSync {
 
   void clear() {
     _invalidateNetworkWork();
+    _settingsChoicePending = false;
+    _loginChoice++;
     AccountProfile.configure(null);
     _pendingProgressPush?.cancel();
     _pendingPreferencesPush?.cancel();
     _pendingProgressPush = null;
     _pendingPreferencesPush = null;
     _auth = null;
+    _baseSnapshots.clear();
+  }
+
+  void _changed(Set<String> categories) {
+    if (categories.isEmpty) return;
+    changedCategories = Set.unmodifiable(categories);
+    changes.value++;
+    if (categories.contains('progress')) WatchProgressStore.changes.value++;
   }
 
   Future<void> bindAccount(int userId) async {
     final prefs = await SharedPreferences.getInstance();
     final owner = prefs.getInt('mbn_sync_owner_v1');
     if (owner == userId) return;
+    _baseSnapshots.clear();
     if (owner != null) {
       final lib = LibraryStore();
       await lib.saveFavorites([]);
@@ -90,6 +121,7 @@ class MbnSync {
             key.startsWith(_tsPrefix) ||
             key.startsWith('mbn_sync_dirty_') ||
             key.startsWith('mbn_sync_rev_') ||
+            key.startsWith('mbn_sync_base_') ||
             key == _pendingResetKey) {
           await prefs.remove(key);
         }
@@ -146,10 +178,7 @@ class MbnSync {
   Future<void> _touchLocal(String category) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt(
-        _tsKey(category),
-        DateTime.now().millisecondsSinceEpoch ~/ 1000,
-      );
+      // Local revisions are independent of the wall clock and server cursor.
       await prefs.setBool('mbn_sync_dirty_$category', true);
       await prefs.setInt(
         'mbn_sync_rev_$category',
@@ -165,10 +194,40 @@ class MbnSync {
     } catch (_) {}
   }
 
+  static String _baseKey(String category) => 'mbn_sync_base_$category';
+
+  Future<Object?> _readBase(String category) async {
+    final cached = _baseSnapshots[category];
+    if (cached != null) return cached;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_baseKey(category));
+      if (raw == null) return null;
+      final value = jsonDecode(raw);
+      _baseSnapshots[category] = value;
+      return value;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _writeBase(String category, Object? payload) async {
+    if (payload == null) return;
+    _baseSnapshots[category] = payload;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_baseKey(category), jsonEncode(payload));
+    } catch (_) {}
+  }
+
   /// Full sync: pull newer server rows, push newer local rows.
   Future<void> syncAll() async {
     final auth = _auth;
-    if (auth?.token == null || _syncing) return;
+    if (auth?.token == null) return;
+    if (_syncing) {
+      _resyncRequested = true;
+      return;
+    }
     final generation = _generation;
     final credential = auth!.token;
     _syncing = true;
@@ -179,7 +238,9 @@ class MbnSync {
       if (generation != _generation || auth.token != credential) return;
       final lib = LibraryStore();
       final lists = PlaylistStore();
+      final changed = <String>{};
       for (final category in _categories) {
+        if (category == 'preferences' && _settingsChoicePending) continue;
         if (generation != _generation || auth.token != credential) return;
         final row = (server[category] as Map?)?.cast<String, dynamic>();
         final serverTs = (row?['updated_at'] as num?)?.toInt() ?? 0;
@@ -192,13 +253,25 @@ class MbnSync {
         } else if (serverTs > localTs) {
           await _applyServer(category, row?['payload'], lib, lists);
           await _setLocalTs(category, serverTs);
+          await _writeBase(category, row?['payload']);
+          changed.add(category);
         } else if (serverTs == 0 && localTs == 0) {
-          await _pushCategories([category]);
+          final local = await _localBundle(category, lib, lists);
+          if (local is List && local.isNotEmpty ||
+              local is Map &&
+                  local.values.any((v) => v is Map ? v.isNotEmpty : true)) {
+            await _pushCategories([category]);
+          }
         }
       }
+      _changed(changed);
     } catch (_) {
     } finally {
       _syncing = false;
+      if (_resyncRequested && generation == _generation) {
+        _resyncRequested = false;
+        unawaited(syncAll());
+      }
     }
   }
 
@@ -226,7 +299,10 @@ class MbnSync {
 
   Future<void> _pushCategories(List<String> targets) {
     if (_auth?.token == null) return Future.value();
-    _pendingPushes.addAll(targets);
+    _pendingPushes.addAll(
+      targets.where((c) => c != 'preferences' || !_settingsChoicePending),
+    );
+    if (_pendingPushes.isEmpty) return Future.value();
     if (_pushing != null) return _pushing!;
     final generation = _generation;
     Future<void> drain() async {
@@ -256,28 +332,49 @@ class MbnSync {
     final data = <String, dynamic>{};
     final prefs = await SharedPreferences.getInstance();
     final revisions = <String, int>{};
+    final bases = <String, Object?>{};
     for (final category in targets) {
       revisions[category] = prefs.getInt('mbn_sync_rev_$category') ?? 0;
-      data[category] = await _localBundle(category, lib, lists);
+      final payload = await _localBundle(category, lib, lists);
+      if (payload == null) continue;
+      data[category] = payload;
+      final base = await _readBase(category);
+      if (base != null) bases[category] = base;
     }
+    if (data.isEmpty) return;
     try {
       if (generation != _generation || auth.token != credential) return;
       final updated = await auth.putJson('/api/sync', {
         'app': _app,
         'data': data,
+        if (bases.isNotEmpty) 'bases': bases,
       });
       if (generation != _generation || auth.token != credential) return;
-      for (final category in targets) {
+      final changed = <String>{};
+      for (final category in data.keys) {
         if (generation != _generation || auth.token != credential) return;
         final row = (updated[category] as Map?)?.cast<String, dynamic>();
         final ts = (row?['updated_at'] as num?)?.toInt() ?? 0;
-        await _setLocalTs(category, ts);
-        if ((prefs.getInt('mbn_sync_rev_$category') ?? 0) ==
-            revisions[category]) {
-          if (category == 'progress') await _restoreProgress(row?['payload']);
-          await prefs.setBool('mbn_sync_dirty_$category', false);
+        if (row == null || !row.containsKey('payload')) continue;
+        final remotePayload = row['payload'];
+        final current = await _localBundle(category, lib, lists);
+        final unchanged =
+            (prefs.getInt('mbn_sync_rev_$category') ?? 0) ==
+                revisions[category] &&
+            syncEqual(current, data[category]);
+        final rebased = unchanged
+            ? remotePayload
+            : mergeSyncDelta(remotePayload, current, data[category]);
+        if (!syncEqual(current, rebased)) {
+          await _applyServer(category, rebased, lib, lists);
+          changed.add(category);
         }
+        await _setLocalTs(category, ts);
+        await _writeBase(category, remotePayload);
+        await prefs.setBool('mbn_sync_dirty_$category', !unchanged);
+        if (!unchanged) _pendingPushes.add(category);
       }
+      _changed(changed);
     } catch (_) {}
   }
 
@@ -420,7 +517,7 @@ class MbnSync {
   Future<void> pushHistoryThrottled() async {
     final now = DateTime.now();
     if (_lastHistoryPush != null &&
-        now.difference(_lastHistoryPush!) < const Duration(seconds: 60)) {
+        now.difference(_lastHistoryPush!) < const Duration(seconds: 5)) {
       await _touchLocal('history');
       await _touchLocal('progress');
       _scheduleProgressPush();
@@ -438,7 +535,7 @@ class MbnSync {
     await _touchLocal('progress');
     final now = DateTime.now();
     if (_lastHistoryPush == null ||
-        now.difference(_lastHistoryPush!) >= const Duration(seconds: 60)) {
+        now.difference(_lastHistoryPush!) >= const Duration(seconds: 5)) {
       _lastHistoryPush = now;
       await _pushCategories(['progress']);
     } else {
@@ -447,7 +544,7 @@ class MbnSync {
   }
 
   void _scheduleProgressPush() {
-    _pendingProgressPush ??= Timer(const Duration(seconds: 60), () {
+    _pendingProgressPush ??= Timer(const Duration(seconds: 5), () {
       _pendingProgressPush = null;
       _lastHistoryPush = DateTime.now();
       unawaited(_pushCategories(['progress']));
@@ -480,59 +577,83 @@ class MbnSync {
   }
 
   Future<void> checkOtherAppSettingsPrompt(BuildContext context) async {
-    final auth = _auth;
-    if (auth?.token == null) return;
-    final profile = auth?.profile;
-    if (profile == null || profile.id <= 0) return;
-    final prefs = await SharedPreferences.getInstance();
-    final promptKey = 'mbn_other_app_settings_prompted_${profile.id}';
-    if (prefs.getBool(promptKey) ?? false) return;
-
+    final transport = _auth;
+    if (!_settingsChoicePending || _prompting || transport?.token == null) {
+      return;
+    }
+    _prompting = true;
+    final generation = _generation, choice = _loginChoice;
     try {
-      final platformKey = settingsDeviceProfile;
-      final res = await auth!.getJson(
+      final sources = await transport!.getJson(
         '/api/sync/other-settings',
-        query: {'platform': platformKey},
+        query: {'platform': settingsDeviceProfile},
       );
-      if (res['has_settings'] == true && res['settings'] is Map) {
-        final otherName = res['other_app_name']?.toString() ?? 'برنامه دیگر';
-        if (!context.mounted) return;
-        final accepted = await showDialog<bool>(
+      if (generation != _generation ||
+          choice != _loginChoice ||
+          !context.mounted) {
+        return;
+      }
+      final hasServer =
+          sources['has_server_settings'] == true &&
+          sources['server_settings'] is Map;
+      final hasOther =
+          sources['has_other_app_settings'] == true &&
+          sources['other_settings'] is Map &&
+          await AppLinks.isSiblingAvailable(siblingAnime);
+      if (!context.mounted || generation != _generation) return;
+      String? selected;
+      if (hasServer || hasOther) {
+        selected = await showDialog<String>(
           context: context,
           barrierDismissible: false,
-          builder: (ctx) => Directionality(
-            textDirection: TextDirection.rtl,
-            child: AlertDialog(
-              title: const Text('همگام‌سازی تنظیمات'),
-              content: Text(
-                'بخش تنظیمات برنامه در سرور یافت شد ، آیا مایل هستی که تنظیمات خودت رو از برنامه $otherName دریافت کنم ؟',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('خیر'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text('بله'),
-                ),
-              ],
+          builder: (ctx) => AlertDialog(
+            title: const Text('دریافت تنظیمات'),
+            content: const Text(
+              'تنظیمات ذخیره‌شده پیدا شد. کدام منبع را دریافت می‌کنی؟',
             ),
+            actions: [
+              if (hasServer)
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, 'server'),
+                  child: const Text('دریافت از سرور'),
+                ),
+              if (hasOther)
+                OutlinedButton(
+                  onPressed: () => Navigator.pop(ctx, 'other'),
+                  child: Text('دریافت از ${siblingAnime.name}'),
+                ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, 'cancel'),
+                child: const Text('لغو'),
+              ),
+            ],
           ),
         );
-        if (accepted == true) {
-          final ok = await _restorePreferences(res['settings']);
-          if (ok) {
-            await _touchLocal('preferences');
-            unawaited(pushPreferencesThrottled());
-            try {
-              await AccessibilityService.instance.reloadFromStore();
-            } catch (_) {}
-          }
-        }
       }
-      await prefs.setBool(promptKey, true);
-    } catch (_) {}
+      if (generation != _generation || choice != _loginChoice) return;
+      final payload = selected == 'server'
+          ? sources['server_settings']
+          : selected == 'other'
+          ? sources['other_settings']
+          : null;
+      if (payload is Map) await _restorePreferences(payload);
+      // A cancelled import keeps local preferences until the next remote edit.
+      final cursor = (sources['server_updated_at'] as num?)?.toInt() ?? 0;
+      await _setLocalTs('preferences', cursor);
+      await _writeBase('preferences', sources['server_settings']);
+      _settingsChoicePending = false;
+      if (selected == 'server') {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('mbn_sync_dirty_preferences', false);
+      } else if (selected == 'other') {
+        await touchAndPush('preferences');
+      }
+      _changed({'preferences'});
+    } catch (_) {
+      // Retry on the next authenticated foreground entry; do not fabricate sources.
+    } finally {
+      _prompting = false;
+    }
   }
 
   /// Pulls preferences from server (current app, and if empty/unconfigured, other app)
@@ -650,31 +771,20 @@ class MbnSync {
     Map? targetPayload;
     bool isCrossPlatformFallback = false;
 
-    if (payload.containsKey(platformKey) &&
-        payload[platformKey] is Map &&
+    const platforms = ['windows', 'android', 'web', 'tv', 'other'];
+    if (payload[platformKey] is Map &&
         (payload[platformKey] as Map).isNotEmpty) {
       targetPayload = payload[platformKey] as Map;
-    } else if (payload.containsKey('windows') &&
-        payload['windows'] is Map &&
-        (payload['windows'] as Map).isNotEmpty) {
-      targetPayload = payload['windows'] as Map;
-      isCrossPlatformFallback = (platformKey != 'windows');
-    } else if (payload.containsKey('android') &&
-        payload['android'] is Map &&
-        (payload['android'] as Map).isNotEmpty) {
-      targetPayload = payload['android'] as Map;
-      isCrossPlatformFallback = (platformKey != 'android');
-    } else if (payload.containsKey('other') &&
-        payload['other'] is Map &&
-        (payload['other'] as Map).isNotEmpty) {
-      targetPayload = payload['other'] as Map;
-      isCrossPlatformFallback = (platformKey != 'other');
-    } else if (!payload.containsKey('windows') &&
-        !payload.containsKey('android') &&
-        !payload.containsKey('web') &&
-        !payload.containsKey('tv') &&
-        !payload.containsKey('other')) {
+    } else if (!platforms.any(payload.containsKey)) {
       targetPayload = payload;
+    } else {
+      for (final fallback in platforms) {
+        if (payload[fallback] is Map && (payload[fallback] as Map).isNotEmpty) {
+          targetPayload = payload[fallback] as Map;
+          isCrossPlatformFallback = true;
+          break;
+        }
+      }
     }
 
     if (targetPayload == null || targetPayload.isEmpty) return false;
@@ -695,7 +805,6 @@ class MbnSync {
           d = double.tryParse(value);
         }
         if (d != null) {
-          await prefs.remove(key);
           await prefs.setDouble(key, d);
         }
       } else if (_isIntPreferenceKey(key)) {
@@ -706,14 +815,11 @@ class MbnSync {
           i = int.tryParse(value);
         }
         if (i != null) {
-          await prefs.remove(key);
           await prefs.setInt(key, i);
         }
       } else if (value is bool) {
-        await prefs.remove(key);
         await prefs.setBool(key, value);
       } else if (value is String) {
-        await prefs.remove(key);
         await prefs.setString(key, value);
       }
     }
@@ -726,21 +832,16 @@ class MbnSync {
   }
 
   Future<void> _restorePlaylists(PlaylistStore lists, Object? payload) async {
-    final rows = payload is List ? payload : const [];
-    final current = await lists.playlists();
-    final seen = {for (final list in current) list.id};
-    for (final row in rows.whereType<Map>()) {
+    if (payload is! List) return;
+    final received = <MoviePlaylist>[];
+    final seen = <String>{};
+    for (final row in payload.whereType<Map>()) {
       final parsed = MoviePlaylist.fromJson(
         row.map((key, value) => MapEntry('$key', value)),
       );
-      if (parsed == null || !seen.add(parsed.id)) continue;
-      await lists.importPlaylist(parsed);
+      if (parsed != null && seen.add(parsed.id)) received.add(parsed);
     }
-    for (final list in current) {
-      if (!rows.any((row) => row is Map && '${row['id']}' == list.id)) {
-        await lists.delete(list.id);
-      }
-    }
+    await lists.replaceAll(received);
   }
 
   Future<void> _restoreProgress(Object? payload) async {

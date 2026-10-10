@@ -48,6 +48,24 @@ class _PlaylistsPageState extends State<PlaylistsPage> {
   final _store = PlaylistStore();
   late Future<List<MoviePlaylist>> _future = _store.playlists();
 
+  @override
+  void initState() {
+    super.initState();
+    MbnSync.instance.changes.addListener(_onSync);
+  }
+
+  @override
+  void dispose() {
+    MbnSync.instance.changes.removeListener(_onSync);
+    super.dispose();
+  }
+
+  void _onSync() {
+    if (mounted && MbnSync.instance.changedCategories.contains('playlists')) {
+      unawaited(_reload());
+    }
+  }
+
   Future<void> _reload() async {
     final next = _store.playlists();
     setState(() => _future = next);

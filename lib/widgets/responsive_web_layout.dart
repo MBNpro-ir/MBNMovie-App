@@ -66,6 +66,7 @@ Future<T?> showResponsivePlayerPanel<T>({
   bool showDragHandle = true,
   Color? backgroundColor,
   bool containsCloseButton = false,
+  bool desktopDialog = false,
   ThemeData? panelTheme,
   bool? compactLayout,
 }) {
@@ -76,7 +77,9 @@ Future<T?> showResponsivePlayerPanel<T>({
     child: Builder(builder: builder),
   );
   final phone = compactLayout ?? compactPlayerLayout(context);
-  if (kIsWeb && media.size.width >= 700 && media.size.height >= 480) {
+  if ((kIsWeb || desktopDialog && (isLargeScreenDevice || isAndroidTv)) &&
+      media.size.width >= 700 &&
+      media.size.height >= 480) {
     return showDialog<T>(
       context: context,
       builder: (context) => PlayerWebPanel(

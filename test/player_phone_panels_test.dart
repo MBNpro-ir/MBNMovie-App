@@ -20,7 +20,9 @@ void main() {
       late BuildContext context;
       await tester.pumpWidget(
         MaterialApp(
-          theme: ThemeData.dark(),
+          theme: ThemeData.dark().copyWith(
+            splashFactory: InkRipple.splashFactory,
+          ),
           home: Builder(
             builder: (c) {
               context = c;
@@ -111,7 +113,9 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       await tester.pumpWidget(
         MaterialApp(
-          theme: ThemeData.dark(),
+          theme: ThemeData.dark().copyWith(
+            splashFactory: InkRipple.splashFactory,
+          ),
           home: Scaffold(
             body: Center(
               child: ConstrainedBox(

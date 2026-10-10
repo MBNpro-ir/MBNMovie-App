@@ -199,7 +199,6 @@ class MbnAuth {
       'identifier': identifier.trim(),
       'password': password,
       'app': 'movie',
-      'shared_token': await CrossAppAuth.readSiblingToken(siblingId: 'MBNime'),
     });
     return loginWithHandoff(data, identifier: identifier);
   }

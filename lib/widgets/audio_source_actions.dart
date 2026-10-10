@@ -99,7 +99,7 @@ class _AudioSourceActionsState extends State<AudioSourceActions> {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+    padding: EdgeInsets.zero,
     child: Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -109,18 +109,26 @@ class _AudioSourceActionsState extends State<AudioSourceActions> {
         Row(
           children: [
             Expanded(
-              child: FilledButton.tonalIcon(
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(0, 44),
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                ),
                 onPressed: _busy ? null : () => _load(true),
-                icon: const Icon(Icons.audio_file_rounded),
-                label: const Text('فایل صدا'),
+                icon: const Icon(Icons.audio_file_rounded, size: 18),
+                label: const Text('فایل', maxLines: 1),
               ),
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: FilledButton.tonalIcon(
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(0, 44),
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                ),
                 onPressed: _busy ? null : () => _load(false),
-                icon: const Icon(Icons.link_rounded),
-                label: const Text('لینک صدا'),
+                icon: const Icon(Icons.link_rounded, size: 18),
+                label: const Text('لینک', maxLines: 1),
               ),
             ),
           ],

@@ -29,6 +29,7 @@ void main() {
       AudioTrack? selected;
       await tester.pumpWidget(
         MaterialApp(
+          theme: ThemeData.dark().copyWith(splashFactory: InkRipple.splashFactory),
           home: Scaffold(
             body: AudioSourceActions(
               pickFile: () async => XFile('C:/audio/dub.mp3'),
@@ -39,7 +40,7 @@ void main() {
           ),
         ),
       );
-      await tester.tap(find.text('فایل صدا'));
+      await tester.tap(find.text('فایل'));
       await tester.pumpAndSettle();
       expect(selected?.uri, isTrue);
       expect(selected?.id, 'C:/audio/dub.mp3');
@@ -52,6 +53,7 @@ void main() {
       AudioTrack? selected;
       await tester.pumpWidget(
         MaterialApp(
+          theme: ThemeData.dark().copyWith(splashFactory: InkRipple.splashFactory),
           home: Scaffold(
             body: AudioSourceActions(
               onSelected: (track) async {
@@ -61,7 +63,7 @@ void main() {
           ),
         ),
       );
-      await tester.tap(find.text('لینک صدا'));
+      await tester.tap(find.text('لینک'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'https:');
       await tester.tap(find.text('افزودن'));
@@ -85,6 +87,7 @@ void main() {
       var canceled = true;
       await tester.pumpWidget(
         MaterialApp(
+          theme: ThemeData.dark().copyWith(splashFactory: InkRipple.splashFactory),
           home: Scaffold(
             body: AudioSourceActions(
               pickFile: () async => canceled ? null : XFile('C:/audio/bad.mp3'),
@@ -93,11 +96,11 @@ void main() {
           ),
         ),
       );
-      await tester.tap(find.text('فایل صدا'));
+      await tester.tap(find.text('فایل'));
       await tester.pumpAndSettle();
       expect(find.textContaining('صدا اضافه نشد'), findsNothing);
       canceled = false;
-      await tester.tap(find.text('فایل صدا'));
+      await tester.tap(find.text('فایل'));
       await tester.pumpAndSettle();
       expect(find.textContaining('صدا اضافه نشد'), findsOneWidget);
       expect(tester.takeException(), isNull);

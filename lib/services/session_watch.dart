@@ -5,8 +5,11 @@ import 'package:http/http.dart' as http;
 
 /// A dedicated live connection; the regular account timer remains a fallback.
 class SessionWatch {
-  SessionWatch(this.onRevoked);
+  SessionWatch(this.onRevoked, {this.onSync, this.app = 'anime'});
   final Future<void> Function(String) onRevoked;
+  final Future<void> Function()? onSync;
+  final String app;
+  String? _syncRevision;
   http.Client? _client;
   Completer<void>? _abort;
   Timer? _retry;
@@ -18,6 +21,7 @@ class SessionWatch {
     if (_token == token && _base == base) return;
     _generation++;
     _failures = 0;
+    _syncRevision = null;
     if (_abort?.isCompleted == false) _abort!.complete();
     _client?.close();
     _retry?.cancel();
@@ -34,7 +38,9 @@ class SessionWatch {
     try {
       final request = http.AbortableRequest(
         'GET',
-        Uri.parse('$_base/api/auth/events'),
+        Uri.parse(
+          '$_base/api/auth/events',
+        ).replace(queryParameters: {'app': app}),
         abortTrigger: abort.future,
       )..headers['Authorization'] = 'Bearer $_token';
       final response = await client
@@ -59,6 +65,13 @@ class SessionWatch {
               event['message']?.toString() ?? 'نشست شما پایان یافت.',
             );
             return;
+          }
+          final revision = event['sync_revision'];
+          if (revision is String && revision != _syncRevision) {
+            _syncRevision = revision;
+            try {
+              await onSync?.call();
+            } catch (_) {}
           }
         }
       }

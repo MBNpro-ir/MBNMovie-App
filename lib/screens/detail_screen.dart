@@ -1,3 +1,5 @@
+import '../widgets/player_tracks_panel.dart';
+import '../widgets/player_track_card.dart';
 import '../services/accessibility_service.dart';
 import '../widgets/instant_player_tap.dart';
 import '../services/account_profile.dart';
@@ -37,7 +39,6 @@ import 'package:window_manager/window_manager.dart';
 import '../core/platform_ui.dart';
 import '../core/episode_catalog.dart';
 import '../core/player_preferences.dart';
-import '../widgets/audio_sync_control.dart';
 import '../core/subtitle_layout.dart';
 import '../core/theme.dart';
 import '../core/title_language.dart';
@@ -2495,6 +2496,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   @override
   void initState() {
     super.initState();
+    MbnSync.instance.changes.addListener(_remotePreferencesChanged);
     if (kIsWeb) {
       BrowserFeatures.setPlayerActive(true);
       WidgetsBinding.instance.addObserver(this);
@@ -3231,6 +3233,37 @@ class _PlayerScreenState extends State<PlayerScreen>
       }
     } else {
       await _player.setAudioTrack(track);
+    }
+  }
+
+  bool _remotePreferencesPending = false;
+  bool _applyingRemotePreferences = false;
+  void _remotePreferencesChanged() {
+    if (!mounted ||
+        _playerTornDown ||
+        !MbnSync.instance.changedCategories.contains('preferences'))
+      return;
+    _remotePreferencesPending = true;
+    if (!_subtitlePanelOpen) unawaited(_applyRemotePreferences());
+  }
+
+  Future<void> _applyRemotePreferences() async {
+    if (_applyingRemotePreferences || _subtitlePanelOpen) return;
+    _applyingRemotePreferences = true;
+    try {
+      while (_remotePreferencesPending &&
+          mounted &&
+          !_playerTornDown &&
+          !_subtitlePanelOpen) {
+        _remotePreferencesPending = false;
+        await _restoreSubtitlePrefs();
+        if (!mounted || _playerTornDown) return;
+        await _restorePlayerPrefs();
+      }
+    } catch (_) {
+      // A detached player or a lost connection must not crash the route.
+    } finally {
+      _applyingRemotePreferences = false;
     }
   }
 
@@ -4380,6 +4413,7 @@ class _PlayerScreenState extends State<PlayerScreen>
 
   @override
   void dispose() {
+    MbnSync.instance.changes.removeListener(_remotePreferencesChanged);
     if (kIsWeb) {
       WidgetsBinding.instance.removeObserver(this);
       unawaited(BrowserFeatures.fullscreen(false));
@@ -4687,195 +4721,119 @@ class _PlayerScreenState extends State<PlayerScreen>
 
   Future<void> _showTrackPicker() async {
     _hideTimer?.cancel();
-    await showResponsivePlayerPanel<void>(
-      context: context,
-      constraints: BoxConstraints(maxWidth: panelWidth(context, large: 820)),
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: MovieColors.surface,
-      showDragHandle: true,
-      builder: (sheetContext) {
-        final body = DefaultTabController(
-          length: 2,
-          child: SafeArea(
-            top: false,
-            child: SizedBox(
-              height: kIsWeb || compactPlayerLayout(context)
-                  ? webPanelHeight(
-                      sheetContext,
-                      desired:
-                          340 +
-                          (_tracks.audio.length > _tracks.subtitle.length
-                                  ? _tracks.audio.length
-                                  : _tracks.subtitle.length) *
-                              52.0,
-                    )
-                  : (MediaQuery.sizeOf(sheetContext).height * .76).clamp(
-                      0.0,
-                      560.0,
-                    ),
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.tune_rounded,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          'صدا و زیرنویس',
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: MovieColors.surfaceHigh,
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                      child: const TabBar(
-                        dividerColor: Colors.transparent,
-                        indicatorSize: TabBarIndicatorSize.tab,
-                        tabs: [
-                          Tab(
-                            icon: Icon(Icons.graphic_eq_rounded),
-                            text: 'صدا',
-                          ),
-                          Tab(
-                            icon: Icon(Icons.closed_caption_rounded),
-                            text: 'زیرنویس',
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Expanded(
-                    child: TabBarView(
-                      children: [
-                        ListView(
-                          children: [
-                            AudioSyncControl(
-                              initial: _audioDelay,
-                              onApply: _applyAudioDelay,
-                            ),
-                            _AudioTracks(
-                              onSelected: _selectAudioTrack,
-                              tracks: _tracks.audio,
-                              selected: _track.audio,
-                              nested: true,
-                            ),
-                            AudioSourceActions(
-                              onSelected: (track) async {
-                                if (kIsWeb) {
-                                  final uri = track.id.startsWith('http')
-                                      ? await WebGateway.externalAudio(track.id)
-                                      : track.id;
-                                  await BrowserFeatures.externalAudio(
-                                    uri,
-                                    delay: _audioDelay,
-                                  );
-                                } else {
-                                  await _player.setAudioTrack(track);
-                                }
-                                if (sheetContext.mounted) {
-                                  Navigator.pop(sheetContext);
-                                }
-                              },
-                            ),
-                          ],
-                        ),
-                        Column(
-                          children: [
-                            Expanded(
-                              child: _SubtitleTracks(
-                                tracks: _tracks.subtitle,
-                                selected: _track.subtitle,
-                                onSelected: (track) async {
-                                  if (kIsWeb) {
-                                    try {
-                                      await _selectWebSubtitle(track);
-                                      if (sheetContext.mounted) {
-                                        Navigator.pop(sheetContext);
-                                      }
-                                    } catch (_) {
-                                      if (mounted) {
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          const SnackBar(
-                                            content: Text(
-                                              'دریافت زیرنویس انجام نشد؛ دوباره تلاش کن.',
-                                            ),
-                                          ),
-                                        );
-                                      }
-                                    }
-                                    return;
-                                  }
-                                  await _player.setSubtitleTrack(track);
-                                  final native = _requiresNativeSubtitle(track);
-                                  await _setNativeSubtitleVisibility(native);
-                                  if (mounted && sheetContext.mounted) {
-                                    setState(
-                                      () => _nativeSubtitleRendering = native,
-                                    );
-                                    Navigator.pop(sheetContext);
-                                  }
-                                },
-                              ),
-                            ),
-                            if (kIsWeb && _webUnsupportedSubtitles.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: Text(
-                                  _webUnsupportedSubtitles.join('\n'),
-                                ),
-                              ),
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: FilledButton.tonalIcon(
-                                      onPressed: _loadSubtitleFile,
-                                      icon: const Icon(
-                                        Icons.folder_open_rounded,
-                                      ),
-                                      label: const Text('فایل زیرنویس'),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: FilledButton.tonalIcon(
-                                      onPressed: _loadSubtitleUrl,
-                                      icon: const Icon(Icons.link_rounded),
-                                      label: const Text('لینک زیرنویس'),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+    bool selecting = false;
+    Widget panel(BuildContext sheetContext) {
+      Future<void> choose(Future<void> Function() action) async {
+        if (selecting) return;
+        selecting = true;
+        try {
+          await action();
+          if (sheetContext.mounted) Navigator.pop(sheetContext);
+        } catch (_) {
+          if (sheetContext.mounted) {
+            ScaffoldMessenger.of(sheetContext).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'انتخاب انجام نشد؛ اتصال اینترنت را بررسی کن و دوباره تلاش کن.',
+                ),
               ),
+            );
+          }
+        } finally {
+          selecting = false;
+        }
+      }
+
+      return PlayerTracksPanel(
+        trackCount: _tracks.audio.length > _tracks.subtitle.length
+            ? _tracks.audio.length
+            : _tracks.subtitle.length,
+        audio: _AudioTracks(
+          tracks: _tracks.audio,
+          selected: _track.audio,
+          onSelected: (track) => choose(() => _selectAudioTrack(track)),
+        ),
+        subtitles: _SubtitleTracks(
+          tracks: _tracks.subtitle,
+          selected: _track.subtitle,
+          onSelected: (track) => choose(() async {
+            if (kIsWeb) {
+              await _selectWebSubtitle(track);
+            } else {
+              await _player.setSubtitleTrack(track);
+              final native = _requiresNativeSubtitle(track);
+              await _setNativeSubtitleVisibility(native);
+              if (mounted) setState(() => _nativeSubtitleRendering = native);
+            }
+          }),
+        ),
+        audioActions: AudioSourceActions(
+          onSelected: (track) => choose(() async {
+            if (kIsWeb) {
+              final uri = track.id.startsWith('http')
+                  ? await WebGateway.externalAudio(track.id)
+                  : track.id;
+              await BrowserFeatures.externalAudio(uri, delay: _audioDelay);
+            } else {
+              await _player.setAudioTrack(track);
+            }
+          }),
+        ),
+        subtitleActions: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (kIsWeb && _webUnsupportedSubtitles.isNotEmpty)
+              Text(
+                _webUnsupportedSubtitles.join('\n'),
+                style: const TextStyle(fontSize: 11, color: Colors.white60),
+              ),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _loadSubtitleFile,
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(0, 44),
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                    icon: const Icon(Icons.folder_open_rounded, size: 18),
+                    label: const Text('فایل', maxLines: 1),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _loadSubtitleUrl,
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(0, 44),
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                    icon: const Icon(Icons.link_rounded, size: 18),
+                    label: const Text('لینک', maxLines: 1),
+                  ),
+                ),
+              ],
             ),
-          ),
-        );
-        return body;
-      },
-    );
-    _showControls();
+          ],
+        ),
+      );
+    }
+
+    try {
+      await showResponsivePlayerPanel<void>(
+        context: context,
+        containsCloseButton: true,
+        desktopDialog: true,
+        constraints: const BoxConstraints(maxWidth: 780),
+        useSafeArea: true,
+        backgroundColor: MovieColors.surface,
+        showDragHandle: false,
+
+        builder: panel,
+      );
+    } finally {
+      if (mounted && !_playerTornDown) _showControls();
+    }
   }
 
   List<Widget> _playerToolControls({required bool compact}) {
@@ -5131,6 +5089,8 @@ class _PlayerScreenState extends State<PlayerScreen>
       _showControls();
     } finally {
       _subtitlePanelOpen = false;
+      if (_remotePreferencesPending && mounted)
+        unawaited(_applyRemotePreferences());
     }
   }
 
@@ -5145,8 +5105,12 @@ class _PlayerScreenState extends State<PlayerScreen>
           useSafeArea: true,
           backgroundColor: MovieColors.surface,
           showDragHandle: true,
-          builder: (context) =>
-              PlayerSpeedSheet(initial: _subtitle, initialRate: _rate),
+          builder: (context) => PlayerSpeedSheet(
+            initial: _subtitle,
+            initialRate: _rate,
+            initialAudioDelay: _audioDelay,
+            onAudioDelayChanged: _applyAudioDelay,
+          ),
         );
     if (!mounted || _playerTornDown) return;
     if (result != null) {
@@ -5898,12 +5862,10 @@ class _AudioTracks extends StatelessWidget {
     required this.onSelected,
     required this.tracks,
     required this.selected,
-    this.nested = false,
   });
   final Future<void> Function(AudioTrack) onSelected;
   final List<AudioTrack> tracks;
   final AudioTrack selected;
-  final bool nested;
   @override
   Widget build(BuildContext context) => tracks.isEmpty
       ? const _EmptyTrackState(
@@ -5911,40 +5873,21 @@ class _AudioTracks extends StatelessWidget {
           text: 'ترک صدایی در این فایل پیدا نشد',
         )
       : ListView(
-          shrinkWrap: nested,
-          physics: nested ? const NeverScrollableScrollPhysics() : null,
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          children: tracks
-              .map(
-                (track) => ListTile(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  selected: track == selected,
-                  selectedTileColor: Theme.of(
-                    context,
-                  ).colorScheme.primary.withValues(alpha: .12),
-                  leading: Icon(
-                    track == selected
-                        ? Icons.check_circle_rounded
-                        : Icons.graphic_eq_rounded,
-                    color: track == selected
-                        ? Theme.of(context).colorScheme.primary
-                        : Colors.white60,
-                  ),
-                  title: Text(
-                    _trackLabel(track.id, track.title, track.language),
-                  ),
-                  subtitle: track.codec == null
-                      ? null
-                      : Text('${track.codec} · ${track.channels ?? ''}'),
-                  onTap: () async {
-                    await onSelected(track);
-                    if (context.mounted) Navigator.pop(context);
-                  },
-                ),
-              )
-              .toList(),
+          padding: EdgeInsets.zero,
+          children: [
+            for (final track in tracks)
+              PlayerTrackCard(
+                title: _trackLabel(track.id, track.title, track.language),
+                detail: track.codec == null
+                    ? null
+                    : '${track.codec}${track.channels != null && !track.channels!.startsWith('unknown') ? ' · ${track.channels}' : ''}',
+                icon: track.id == 'no'
+                    ? Icons.volume_off_rounded
+                    : Icons.graphic_eq_rounded,
+                selected: track.id == selected.id,
+                onTap: () => onSelected(track),
+              ),
+          ],
         );
 }
 
@@ -5956,7 +5899,7 @@ class _SubtitleTracks extends StatelessWidget {
   });
   final List<SubtitleTrack> tracks;
   final SubtitleTrack selected;
-  final Future<void> Function(SubtitleTrack track) onSelected;
+  final Future<void> Function(SubtitleTrack) onSelected;
   @override
   Widget build(BuildContext context) => tracks.isEmpty
       ? const _EmptyTrackState(
@@ -5964,33 +5907,19 @@ class _SubtitleTracks extends StatelessWidget {
           text: 'زیرنویس داخلی در این فایل پیدا نشد',
         )
       : ListView(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          children: tracks
-              .map(
-                (track) => ListTile(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  selected: track == selected,
-                  selectedTileColor: MovieColors.orange.withValues(alpha: .12),
-                  leading: Icon(
-                    track == selected
-                        ? Icons.check_circle_rounded
-                        : track.id == 'no'
-                        ? Icons.subtitles_off_rounded
-                        : Icons.closed_caption_rounded,
-                    color: track == selected
-                        ? MovieColors.orange
-                        : Colors.white60,
-                  ),
-                  title: Text(
-                    _trackLabel(track.id, track.title, track.language),
-                  ),
-                  subtitle: track.codec == null ? null : Text(track.codec!),
-                  onTap: () => onSelected(track),
-                ),
-              )
-              .toList(),
+          padding: EdgeInsets.zero,
+          children: [
+            for (final track in tracks)
+              PlayerTrackCard(
+                title: _trackLabel(track.id, track.title, track.language),
+                detail: track.codec,
+                icon: track.id == 'no'
+                    ? Icons.subtitles_off_rounded
+                    : Icons.closed_caption_rounded,
+                selected: track.id == selected.id,
+                onTap: () => onSelected(track),
+              ),
+          ],
         );
 }
 

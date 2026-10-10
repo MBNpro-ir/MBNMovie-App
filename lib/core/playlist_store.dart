@@ -86,6 +86,8 @@ class PlaylistStore {
     return playlist;
   }
 
+  Future<void> replaceAll(List<MoviePlaylist> lists) => _write(lists);
+
   Future<void> rename(String id, String name) async {
     final trimmed = name.trim();
     if (trimmed.isEmpty) return;
@@ -129,9 +131,7 @@ class PlaylistStore {
     final index = lists.indexWhere((list) => list.id == listId);
     if (index < 0) return false;
     final current = lists[index];
-    final next = current.items
-        .where((item) => item.id != contentId)
-        .toList();
+    final next = current.items.where((item) => item.id != contentId).toList();
     if (next.length == current.items.length) return false;
     lists[index] = current.copyWith(items: next);
     await _write(lists);

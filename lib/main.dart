@@ -1,4 +1,3 @@
-import 'services/browser_features.dart';
 import 'services/device_performance.dart';
 import 'services/android_network_trust.dart';
 import 'package:flutter/foundation.dart';
@@ -22,9 +21,8 @@ SemanticsHandle? _webSemantics;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Safari enables semantics on demand for assistive technology. Forcing a
-  // second DOM hit-test tree over its video surfaces delays ordinary touches.
-  if (kIsWeb && !BrowserFeatures.isAppleMobile) {
+  // Enable the accessible DOM from the first frame on every browser.
+  if (kIsWeb) {
     _webSemantics ??= SemanticsBinding.instance.ensureSemantics();
   }
   MediaKit.ensureInitialized();

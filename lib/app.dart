@@ -47,7 +47,11 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
   Timer? _syncTimer;
   bool _checkingAccount = false;
   bool _terminating = false;
-  late final SessionWatch _sessionWatch = SessionWatch(_forceLogout);
+  late final SessionWatch _sessionWatch = SessionWatch(
+    _forceLogout,
+    app: 'movie',
+    onSync: () => MbnSync.instance.syncAll(),
+  );
 
   @override
   void initState() {
@@ -59,7 +63,7 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
       unawaited(_checkAccount());
     });
     _syncTimer = Timer.periodic(
-      const Duration(minutes: 1),
+      const Duration(seconds: 60),
       (_) => unawaited(MbnSync.instance.syncAll()),
     );
     _restoreSession();
@@ -194,14 +198,7 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
         WidgetsBinding.instance.addPostFrameCallback(
           (_) => _showLogoutDialog(message),
         );
-      } else if (_loggedIn) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          final ctx = appNavigatorKey.currentContext;
-          if (ctx != null && ctx.mounted) {
-            unawaited(MbnSync.instance.checkOtherAppSettingsPrompt(ctx));
-          }
-        });
-      }
+      } else if (_loggedIn) {}
     }
   }
 
@@ -240,8 +237,7 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
       if (result == null) return false;
       await _auth.loginWithHandoff(result, identifier: identifier);
       return true;
-    } finally {
-    }
+    } finally {}
   }
 
   Future<void> _beginHandoff() async {
@@ -273,6 +269,7 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
       if (_auth.profile != null && _auth.profile!.id > 0) {
         await MbnSync.instance.bindAccount(_auth.profile!.id);
       }
+      MbnSync.instance.beginSettingsChoice();
       await MbnSync.instance.syncAll();
       if (mounted) {
         setState(() => _loggedIn = true);
@@ -410,6 +407,7 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
                       if (_auth.profile != null && _auth.profile!.id > 0) {
                         await MbnSync.instance.bindAccount(_auth.profile!.id);
                       }
+                      MbnSync.instance.beginSettingsChoice();
                       await MbnSync.instance.syncAll();
                       if (mounted) setState(() => _loggedIn = true);
                     },
@@ -430,6 +428,7 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
                       if (_auth.profile != null && _auth.profile!.id > 0) {
                         await MbnSync.instance.bindAccount(_auth.profile!.id);
                       }
+                      MbnSync.instance.beginSettingsChoice();
                       await MbnSync.instance.syncAll();
                       _loggedIn = true;
                       _refresh();

@@ -4,6 +4,7 @@ import '../core/platform_ui.dart';
 import '../core/player_preferences.dart';
 import '../core/theme.dart';
 import 'responsive_web_layout.dart';
+import 'audio_sync_control.dart';
 
 bool _compact(BuildContext context) =>
     !isAndroidTv &&
@@ -22,9 +23,13 @@ class PlayerSpeedSheet extends StatefulWidget {
     super.key,
     required this.initial,
     required this.initialRate,
+    this.initialAudioDelay = 0,
+    this.onAudioDelayChanged,
   });
   final SubtitlePreferences initial;
   final double initialRate;
+  final double initialAudioDelay;
+  final Future<void> Function(double)? onAudioDelayChanged;
   @override
   State<PlayerSpeedSheet> createState() => _PlayerSpeedSheetState();
 }
@@ -32,6 +37,34 @@ class PlayerSpeedSheet extends StatefulWidget {
 class _PlayerSpeedSheetState extends State<PlayerSpeedSheet> {
   late SubtitlePreferences value = widget.initial;
   late double rate = widget.initialRate;
+  late double audioDelay = widget.initialAudioDelay;
+  bool audioBusy = false;
+  int audioReset = 0;
+
+  Future<void> _reset() async {
+    if (audioBusy) return;
+    setState(() => audioBusy = true);
+    try {
+      await widget.onAudioDelayChanged?.call(0);
+      if (!mounted) return;
+      setState(() {
+        rate = 1;
+        audioDelay = 0;
+        audioReset++;
+        value = value.copyWith(delay: 0, timingScale: 1);
+      });
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('بازنشانی هماهنگی انجام نشد؛ دوباره تلاش کن.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => audioBusy = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -121,6 +154,22 @@ class _PlayerSpeedSheetState extends State<PlayerSpeedSheet> {
                           ],
                         ),
                       ),
+                      if (widget.onAudioDelayChanged != null) ...[
+                        const SizedBox(height: 8),
+                        AudioSyncControl(
+                          key: ValueKey(audioReset),
+                          initial: audioDelay,
+                          onApply: (value) async {
+                            setState(() => audioBusy = true);
+                            try {
+                              await widget.onAudioDelayChanged!(value);
+                              audioDelay = value;
+                            } finally {
+                              if (mounted) setState(() => audioBusy = false);
+                            }
+                          },
+                        ),
+                      ],
                       ExpansionTile(
                         key: const Key('subtitle-timing-expansion'),
                         initiallyExpanded: !compact,
@@ -181,10 +230,7 @@ class _PlayerSpeedSheetState extends State<PlayerSpeedSheet> {
                 children: [
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: () => setState(() {
-                        rate = 1;
-                        value = value.copyWith(delay: 0, timingScale: 1);
-                      }),
+                      onPressed: audioBusy ? null : _reset,
                       child: const Text('بازنشانی'),
                     ),
                   ),
