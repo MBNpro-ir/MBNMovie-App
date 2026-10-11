@@ -1,3 +1,4 @@
+import '../widgets/player_control_shade.dart';
 import '../widgets/player_tracks_panel.dart';
 import '../widgets/player_track_card.dart';
 import '../services/accessibility_service.dart';
@@ -5277,19 +5278,8 @@ class _PlayerScreenState extends State<PlayerScreen>
                       duration: const Duration(milliseconds: 240),
                       child: IgnorePointer(
                         ignoring: !_controlsVisible || _touchLocked || _isInPip,
-                        child: DecoratedBox(
-                          decoration: const BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                Color(0xCC000000),
-                                Colors.transparent,
-                                Color(0xD9000000),
-                              ],
-                              stops: [0, .46, 1],
-                            ),
-                          ),
+                        child: PlayerControlShade(
+                          minimum: _playerSafeArea,
                           child: SafeArea(
                             minimum: _playerSafeArea,
                             child: Stack(

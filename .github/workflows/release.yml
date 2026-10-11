@@ -8,7 +8,7 @@ on:
       release_tag:
         description: Stable release tag matching pubspec.yaml and Persian changelog
         required: true
-        default: v1.0.69
+        default: v1.0.70
         type: string
 
 permissions:
@@ -132,7 +132,7 @@ jobs:
       - name: Test Windows encrypted storage
         run: |
           flutter pub get
-          flutter test packages/flutter_secure_storage_windows/test/unit_test.dart
+          flutter test packages/flutter_secure_storage_windows/test/unit_test.dart test/windows_preferences_test.dart
 
       - name: Build Windows release
         env:
