@@ -26,6 +26,13 @@ Control shading uses two bounded gradients with safe-area insets. Pixel tests
 cover 320x180, 844x390, 390x844, and 1920x1080: top/bottom remain shaded and the
 middle is clear. Pointer hit testing remains functional.
 
+A second controlled run added a phase without synthetic write bursts.
+MBNMovie timer gaps: 17.6 ms without stress, 13.8 ms with 2 MiB persistence;
+MBNime: 13.1 ms without stress, 17.7 ms with 2 MiB persistence. Timer callback
+spacing is not video pause duration. Assertions confirmed zero decoder drops
+and no increase in output-frame drops throughout all three playback phases.
+The 8 ms diagnostic timer is subject to normal Windows scheduling.
+
 These measurements identify and remove a periodic UI stall. They do not prove
 all network-, codec-, GPU-, or device-specific playback stalls are eliminated,
 and are not battery measurements or physical iPhone/Android/TV validation.

@@ -69,11 +69,15 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 100));
       }
       expect(player.state.position, greaterThan(const Duration(seconds: 1)));
+      final native = player.platform as NativePlayer;
+      final dropsAtStart = await native.getProperty('frame-drop-count');
       final errors = <String>[];
       final subscription = player.stream.error.listen(errors.add);
       final results = <Map<String, Object?>>[];
       try {
-        for (final bytes in [32768, 2 * 1024 * 1024]) {
+        // The first phase has no synthetic writes: distinguish ordinary
+        // Windows timer scheduling from a playback/persistence stall.
+        for (final bytes in [0, 32768, 2 * 1024 * 1024]) {
           await prefs.setString('qa_history', 'x' * bytes);
           final frames = <FrameTiming>[];
           void timings(List<FrameTiming> values) => frames.addAll(values);
@@ -91,16 +95,19 @@ void main() {
           for (var round = 0; round < 4; round++) {
             await Future<void>.delayed(const Duration(seconds: 2));
             final watch = Stopwatch()..start();
-            await Future.wait([
-              for (var i = 0; i < 6; i++) prefs.setInt('qa_progress_$i', round),
-            ]);
+            if (bytes > 0) {
+              await Future.wait([
+                for (var i = 0; i < 6; i++)
+                  prefs.setInt('qa_progress_$i', round),
+              ]);
+            }
             bursts.add(watch.elapsedMicroseconds / 1000);
             await tester.pump();
           }
           heartbeat.cancel();
           binding.removeTimingsCallback(timings);
-          final native = player.platform as NativePlayer;
           results.add({
+            'syntheticWrites': bytes > 0,
             'preferenceBytes': bytes,
             'maxEventLoopGapMs': maxGap / 1000,
             'writeBurstMs': bursts,
@@ -125,11 +132,19 @@ void main() {
                     ).readAsString(),
                   )
                   as Map;
-          for (var i = 0; i < 6; i++) {
-            expect(data['flutter.qa_progress_$i'], 3);
+          if (bytes > 0) {
+            for (var i = 0; i < 6; i++) {
+              expect(data['flutter.qa_progress_$i'], 3);
+            }
           }
         }
         debugPrint('MBN_WINDOWS_PERFORMANCE ${jsonEncode(results)}');
+        expect(await native.getProperty('decoder-frame-drop-count'), '0');
+        expect(
+          await native.getProperty('frame-drop-count'),
+          dropsAtStart,
+          reason: 'No output frames may be dropped during measured playback',
+        );
         expect(errors, isEmpty);
         expect(player.state.position, greaterThan(const Duration(seconds: 15)));
         expect(tester.takeException(), isNull);
