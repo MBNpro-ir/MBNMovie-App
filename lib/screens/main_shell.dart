@@ -352,7 +352,8 @@ class _MainShellState extends State<MainShell> {
           child: Column(
             children: [
               _TopBar(
-                showPhoneWarning: widget.auth.profile?.delfanVerified != true,
+                // Temporarily hide phone verification from the main UI.
+                showPhoneWarning: false,
                 onPhoneWarning: _openDelfanLink,
                 search: _openSearch,
                 actors: _openCastSearch,
