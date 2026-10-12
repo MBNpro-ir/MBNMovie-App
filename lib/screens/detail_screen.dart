@@ -1,3 +1,4 @@
+import '../widgets/player_subtitle_text.dart';
 import '../widgets/player_control_shade.dart';
 import '../widgets/player_tracks_panel.dart';
 import '../widgets/player_track_card.dart';
@@ -6277,11 +6278,9 @@ class _AnimeSubtitles extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final text = [
-      for (final line in lines)
-        if (line.trim().isNotEmpty) normalizePersianSubtitle(line.trim()),
-    ].join('\n');
-    if (text.isEmpty) return const SizedBox.shrink();
+    if (lines.every((line) => line.trim().isEmpty)) {
+      return const SizedBox.shrink();
+    }
     return MediaQuery(
       data: MediaQuery.of(context).copyWith(textScaler: TextScaler.noScaling),
       child: SizedBox.expand(
@@ -6319,14 +6318,12 @@ class _AnimeSubtitles extends StatelessWidget {
                           layout.cornerRadius,
                         ),
                       ),
-                      child: Text(
-                        text,
+                      child: PlayerSubtitleText(
+                        lines: lines,
                         maxLines: isPictureInPicture ? 3 : null,
                         overflow: isPictureInPicture
                             ? TextOverflow.ellipsis
                             : null,
-                        textScaler: TextScaler.noScaling,
-                        textAlign: TextAlign.center,
                         style: TextStyle(
                           fontFamily: prefs.fontFamily,
                           fontSize: layout.fontSize,

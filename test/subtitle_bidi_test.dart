@@ -1,0 +1,103 @@
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:mbnmovie/core/subtitle_bidi.dart';
+import 'package:mbnmovie/core/web_subtitles.dart';
+import 'package:mbnmovie/widgets/player_subtitle_text.dart';
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(() async {
+    final loader = FontLoader('Vazirmatn');
+    loader.addFont(rootBundle.load('assets/fonts/Vazirmatn-Regular.ttf'));
+    await loader.load();
+  });
+
+  test(
+    'whole English phrases retain word order and normalization is stable',
+    () {
+      const source = 'سریال House of the Dragon و MRI/CT شماره 12.5 است.';
+      final normalized = normalizePersianSubtitle(source);
+      expect(normalized, contains('\u2066House of the Dragon\u2069'));
+      expect(normalized, contains('\u2066MRI/CT\u2069'));
+      expect(normalizePersianSubtitle(normalized), normalized);
+      expect(normalizePersianSubtitle('می\u200Cروم'), 'می\u200Cروم');
+      expect(
+        normalizePersianSubtitle('\u202Dبیمار MRI دارد\u202C'),
+        normalizePersianSubtitle('بیمار MRI دارد'),
+      );
+    },
+  );
+
+  test('web SRT, VTT and plain ASS share the native bidi policy', () {
+    const source = '- بیمار MRI و House of the Dragon را دید.';
+    for (final document in [
+      '1\n00:00:01,000 --> 00:00:03,000\n$source',
+      'WEBVTT\n\n00:00:01.000 --> 00:00:03.000\n$source',
+      'Dialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,$source',
+    ]) {
+      final parsed = WebSubtitleDocument.parse(document);
+      expect(parsed.at(const Duration(seconds: 2)), [
+        normalizePersianSubtitle(source),
+      ]);
+      expect(parsed.vtt(), contains(subtitleDisplayText([source])));
+    }
+  });
+
+  for (final surroundingDirection in TextDirection.values) {
+    testWidgets(
+      'mixed glyph order ignores $surroundingDirection player layout',
+      (tester) async {
+        const lines = [
+          '- سلام',
+          '- بیمار (MRI) دارد.',
+          'سریال House of the Dragon خوب است',
+          'Hello world!',
+        ];
+        await tester.pumpWidget(
+          Directionality(
+            textDirection: surroundingDirection,
+            child: const Center(
+              child: SizedBox(
+                width: 760,
+                child: PlayerSubtitleText(
+                  lines: lines,
+                  style: TextStyle(fontFamily: 'Vazirmatn', fontSize: 24),
+                ),
+              ),
+            ),
+          ),
+        );
+        final paragraph = tester.renderObject<RenderParagraph>(
+          find.byType(RichText),
+        );
+        final text = paragraph.text.toPlainText();
+        double x(String word, [int offset = 0]) {
+          final start = text.indexOf(word, offset);
+          expect(start, greaterThanOrEqualTo(0));
+          final boxes = paragraph.getBoxesForSelection(
+            TextSelection(baseOffset: start, extentOffset: start + word.length),
+          );
+          expect(boxes, isNotEmpty);
+          return boxes.first.toRect().center.dx;
+        }
+
+        expect(x('-'), greaterThan(x('سلام')));
+        expect(x('بیمار'), greaterThan(x('MRI')));
+        expect(x('MRI'), greaterThan(x('دارد')));
+        expect(x('M'), lessThan(x('R')));
+        expect(x('R'), lessThan(x('I')));
+        // RTL brackets are mirrored: logical opening is on the right.
+        expect(x('('), greaterThan(x('MRI')));
+        expect(x(')'), lessThan(x('MRI')));
+        expect(x('سریال'), greaterThan(x('House')));
+        expect(x('House'), lessThan(x('Dragon')));
+        expect(x('Dragon'), greaterThan(x('خوب')));
+        expect(x('Hello'), lessThan(x('world')));
+        expect(x('!'), greaterThan(x('world')));
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+}

@@ -2,33 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
 
-/// Normalizes Arabic-script variants that Persian subtitle files often use.
-///
-/// SRT files frequently contain ARABIC LETTER YEH (U+064A, rendered WITH two
-/// dots below) and ARABIC LETTER KAF (U+0643) instead of the Persian
-/// FARSI YEH (U+06CC, no dots) and KEHEH (U+06A9). Each pair is the same
-/// abstract letter with a different glyph, so the replacement is
-/// semantically neutral and cannot alter any other word.
-String normalizePersianSubtitle(String input) => _stabilizeBidi(
-  input.replaceAll('ي', 'ی').replaceAll('ك', 'ک'),
-);
-
-/// Keep Latin/number runs together when a native subtitle is mostly RTL.
-/// This prevents terms such as `MRI` from being reordered by Flutter's bidi
-/// algorithm while leaving the authored ASS renderer untouched.
-String _stabilizeBidi(String value) {
-  if (!RegExp(r'[\u0600-\u06FF]').hasMatch(value)) return value;
-  final isolate = RegExp(r'[A-Za-z0-9][A-Za-z0-9+./:_-]*');
-  return value.replaceAllMapped(isolate, (match) {
-    final start = match.start;
-    final end = match.end;
-    if ((start > 0 && value.codeUnitAt(start - 1) == 0x2066) ||
-        (end < value.length && value.codeUnitAt(end) == 0x2069)) {
-      return match.group(0)!;
-    }
-    return '\u2066${match.group(0)!}\u2069';
-  });
-}
+export 'subtitle_bidi.dart';
 
 /// Responsive measurements for the subtitle overlay in Android PiP.
 ///

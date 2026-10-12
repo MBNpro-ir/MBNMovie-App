@@ -1,3 +1,5 @@
+import 'subtitle_bidi.dart';
+
 class WebSubtitleCue {
   const WebSubtitleCue(this.start, this.end, this.text);
   final double start, end;
@@ -39,35 +41,17 @@ class WebSubtitleDocument {
       offset = tag.end;
     }
     if (!drawing) plain.write(text.substring(offset));
-    return _stabilizeBidi(
+    return normalizePersianSubtitle(
       plain
-        .toString()
-        .replaceAll(RegExp(r'\{[^}]*\}|<[^>]*>'), '')
-        .replaceAll(r'\N', '\n')
-        .replaceAll(r'\n', '\n')
-        .replaceAll('&amp;', '&')
-        .replaceAll('&lt;', '<')
-        .replaceAll('&gt;', '>')
-        .trim(),
+          .toString()
+          .replaceAll(RegExp(r'\{[^}]*\}|<[^>]*>'), '')
+          .replaceAll(r'\N', '\n')
+          .replaceAll(r'\n', '\n')
+          .replaceAll('&amp;', '&')
+          .replaceAll('&lt;', '<')
+          .replaceAll('&gt;', '>')
+          .trim(),
     );
-  }
-
-  /// Keep Latin/number runs together inside an otherwise RTL subtitle.
-  /// Flutter's plain text overlay otherwise lets the Unicode bidi algorithm
-  /// move tokens such as `MRI` around adjacent Persian punctuation. Isolates
-  /// are invisible and only affect the simple renderer; original ASS keeps
-  /// its authored layout.
-  static String _stabilizeBidi(String value) {
-    final isolate = RegExp(r'[A-Za-z0-9][A-Za-z0-9+./:_-]*');
-    return value.replaceAllMapped(isolate, (match) {
-      final start = match.start;
-      final end = match.end;
-      if ((start > 0 && value.codeUnitAt(start - 1) == 0x2066) ||
-          (end < value.length && value.codeUnitAt(end) == 0x2069)) {
-        return match.group(0)!;
-      }
-      return '\u2066${match.group(0)!}\u2069';
-    });
   }
 
   factory WebSubtitleDocument.parse(String source) {
@@ -137,6 +121,6 @@ class WebSubtitleDocument {
       return '${(ms ~/ 3600000).toString().padLeft(2, '0')}:${(ms ~/ 60000 % 60).toString().padLeft(2, '0')}:${(ms ~/ 1000 % 60).toString().padLeft(2, '0')}.${(ms % 1000).toString().padLeft(3, '0')}';
     }
 
-    return 'WEBVTT\n\n${cues.map((c) => '${time(c.start * scale + delay)} --> ${time(c.end * scale + delay)}\n${c.text}').join('\n\n')}\n';
+    return 'WEBVTT\n\n${cues.map((c) => '${time(c.start * scale + delay)} --> ${time(c.end * scale + delay)}\n${subtitleDisplayText([c.text])}').join('\n\n')}\n';
   }
 }
