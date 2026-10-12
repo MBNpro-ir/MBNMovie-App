@@ -5,6 +5,63 @@ import 'package:mbnmovie/core/player_preferences.dart';
 import 'package:mbnmovie/core/platform_ui.dart';
 
 void main() {
+  for (final reset in [
+    ('سرعت ویدیو', 1.0, 3.2, 1.2),
+    ('جابه‌جایی زمان زیرنویس', 1.75, 0.0, 1.2),
+    ('سرعت زمان‌بندی زیرنویس', 1.75, 3.2, 1.0),
+  ]) {
+    testWidgets('reset ${reset.$1} preserves the other player adjustments', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1280, 1080);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      (SubtitlePreferences, double)? result;
+      final audioChanges = <double>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                child: const Text('open'),
+                onPressed: () async {
+                  result =
+                      await showModalBottomSheet<(SubtitlePreferences, double)>(
+                        context: context,
+                        isScrollControlled: true,
+                        builder: (_) => PlayerSpeedSheet(
+                          initial: const SubtitlePreferences(
+                            delay: 3.2,
+                            timingScale: 1.2,
+                          ),
+                          initialRate: 1.75,
+                          initialAudioDelay: .25,
+                          onAudioDelayChanged: (value) async =>
+                              audioChanges.add(value),
+                        ),
+                      );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byTooltip('بازنشانی ${reset.$1}'));
+      await tester.tap(find.byTooltip('بازنشانی ${reset.$1}'));
+      await tester.pumpAndSettle();
+      expect(audioChanges, isEmpty);
+      expect(find.text('250 ms'), findsOneWidget);
+      await tester.tap(find.text('اعمال سرعت'));
+      await tester.pumpAndSettle();
+      expect(result?.$2, reset.$2);
+      expect(result?.$1.delay, reset.$3);
+      expect(result?.$1.timingScale, reset.$4);
+      expect(tester.takeException(), isNull);
+    });
+  }
   for (final size in [
     const Size(320, 568),
     const Size(390, 844),
@@ -64,6 +121,7 @@ void main() {
         expect(find.text('سرعت زمان‌بندی زیرنویس'), findsNothing);
         await tester.tap(find.text('1.5×'));
         await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('زمان‌بندی زیرنویس'));
         await tester.tap(find.text('زمان‌بندی زیرنویس'));
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);

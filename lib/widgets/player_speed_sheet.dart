@@ -125,6 +125,7 @@ class _PlayerSpeedSheetState extends State<PlayerSpeedSheet> {
                         divisions: 70,
                         compact: compact,
                         onChanged: (v) => setState(() => rate = v),
+                        onReset: () => setState(() => rate = 1),
                         step: .05,
                       ),
                       Padding(
@@ -204,6 +205,9 @@ class _PlayerSpeedSheetState extends State<PlayerSpeedSheet> {
                             onChanged: (v) => setState(
                               () => value = value.copyWith(delay: v),
                             ),
+                            onReset: () => setState(
+                              () => value = value.copyWith(delay: 0),
+                            ),
                           ),
                           const SizedBox(height: 6),
                           _TimingCard(
@@ -217,6 +221,9 @@ class _PlayerSpeedSheetState extends State<PlayerSpeedSheet> {
                             step: .01,
                             onChanged: (v) => setState(
                               () => value = value.copyWith(timingScale: v),
+                            ),
+                            onReset: () => setState(
+                              () => value = value.copyWith(timingScale: 1),
                             ),
                           ),
                         ],
@@ -263,12 +270,14 @@ class _TimingCard extends StatelessWidget {
     required this.compact,
     required this.step,
     required this.onChanged,
+    required this.onReset,
   });
   final String title, label;
   final double value, min, max, step;
   final int divisions;
   final bool compact;
   final ValueChanged<double> onChanged;
+  final VoidCallback onReset;
   @override
   Widget build(BuildContext context) => DecoratedBox(
     decoration: BoxDecoration(
@@ -299,6 +308,13 @@ class _TimingCard extends StatelessWidget {
                   color: Theme.of(context).colorScheme.primary,
                   fontWeight: FontWeight.w800,
                 ),
+              ),
+              IconButton(
+                tooltip: 'بازنشانی $title',
+                iconSize: 18,
+                visualDensity: VisualDensity.compact,
+                onPressed: onReset,
+                icon: const Icon(Icons.restart_alt_rounded),
               ),
             ],
           ),
