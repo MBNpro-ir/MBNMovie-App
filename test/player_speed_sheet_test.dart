@@ -49,6 +49,10 @@ void main() {
       );
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();
+      if (find.byTooltip('بازنشانی ${reset.$1}').evaluate().isEmpty) {
+        await tester.tap(find.text('زمان‌بندی زیرنویس'));
+        await tester.pumpAndSettle();
+      }
       await tester.ensureVisible(find.byTooltip('بازنشانی ${reset.$1}'));
       await tester.tap(find.byTooltip('بازنشانی ${reset.$1}'));
       await tester.pumpAndSettle();
