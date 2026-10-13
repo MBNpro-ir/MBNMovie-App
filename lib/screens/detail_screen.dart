@@ -1,3 +1,4 @@
+import '../core/player_transitions.dart';
 import '../widgets/player_subtitle_text.dart';
 import '../widgets/player_control_shade.dart';
 import '../widgets/player_tracks_panel.dart';
@@ -2452,6 +2453,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   // [_transitioning] this serializes open/quality/episode/next as one
   // transaction so two overlapping switches cannot interleave open→seek→play.
   int _mediaGeneration = 0;
+  int? _completedMediaGeneration;
   bool _transitioning = false;
   bool _playerTornDown = false;
 
@@ -2488,6 +2490,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   SubtitlePreferences get _subtitle => _subtitleAppearance.value;
   set _subtitle(SubtitlePreferences value) => _subtitleAppearance.value = value;
   bool _subtitlePanelOpen = false;
+  (int, double, double)? _appliedSubtitleTiming;
   (String?, double, double)? _appliedWebAss;
   String? _error;
   bool _webNeedsTap = false;
@@ -2763,24 +2766,12 @@ class _PlayerScreenState extends State<PlayerScreen>
     if (!_isCurrentMediaOp(generation)) return;
     if (resumeAt > Duration.zero) {
       await _waitUntilSeekable(generation: generation);
-      if (!_isCurrentMediaOp(generation)) return;
-      await _player.seek(_safeResumePosition(resumeAt));
-      if (!_isCurrentMediaOp(generation)) return;
     }
-    await _requestPlay();
-    if (!_isCurrentMediaOp(generation)) return;
-
-    if (resumeAt > Duration.zero) {
-      // Some Android decoders recreate the media clock on the first play.
-      // Verify once after startup and re-apply the requested position if it
-      // was reset, instead of silently starting the episode from zero.
-      await Future<void>.delayed(const Duration(milliseconds: 550));
-      if (!_isCurrentMediaOp(generation)) return;
-      final expected = _safeResumePosition(resumeAt);
-      if (_player.state.position < expected - const Duration(seconds: 4)) {
-        await _player.seek(expected);
-      }
-    }
+    await _restorePositionAndPlay(
+      resumeAt,
+      generation: generation,
+      playing: true,
+    );
   }
 
   /// Waits until this generation's media is actually loadable: duration (or
@@ -2841,13 +2832,19 @@ class _PlayerScreenState extends State<PlayerScreen>
     }
   }
 
-  Duration _safeResumePosition(Duration requested) {
-    final duration = _player.state.duration;
-    if (duration <= Duration.zero) return requested;
-    if (duration <= const Duration(seconds: 2)) return Duration.zero;
-    final latest = duration - const Duration(seconds: 2);
-    return requested > latest ? latest : requested;
-  }
+  Future<Duration> _restorePositionAndPlay(
+    Duration requested, {
+    required int generation,
+    required bool playing,
+  }) => restorePlaybackPosition(
+    requested: requested,
+    duration: () => _player.state.duration,
+    position: () => _player.state.position,
+    seek: _player.seek,
+    start: _requestPlay,
+    active: () => _isCurrentMediaOp(generation),
+    playing: playing,
+  );
 
   void _armSaveTimer() {
     _saveTimer?.cancel();
@@ -2938,7 +2935,7 @@ class _PlayerScreenState extends State<PlayerScreen>
       final visible = shouldOfferNextEpisode(
         value,
         _duration,
-        hasNext: _nextEpisode != null,
+        hasNext: _nextEpisode != null || _followingSeason != null,
       );
       if (visible != _nextEpisodeVisible && mounted) {
         setState(() => _nextEpisodeVisible = visible);
@@ -2946,7 +2943,16 @@ class _PlayerScreenState extends State<PlayerScreen>
     });
     watchQuiet(_player.stream.duration, (value) => _duration = value);
     watchQuiet(_player.stream.completed, (value) {
-      if (value && !_switchingQuality) unawaited(_completeCurrentEpisode());
+      if (value &&
+          isNaturalPlaybackEnd(
+            position: _position,
+            duration: _duration,
+            transitioning: _transitioning,
+            seeking: _isSeeking,
+            hasError: _error != null || _playbackErrorTimer != null,
+          )) {
+        unawaited(_completeCurrentEpisode());
+      }
     });
     _subscriptions.add(
       _player.stream.playing.listen((value) {
@@ -3181,7 +3187,6 @@ class _PlayerScreenState extends State<PlayerScreen>
 
   Future<void> _applyAudioDelay(double seconds) async {
     _audioDelay = seconds.clamp(-3.0, 3.0);
-    await PlaybackPreferenceStore.setAudioDelay(_audioDelay);
     if (!mounted || _playerTornDown) return;
     try {
       if (kIsWeb) {
@@ -3204,6 +3209,7 @@ class _PlayerScreenState extends State<PlayerScreen>
           _audioDelay.toStringAsFixed(3),
         );
       }
+      await PlaybackPreferenceStore.setAudioDelay(_audioDelay);
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -3384,7 +3390,9 @@ class _PlayerScreenState extends State<PlayerScreen>
   }
 
   Future<void> _applySubtitleTiming(SubtitlePreferences prefs) async {
-    if (!kIsWeb || prefs.originalAss) await _applyAssRendering();
+    final key = (_mediaGeneration, prefs.delay, prefs.timingScale);
+    if (prefs.originalAss) await _applyAssRendering();
+    if (_appliedSubtitleTiming == key) return;
     if (kIsWeb && _webSubtitle != null) {
       BrowserFeatures.subtitle(
         _webSubtitle!.vtt(delay: prefs.delay, scale: prefs.timingScale),
@@ -3403,6 +3411,7 @@ class _PlayerScreenState extends State<PlayerScreen>
         prefs.timingScale.toStringAsFixed(3),
       );
     }
+    _appliedSubtitleTiming = key;
   }
 
   /// Restores the last used speed + volume so every video starts with
@@ -3587,9 +3596,11 @@ class _PlayerScreenState extends State<PlayerScreen>
       );
       if (!_isCurrentMediaOp(generation)) return;
       await _waitUntilSeekable(generation: generation);
-      await _player.seek(_safeResumePosition(position));
-      if (!_isCurrentMediaOp(generation)) return;
-      if (wasPlaying) await _requestPlay();
+      await _restorePositionAndPlay(
+        position,
+        generation: generation,
+        playing: wasPlaying,
+      );
       if (!_isCurrentMediaOp(generation)) return;
       // Commit media identity and timeline together for the current op only.
       _episode = target.episode;
@@ -3621,8 +3632,11 @@ class _PlayerScreenState extends State<PlayerScreen>
           play: false,
           generation: generation,
         );
-        await _player.seek(_safeResumePosition(position));
-        if (wasPlaying) await _requestPlay();
+        await _restorePositionAndPlay(
+          position,
+          generation: generation,
+          playing: wasPlaying,
+        );
       } catch (_) {}
       if (!mounted) return;
       if (_isCurrentMediaOp(generation)) {
@@ -4050,10 +4064,12 @@ class _PlayerScreenState extends State<PlayerScreen>
       if (!_isCurrentMediaOp(generation)) return;
       if (startAt > Duration.zero) {
         await _waitUntilSeekable(generation: generation);
-        await _player.seek(_safeResumePosition(startAt));
-        if (!_isCurrentMediaOp(generation)) return;
       }
-      await _requestPlay();
+      await _restorePositionAndPlay(
+        startAt,
+        generation: generation,
+        playing: true,
+      );
       if (!mounted || !_isCurrentMediaOp(generation)) return;
       _episode = target.episode;
       final prefs = await SharedPreferences.getInstance();
@@ -4088,8 +4104,11 @@ class _PlayerScreenState extends State<PlayerScreen>
           generation: generation,
         );
         await _waitUntilSeekable(generation: generation);
-        await _player.seek(_safeResumePosition(previousPosition));
-        if (wasPlaying) await _requestPlay();
+        await _restorePositionAndPlay(
+          previousPosition,
+          generation: generation,
+          playing: wasPlaying,
+        );
       } catch (_) {}
       if (!mounted) return;
       if (_isCurrentMediaOp(generation)) {
@@ -4108,27 +4127,37 @@ class _PlayerScreenState extends State<PlayerScreen>
     }
   }
 
-  MovieEpisode? get _nextEpisode {
-    final currentGroup = _currentEpisodeGroup;
-    if (currentGroup != null) {
-      final allGroups = _episodeCatalog.seasons
-          .expand((s) => s.episodes)
-          .toList();
-      final idx = allGroups.indexWhere((g) => g.id == currentGroup.id);
-      if (idx >= 0 && idx + 1 < allGroups.length) {
-        final nextGroup = allGroups[idx + 1];
-        final preferredQuality = _currentVariant?.quality;
-        return nextGroup.variantFor(preferredQuality).episode;
-      }
-      return null;
+  MovieEpisode? get _nextEpisode => _episodeCatalog
+      .nextInSeason(_episode)
+      ?.variantFor(_currentVariant?.quality)
+      .episode;
+
+  EpisodeSeasonGroup? get _followingSeason =>
+      _episodeCatalog.followingSeason(_episode);
+
+  Future<void> _playNextEpisode() async {
+    if (_followingSeason != null && _nextEpisode == null) {
+      await _persistProgress(markWatched: true);
+      if (mounted) await _exitPlayer();
+      return;
     }
-    return nextEpisodeFor(widget.content, _episode);
+    await _finishCurrentAndPlayNext();
   }
 
-  Future<void> _playNextEpisode() => _finishCurrentAndPlayNext();
-
-  Future<void> _completeCurrentEpisode() =>
-      _finishCurrentAndPlayNext(completedNaturally: true);
+  Future<void> _completeCurrentEpisode() async {
+    if (_completedMediaGeneration == _mediaGeneration ||
+        !isNaturalPlaybackEnd(
+          position: _position,
+          duration: _duration,
+          transitioning: _transitioning,
+          seeking: _isSeeking,
+          hasError: _error != null || _playbackErrorTimer != null,
+        )) {
+      return;
+    }
+    _completedMediaGeneration = _mediaGeneration;
+    await _finishCurrentAndPlayNext(completedNaturally: true);
+  }
 
   Future<void> _finishCurrentAndPlayNext({
     bool completedNaturally = false,
@@ -4150,7 +4179,10 @@ class _PlayerScreenState extends State<PlayerScreen>
       );
       if (!mounted || !_isCurrentMediaOp(generation)) return;
       if (next == null) {
-        setState(() => _nextEpisodeVisible = false);
+        setState(() {
+          _nextEpisodeVisible = _followingSeason != null;
+          _controlsVisible = true;
+        });
         return;
       }
       setState(() {
@@ -5585,7 +5617,11 @@ class _PlayerScreenState extends State<PlayerScreen>
                           key: const Key('next-episode-overlay'),
                           onPressed: _playNextEpisode,
                           icon: const Icon(Icons.skip_next_rounded),
-                          label: Text('قسمت بعدی: ${_nextEpisode!.name}'),
+                          label: Text(
+                            _followingSeason != null && _nextEpisode == null
+                                ? 'خروج برای تماشا فصل بعدی'
+                                : 'قسمت بعدی: ${_nextEpisode?.name ?? ''}',
+                          ),
                         ),
                       ),
                     ),

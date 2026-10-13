@@ -323,6 +323,7 @@ abstract final class BrowserFeatures {
   static web.HTMLButtonElement? _audioTapButton;
   static Completer<void>? _audioTapPending;
   static web.HTMLAudioElement? _audio;
+  static String? _audioUrl;
   static web.HTMLVideoElement? _audioVideo;
   static JSFunction? _audioSync;
   static const _audioEvents = [
@@ -351,18 +352,26 @@ abstract final class BrowserFeatures {
     _audio?.pause();
     _audio?.remove();
     _audio = null;
+    _audioUrl = null;
     if (_video != null) _video!.muted = false;
   }
 
   static Future<void> externalAudio(String url, {double delay = 0}) async {
     _audioDelay = delay.clamp(-3.0, 3.0);
-    clearAudio();
     final video = _video;
     if (video == null) throw StateError('No video');
+    if (_audio != null && _audioVideo == video && _audioUrl == url) {
+      _audio!.currentTime = _audioTarget(video);
+      _audio!.playbackRate = video.playbackRate;
+      _audio!.volume = video.volume;
+      return;
+    }
+    clearAudio();
     final audio = web.HTMLAudioElement()
       ..src = url
       ..preload = 'auto';
     _audio = audio;
+    _audioUrl = url;
     web.document.body!.appendChild(audio);
     audio.currentTime = _audioTarget(video);
     audio.playbackRate = video.playbackRate;

@@ -129,6 +129,47 @@ class EpisodeCatalog {
     return null;
   }
 
+  EpisodeSeasonGroup? seasonFor(MovieEpisode episode) {
+    for (final season in seasons) {
+      if (season.episodes.any((group) => group.contains(episode))) {
+        return season;
+      }
+    }
+    return null;
+  }
+
+  EpisodeGroup? nextInSeason(MovieEpisode episode) {
+    final season = seasonFor(episode);
+    if (season == null || season.isTrailerSeason) return null;
+    final index = season.episodes.indexWhere(
+      (group) => group.contains(episode),
+    );
+    if (index < 0 || season.episodes[index].isTrailer) return null;
+    return season.episodes
+        .skip(index + 1)
+        .where((group) => !group.isTrailer)
+        .firstOrNull;
+  }
+
+  EpisodeSeasonGroup? followingSeason(MovieEpisode episode) {
+    final current = seasonFor(episode);
+    if (current == null ||
+        current.isTrailerSeason ||
+        groupFor(episode)?.isTrailer != false ||
+        nextInSeason(episode) != null) {
+      return null;
+    }
+    final index = seasons.indexOf(current);
+    return seasons
+        .skip(index + 1)
+        .where(
+          (season) =>
+              !season.isTrailerSeason &&
+              season.episodes.any((group) => !group.isTrailer),
+        )
+        .firstOrNull;
+  }
+
   /// Recover the real variant, including its raw id and quality metadata.
   /// Older last-watch records store a logical group id instead of a raw id.
   EpisodeVariant? resumeVariant({

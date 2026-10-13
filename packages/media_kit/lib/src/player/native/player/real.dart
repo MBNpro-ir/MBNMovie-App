@@ -1183,11 +1183,9 @@ class NativePlayer extends PlatformPlayer {
       await waitForVideoControllerInitializationIfAttached;
     }
 
-    final name = property.toNativeUtf8();
-    final data = value.toNativeUtf8();
-    mpv.mpv_set_property_string(ctx, name.cast(), data.cast());
-    calloc.free(name);
-    calloc.free(data);
+    // Queue property changes through media_kit's asynchronous path so subtitle
+    // timing and audio-delay updates do not block Flutter's UI isolate.
+    await _setPropertyString(property, value);
   }
 
   /// Retrieves the value of a property from the internal libmpv instance of this [Player].
