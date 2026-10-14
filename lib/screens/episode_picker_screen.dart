@@ -15,6 +15,7 @@ import '../core/watch_progress.dart';
 import '../core/player_preferences.dart';
 import '../models/movie_content.dart';
 import '../services/external_apps.dart';
+import '../services/mbn_sync.dart';
 import '../services/web_gateway.dart';
 import '../widgets/ambient_background.dart';
 import '../widgets/smart_cast_sheet.dart';
@@ -48,6 +49,7 @@ class EpisodePickerScreen extends StatefulWidget {
 class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
   final _progress = WatchProgressStore();
   final _saved = <String, SavedWatchProgress>{};
+  bool _loadingSaved = false;
   late final EpisodeCatalog _catalog;
   int _seasonIndex = 0;
   String _selectedQuality = unknownQualityLabel;
@@ -70,6 +72,10 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
   void initState() {
     super.initState();
     _catalog = EpisodeCatalog.from(widget.content);
+    // Progress can land after this screen opens (login sync still in flight):
+    // reload the badges whenever local progress or server sync changes it.
+    WatchProgressStore.changes.addListener(_onProgressChanged);
+    MbnSync.instance.changes.addListener(_onSyncChanged);
     if (_catalog.seasons.isEmpty) {
       // Guard the public empty-state contract: quality/season lookup below
       // indexes seasons[0] and would crash before build() shows its empty UI.
@@ -84,7 +90,7 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
     );
     _contentReady = !widget.deferInitialContent;
     if (_contentReady) {
-      unawaited(_loadSaved());
+      unawaited(_refreshFromServer());
       unawaited(_loadQualityPreference());
     } else {
       // Keep the container-transform frames light on phones. The episode grid
@@ -92,7 +98,7 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
       _initialContentTimer = Timer(const Duration(milliseconds: 310), () {
         if (!mounted) return;
         setState(() => _contentReady = true);
-        unawaited(_loadSaved());
+        unawaited(_refreshFromServer());
         unawaited(_loadQualityPreference());
       });
     }
@@ -100,11 +106,44 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
 
   @override
   void dispose() {
+    WatchProgressStore.changes.removeListener(_onProgressChanged);
+    MbnSync.instance.changes.removeListener(_onSyncChanged);
     _initialContentTimer?.cancel();
     super.dispose();
   }
 
+  void _onProgressChanged() {
+    if (!mounted) return;
+    unawaited(_loadSaved());
+  }
+
+  void _onSyncChanged() {
+    if (!mounted) return;
+    if (!MbnSync.instance.changedCategories.contains('progress')) return;
+    unawaited(_loadSaved());
+  }
+
+  /// Pulls the newest server progress first (debounced inside sync), so badges
+  /// opened right after login don't freeze on the pre-sync empty state.
+  Future<void> _refreshFromServer() async {
+    try {
+      await MbnSync.instance.syncProgressIfStale();
+    } catch (_) {}
+    if (!mounted) return;
+    await _loadSaved();
+  }
+
   Future<void> _loadSaved() async {
+    if (_loadingSaved) return;
+    _loadingSaved = true;
+    try {
+      await _loadSavedNow();
+    } finally {
+      _loadingSaved = false;
+    }
+  }
+
+  Future<void> _loadSavedNow() async {
     final entries = <String, SavedWatchProgress>{};
     for (final group in _catalog.episodes) {
       // Canonical group record is authoritative once present; legacy
