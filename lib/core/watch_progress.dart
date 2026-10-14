@@ -64,7 +64,7 @@ class WatchProgressStore {
   static String _timeKey(String contentId, String episodeId) =>
       'watch_time_${contentId}_$episodeId';
 
-  static Future<void> _pendingSave = Future<void>.value();
+  Future<void> _pendingSave = Future<void>.value();
 
   Future<void> save({
     required String contentId,
