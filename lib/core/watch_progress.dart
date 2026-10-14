@@ -64,12 +64,38 @@ class WatchProgressStore {
   static String _timeKey(String contentId, String episodeId) =>
       'watch_time_${contentId}_$episodeId';
 
+  static Future<void> _pendingSave = Future<void>.value();
+
   Future<void> save({
     required String contentId,
     required String episodeId,
     required Duration position,
     required Duration duration,
     bool markWatched = false,
+    LastWatch? lastWatch,
+  }) {
+    final next = _pendingSave.then(
+      (_) => _saveNow(
+        contentId: contentId,
+        episodeId: episodeId,
+        position: position,
+        duration: duration,
+        markWatched: markWatched,
+        lastWatch: lastWatch,
+      ),
+    );
+    // Failed disk writes must not poison subsequent checkpoints.
+    _pendingSave = next.catchError((Object _) {});
+    return next;
+  }
+
+  Future<void> _saveNow({
+    required String contentId,
+    required String episodeId,
+    required Duration position,
+    required Duration duration,
+    required bool markWatched,
+    required LastWatch? lastWatch,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final knownDuration = Duration(
@@ -101,6 +127,42 @@ class WatchProgressStore {
     if (markWatched || reachedEnd) {
       await prefs.remove(_statusKey(contentId, episodeId));
       await prefs.setBool(_watchedKey(contentId, episodeId), true);
+    }
+    // Write the global Continue card in the same serialized checkpoint, before
+    // scheduling its upload. Pause and ordinary ticks now identify this episode.
+    if (lastWatch != null &&
+        lastWatch.contentId == contentId &&
+        lastWatch.episodeId == episodeId) {
+      final slot = 'watch_last_v1';
+      final resumable =
+          !markWatched &&
+          !reachedEnd &&
+          position > const Duration(seconds: 15) &&
+          (effectiveDuration <= Duration.zero ||
+              position < effectiveDuration - const Duration(seconds: 30));
+      if (resumable) {
+        await prefs.setString(
+          slot,
+          jsonEncode({
+            ...lastWatch.toJson(),
+            'positionMs': position.inMilliseconds,
+            'durationMs': effectiveDuration.inMilliseconds,
+            'updatedAtMs': prefs.getInt(_timeKey(contentId, episodeId)),
+          }),
+        );
+      } else {
+        final raw = prefs.getString(slot);
+        if (raw != null) {
+          try {
+            final old = jsonDecode(raw) as Map;
+            if (old['contentId'] == contentId &&
+                old['episodeId'] == episodeId) {
+              await prefs.remove(slot);
+            }
+          } catch (_) {}
+        }
+      }
+      changes.value++;
     }
     unawaited(MbnSync.instance.pushProgressThrottled());
   }

@@ -2925,6 +2925,16 @@ class _PlayerScreenState extends State<PlayerScreen>
       position: position,
       duration: duration ?? _duration,
       markWatched: markWatched,
+      lastWatch: LastWatch(
+        contentId: widget.content.id,
+        title: TitleLanguage.title(widget.content),
+        episodeId: episodeId ?? _progressEpisodeId,
+        episodeName: _episode.name,
+        fileUrl: _episode.fileUrl,
+        positionMs: position.inMilliseconds,
+        durationMs: (duration ?? _duration).inMilliseconds,
+        updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+      ),
     );
   }
 
@@ -3014,9 +3024,7 @@ class _PlayerScreenState extends State<PlayerScreen>
           // Pause is a sync checkpoint: persist locally then push immediately
           // so another device sees the newest position within seconds.
           unawaited(
-            _persistProgress().then(
-              (_) => MbnSync.instance.pushProgressNow(),
-            ),
+            _persistProgress().then((_) => MbnSync.instance.pushProgressNow()),
           );
         }
         unawaited(_configurePictureInPicture());
@@ -3095,7 +3103,11 @@ class _PlayerScreenState extends State<PlayerScreen>
       });
     }
     try {
-      await _openRoutedMedia(_episode.fileUrl, play: false, generation: generation);
+      await _openRoutedMedia(
+        _episode.fileUrl,
+        play: false,
+        generation: generation,
+      );
       if (!_isCurrentMediaOp(generation)) return;
       await _waitUntilSeekable(generation: generation);
       await _restorePositionAndPlay(
@@ -4262,8 +4274,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     try {
       final next = _nextEpisode;
       final currentId = _episodeCatalog.groupFor(_episode)?.id ?? _episode.id;
-      if (_duration > Duration.zero &&
-          _duration < const Duration(minutes: 2)) {
+      if (_duration > Duration.zero && _duration < const Duration(minutes: 2)) {
         final saved = await _progressStore.load(
           contentId: widget.content.id,
           episodeId: currentId,
@@ -6590,8 +6601,14 @@ class _PlayerError extends StatelessWidget {
             spacing: 12,
             children: [
               if (onRetry != null)
-                FilledButton(onPressed: onRetry, child: const Text('تلاش مجدد')),
-              FilledButton.tonal(onPressed: onBack, child: const Text('بازگشت')),
+                FilledButton(
+                  onPressed: onRetry,
+                  child: const Text('تلاش مجدد'),
+                ),
+              FilledButton.tonal(
+                onPressed: onBack,
+                child: const Text('بازگشت'),
+              ),
             ],
           ),
         ],

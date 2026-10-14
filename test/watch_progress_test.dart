@@ -1,3 +1,8 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:mbnmovie/services/mbn_auth.dart';
+import 'package:mbnmovie/services/mbn_sync.dart';
 import 'package:mbnmovie/core/watch_progress.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -17,8 +22,11 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() {
+    MbnSync.instance.clear();
     SharedPreferences.setMockInitialValues({});
   });
+
+  tearDown(() => MbnSync.instance.clear());
 
   test('watch progress round-trips and is resumable mid-episode', () async {
     final store = WatchProgressStore();
@@ -193,6 +201,59 @@ void main() {
       expect(saved.duration, const Duration(minutes: 50));
       expect(saved.position, const Duration(minutes: 21));
       expect(saved.watched, isFalse);
+    },
+  );
+  test(
+    'pause checkpoint uploads newest episode and clears completed continuation',
+    () async {
+      const store = LastWatchStore();
+      LastWatch checkpoint(String episode, int position) => LastWatch(
+        contentId: 'c',
+        title: 'Audit',
+        episodeId: episode,
+        episodeName: episode,
+        fileUrl: 'https://example.com/$episode.mp4',
+        positionMs: position,
+        durationMs: 3000000,
+        updatedAtMs: 1,
+      );
+      await store.save(checkpoint('e1', 120000));
+      Map? upload;
+      final auth = MbnAuth(
+        client: MockClient((request) async {
+          final data = jsonDecode(request.body)['data'] as Map;
+          upload = data;
+          return http.Response(
+            jsonEncode({
+              for (final row in data.entries)
+                row.key: {'payload': row.value, 'updated_at': 1000},
+            }),
+            200,
+          );
+        }),
+      )..token = 'test';
+      MbnSync.instance.configure(auth: auth);
+      await WatchProgressStore().save(
+        contentId: 'c',
+        episodeId: 'e3',
+        position: const Duration(minutes: 20),
+        duration: const Duration(minutes: 50),
+        lastWatch: checkpoint('e3', 1200000),
+      );
+      await MbnSync.instance.pushProgressNow();
+      final last =
+          jsonDecode(upload!['progress']['watch_last_v1'] as String) as Map;
+      expect(last['episodeId'], 'e3');
+      expect(last['positionMs'], 1200000);
+      expect(upload!['progress']['watch_pos_c_e3'], 1200000);
+      await WatchProgressStore().save(
+        contentId: 'c',
+        episodeId: 'e3',
+        position: const Duration(minutes: 50),
+        duration: const Duration(minutes: 50),
+        lastWatch: checkpoint('e3', 3000000),
+      );
+      expect(await store.load(), isNull);
     },
   );
 }
