@@ -256,4 +256,29 @@ void main() {
       expect(await store.load(), isNull);
     },
   );
+  test(
+    'quiet playback checkpoint stores continuation without repaint notification',
+    () async {
+      final before = WatchProgressStore.changes.value;
+      final last = _lastAt(750000, 1440000);
+      await WatchProgressStore().save(
+        contentId: last.contentId,
+        episodeId: last.episodeId,
+        position: last.position,
+        duration: last.duration,
+        lastWatch: last,
+        notify: false,
+      );
+      expect(WatchProgressStore.changes.value, before);
+      expect((await const LastWatchStore().load())!.position, last.position);
+      await WatchProgressStore().save(
+        contentId: last.contentId,
+        episodeId: last.episodeId,
+        position: last.position,
+        duration: last.duration,
+        lastWatch: last,
+      );
+      expect(WatchProgressStore.changes.value, before + 1);
+    },
+  );
 }

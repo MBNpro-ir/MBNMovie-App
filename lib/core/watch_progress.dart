@@ -73,6 +73,7 @@ class WatchProgressStore {
     required Duration duration,
     bool markWatched = false,
     LastWatch? lastWatch,
+    bool notify = true,
   }) {
     final next = _pendingSave.then(
       (_) => _saveNow(
@@ -82,6 +83,7 @@ class WatchProgressStore {
         duration: duration,
         markWatched: markWatched,
         lastWatch: lastWatch,
+        notify: notify,
       ),
     );
     // Failed disk writes must not poison subsequent checkpoints.
@@ -96,6 +98,7 @@ class WatchProgressStore {
     required Duration duration,
     required bool markWatched,
     required LastWatch? lastWatch,
+    required bool notify,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final knownDuration = Duration(
@@ -162,7 +165,7 @@ class WatchProgressStore {
           } catch (_) {}
         }
       }
-      changes.value++;
+      if (notify) changes.value++;
     }
     unawaited(MbnSync.instance.pushProgressThrottled());
   }

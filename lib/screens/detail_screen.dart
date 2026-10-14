@@ -2937,6 +2937,9 @@ class _PlayerScreenState extends State<PlayerScreen>
       position: position,
       duration: duration ?? _duration,
       markWatched: markWatched,
+      // The screens behind playback only need a local refresh on leaving;
+      // remote devices still receive every throttled checkpoint via sync.
+      notify: _exitingPlayer || _playerTornDown,
       lastWatch: LastWatch(
         contentId: widget.content.id,
         title: TitleLanguage.title(widget.content),
