@@ -129,6 +129,10 @@ jobs:
           cache: true
           pub-cache: true
 
+      - name: Test bundle lookup from another working directory
+        shell: pwsh
+        run: ./tools/Test-WindowsBundle.ps1
+
       - name: Test Windows encrypted storage
         run: |
           flutter pub get
