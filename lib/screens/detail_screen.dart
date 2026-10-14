@@ -4262,6 +4262,29 @@ class _PlayerScreenState extends State<PlayerScreen>
     try {
       final next = _nextEpisode;
       final currentId = _episodeCatalog.groupFor(_episode)?.id ?? _episode.id;
+      if (_duration > Duration.zero &&
+          _duration < const Duration(minutes: 2)) {
+        final saved = await _progressStore.load(
+          contentId: widget.content.id,
+          episodeId: currentId,
+        );
+        if ((saved?.durationMs ?? 0) >
+            _duration.inMilliseconds +
+                const Duration(minutes: 1).inMilliseconds) {
+          // The served stream is far shorter than the previously known
+          // runtime: a truncated file, not a watched episode. Never mark
+          // watched or advance; offer retry instead.
+          if (mounted && _isCurrentMediaOp(generation)) {
+            setState(() {
+              _buffering = false;
+              _controlsVisible = false;
+              _nextEpisodeVisible = false;
+              _error = 'truncated stream';
+            });
+          }
+          return;
+        }
+      }
       await _persistProgress(
         markWatched: true,
         at: completedNaturally && _duration > Duration.zero

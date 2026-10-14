@@ -404,9 +404,13 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
                       );
                       await _bindDelfanSession();
                       MbnSync.instance.configure(auth: _auth);
-                      if (_auth.profile != null && _auth.profile!.id > 0) {
-                        await MbnSync.instance.bindAccount(_auth.profile!.id);
-                      }
+                      // The token is already issued: local account bookkeeping
+                      // must never fail the login itself.
+                      try {
+                        if (_auth.profile != null && _auth.profile!.id > 0) {
+                          await MbnSync.instance.bindAccount(_auth.profile!.id);
+                        }
+                      } catch (_) {}
                       MbnSync.instance.beginSettingsChoice();
                       await MbnSync.instance.syncAll();
                       if (mounted) setState(() => _loggedIn = true);
@@ -425,9 +429,13 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
                       TextInput.finishAutofillContext(shouldSave: true);
                       await _bindDelfanSession();
                       MbnSync.instance.configure(auth: _auth);
-                      if (_auth.profile != null && _auth.profile!.id > 0) {
-                        await MbnSync.instance.bindAccount(_auth.profile!.id);
-                      }
+                      // The token is already issued: local account bookkeeping
+                      // must never fail the login itself.
+                      try {
+                        if (_auth.profile != null && _auth.profile!.id > 0) {
+                          await MbnSync.instance.bindAccount(_auth.profile!.id);
+                        }
+                      } catch (_) {}
                       MbnSync.instance.beginSettingsChoice();
                       await MbnSync.instance.syncAll();
                       _loggedIn = true;

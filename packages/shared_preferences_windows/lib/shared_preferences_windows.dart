@@ -347,25 +347,47 @@ Future<File?> _getLocalDataFile(
 }
 
 /// Gets the preferences from the stored file.
+///
+/// A torn write (killed process, power loss) must never brick the app: a
+/// corrupt or unreadable file is moved aside to `<name>.corrupt.<epoch>.json`
+/// and empty preferences are returned so the app starts fresh and re-syncs.
 Future<Map<String, Object>> _readFromFile(
   String fileName, {
   FileSystem fs = const LocalFileSystem(),
   PathProviderWindows? pathProvider,
 }) async {
   Map<String, Object> preferences = <String, Object>{};
-  final File? localDataFile = await _getLocalDataFile(
-    fileName,
-    fs: fs,
-    pathProvider: pathProvider,
-  );
-  if (localDataFile != null && await localDataFile.exists()) {
-    final String stringMap = await localDataFile.readAsString();
-    if (stringMap.isNotEmpty) {
-      final Object? data = json.decode(stringMap);
-      if (data is Map) {
-        preferences = data.cast<String, Object>();
+  try {
+    final File? localDataFile = await _getLocalDataFile(
+      fileName,
+      fs: fs,
+      pathProvider: pathProvider,
+    );
+    if (localDataFile != null && await localDataFile.exists()) {
+      final String stringMap = await localDataFile.readAsString();
+      if (stringMap.isNotEmpty) {
+        final Object? data = json.decode(stringMap);
+        if (data is Map) {
+          preferences = data.cast<String, Object>();
+        } else {
+          throw const FormatException('preferences root is not a map');
+        }
       }
     }
+  } catch (_) {
+    try {
+      final File? localDataFile = await _getLocalDataFile(
+        fileName,
+        fs: fs,
+        pathProvider: pathProvider,
+      );
+      if (localDataFile != null && await localDataFile.exists()) {
+        final String backup =
+            '${localDataFile.path}.corrupt.${DateTime.now().millisecondsSinceEpoch}.json';
+        await localDataFile.rename(backup);
+      }
+    } catch (_) {}
+    return <String, Object>{};
   }
   return preferences;
 }
