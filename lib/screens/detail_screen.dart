@@ -2748,7 +2748,22 @@ class _PlayerScreenState extends State<PlayerScreen>
       if (!started) _hideTimer?.cancel();
     } catch (error) {
       if (_isCurrentMediaOp(generation) && attempt == _webPlayAttempt) {
-        _handlePlaybackError('$error');
+        final text = '$error'.toLowerCase();
+        // Browser autoplay policies need a tap, not an error overlay.
+        if (text.contains('notallowed') ||
+            text.contains('user gesture') ||
+            text.contains('interaction')) {
+          if (mounted) {
+            setState(() {
+              _webNeedsTap = true;
+              _buffering = false;
+              _controlsVisible = true;
+            });
+          }
+          _hideTimer?.cancel();
+        } else {
+          _handlePlaybackError('$error');
+        }
       }
     }
   }
@@ -2961,10 +2976,22 @@ class _PlayerScreenState extends State<PlayerScreen>
           _playing = value;
           if (value) _webNeedsTap = false;
         });
+        // Resuming proves the stream is alive: drop any stale error overlay
+        // instead of leaving "پخش نشد" on top of a playing video.
+        if (value && (_error != null || _playbackErrorTimer != null)) {
+          _clearPlaybackError();
+        }
         if (value && _controlsVisible && !_touchLocked && !_isInPip) {
           _armHideTimer();
         } else if (!value) {
           _hideTimer?.cancel();
+          // Pause is a sync checkpoint: persist locally then push immediately
+          // so another device sees the newest position within seconds.
+          unawaited(
+            _persistProgress().then(
+              (_) => MbnSync.instance.pushProgressNow(),
+            ),
+          );
         }
         unawaited(_configurePictureInPicture());
       }),
@@ -3004,19 +3031,59 @@ class _PlayerScreenState extends State<PlayerScreen>
   }
 
   void _handlePlaybackError(String value) {
+    if (!mounted || _playerTornDown || _exitingPlayer) return;
+    // A long pause freezes the clock, so a transient stall/error signal must
+    // never turn into a fullscreen error while paused. The overlay appears
+    // only for real failures during active playback; resuming clears it.
+    if (!_playing) {
+      _playbackErrorTimer?.cancel();
+      _positionAtLastError = _player.state.position;
+      return;
+    }
+    if (_transitioning || _changingEpisode || _switchingQuality) return;
     _playbackErrorTimer?.cancel();
     _positionAtLastError = _player.state.position;
     _playbackErrorTimer = Timer(playerErrorGracePeriod, () {
       _playbackErrorTimer = null;
       if (!mounted ||
+          !_playing ||
           playbackContinuedAfterError(
             position: _player.state.position,
             positionAtError: _positionAtLastError,
           )) {
         return;
       }
-      setState(() => _error = value);
+      if (_error == null) setState(() => _error = value);
     });
+  }
+
+  /// Best-effort retry of the current episode from the last known position.
+  Future<void> _retryCurrentMedia() async {
+    if (!mounted || _playerTornDown || _transitioning) return;
+    final generation = ++_mediaGeneration;
+    _clearPlaybackError();
+    if (mounted) {
+      setState(() {
+        _buffering = true;
+        _controlsVisible = false;
+      });
+    }
+    try {
+      await _openRoutedMedia(_episode.fileUrl, play: false, generation: generation);
+      if (!_isCurrentMediaOp(generation)) return;
+      await _waitUntilSeekable(generation: generation);
+      await _restorePositionAndPlay(
+        _position,
+        generation: generation,
+        playing: true,
+      );
+      if (!_isCurrentMediaOp(generation) || !mounted) return;
+      setState(() => _buffering = false);
+    } catch (_) {
+      if (mounted && _isCurrentMediaOp(generation) && _error == null) {
+        setState(() => _error = 'این فایل فعلاً توسط سرور پخش نشد.');
+      }
+    }
   }
 
   void _clearPlaybackError() {
@@ -4177,6 +4244,7 @@ class _PlayerScreenState extends State<PlayerScreen>
         duration: _duration,
         episodeId: currentId,
       );
+      unawaited(MbnSync.instance.pushProgressNow());
       if (!mounted || !_isCurrentMediaOp(generation)) return;
       if (next == null) {
         setState(() {
@@ -4241,6 +4309,11 @@ class _PlayerScreenState extends State<PlayerScreen>
         } else {
           await store.clear();
         }
+      } catch (_) {}
+      // Exit is the most important sync checkpoint: push now (not throttled)
+      // so a second device sees this episode within seconds.
+      try {
+        await MbnSync.instance.pushProgressNow();
       } catch (_) {}
     } finally {
       if (mounted) {
@@ -4569,6 +4642,9 @@ class _PlayerScreenState extends State<PlayerScreen>
       _showUnlockButton();
       return;
     }
+    // While the error overlay is visible the center controls stay hidden so
+    // they can neither cover the message nor steal its taps.
+    if (_error != null) return;
     setState(() => _controlsVisible = true);
     _armHideTimer();
   }
@@ -5301,16 +5377,22 @@ class _PlayerScreenState extends State<PlayerScreen>
                     buffering: _buffering,
                     enabled: !_windowResizing && !_touchLocked,
                   ),
-                  if (!_windowResizing && _error != null && !_touchLocked)
-                    _PlayerError(onBack: () => unawaited(_exitPlayer())),
                   if (!_windowResizing)
                     AnimatedOpacity(
-                      opacity: _controlsVisible && !_touchLocked && !_isInPip
+                      opacity:
+                          _controlsVisible &&
+                              !_touchLocked &&
+                              !_isInPip &&
+                              _error == null
                           ? 1
                           : 0,
                       duration: const Duration(milliseconds: 240),
                       child: IgnorePointer(
-                        ignoring: !_controlsVisible || _touchLocked || _isInPip,
+                        ignoring:
+                            !_controlsVisible ||
+                            _touchLocked ||
+                            _isInPip ||
+                            _error != null,
                         child: PlayerControlShade(
                           minimum: _playerSafeArea,
                           child: SafeArea(
@@ -5650,6 +5732,15 @@ class _PlayerScreenState extends State<PlayerScreen>
                             ),
                           ),
                         ),
+                      ),
+                    ),
+                  // Error overlay is the topmost layer so center controls can
+                  // never cover the message or steal the back/retry taps.
+                  if (!_windowResizing && _error != null && !_touchLocked)
+                    Positioned.fill(
+                      child: _PlayerError(
+                        onBack: () => unawaited(_exitPlayer()),
+                        onRetry: () => unawaited(_retryCurrentMedia()),
                       ),
                     ),
                 ],
@@ -6399,8 +6490,9 @@ class _AnimeSubtitles extends StatelessWidget {
 }
 
 class _PlayerError extends StatelessWidget {
-  const _PlayerError({required this.onBack});
+  const _PlayerError({required this.onBack, this.onRetry});
   final VoidCallback onBack;
+  final VoidCallback? onRetry;
   @override
   Widget build(BuildContext context) => ColoredBox(
     color: Colors.black87,
@@ -6412,7 +6504,15 @@ class _PlayerError extends StatelessWidget {
           const SizedBox(height: 12),
           const Text('این فایل فعلاً توسط سرور پخش نشد.'),
           const SizedBox(height: 16),
-          FilledButton.tonal(onPressed: onBack, child: const Text('بازگشت')),
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 12,
+            children: [
+              if (onRetry != null)
+                FilledButton(onPressed: onRetry, child: const Text('تلاش مجدد')),
+              FilledButton.tonal(onPressed: onBack, child: const Text('بازگشت')),
+            ],
+          ),
         ],
       ),
     ),

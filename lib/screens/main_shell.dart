@@ -1182,6 +1182,11 @@ class _HomePageState extends State<_HomePage> {
 
   /// Reloads the «ادامه تماشا» shelf (called on tab select + after resume).
   Future<void> refreshContinueWatch() async {
+    // Pull the newest server progress first (debounced inside sync), so a
+    // phone that watched episode 3 updates a Windows shelf stuck on episode 1.
+    try {
+      await MbnSync.instance.syncProgressIfStale();
+    } catch (_) {}
     final last = await _lastWatchStore.load();
     if (mounted) setState(() => _lastWatch = last);
   }

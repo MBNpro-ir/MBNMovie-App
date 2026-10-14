@@ -46,6 +46,7 @@ class MbnSync {
 
   MbnAuth? _auth;
   DateTime? _lastHistoryPush;
+  DateTime? _lastProgressPull;
   Timer? _pendingProgressPush;
   Timer? _pendingPreferencesPush;
   bool _syncing = false;
@@ -63,6 +64,7 @@ class MbnSync {
     _pendingProgressPush = null;
     _pendingPreferencesPush = null;
     _lastHistoryPush = null;
+    _lastProgressPull = null;
     _pendingPushes.clear();
     _pushing = null;
   }
@@ -549,6 +551,32 @@ class MbnSync {
     } else {
       _scheduleProgressPush();
     }
+  }
+
+  /// Immediate, unthrottled progress push for pause/exit/episode boundaries.
+  /// Playback ticks stay throttled; only meaningful checkpoints call this, so
+  /// cross-device «ادامه تماشا» converges within seconds without extra load.
+  Future<void> pushProgressNow() async {
+    if (_auth?.token == null) return;
+    _pendingProgressPush?.cancel();
+    _pendingProgressPush = null;
+    _lastHistoryPush = DateTime.now();
+    await _touchLocal('progress');
+    await _pushCategories(['progress']);
+  }
+
+  /// Debounced pull used before showing «ادامه تماشا»: at most one full sync
+  /// per 15s, so returning from another device picks up the newest episode
+  /// without hammering the server on every tab switch.
+  Future<void> syncProgressIfStale() async {
+    if (_auth?.token == null || _syncing) return;
+    final now = DateTime.now();
+    if (_lastProgressPull != null &&
+        now.difference(_lastProgressPull!) < const Duration(seconds: 15)) {
+      return;
+    }
+    _lastProgressPull = now;
+    await syncAll();
   }
 
   void _scheduleProgressPush() {
