@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'services/device_performance.dart';
 import 'services/android_network_trust.dart';
 import 'package:flutter/foundation.dart';
@@ -19,24 +21,13 @@ import 'services/device_bridge.dart';
 
 SemanticsHandle? _webSemantics;
 
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  // Enable the accessible DOM from the first frame on every browser.
-  if (kIsWeb) {
-    _webSemantics ??= SemanticsBinding.instance.ensureSemantics();
-  }
-  MediaKit.ensureInitialized();
-  DeviceBridge.initialize();
-  await initializeDeviceLayout();
-  await DevicePerformance.initialize();
-  await AndroidNetworkTrust.initialize();
-  await AccessibilityService.instance.initialize();
-  if (isAndroidTv) {
-    FocusManager.instance.highlightStrategy =
-        FocusHighlightStrategy.alwaysTraditional;
-  }
-  if (Platform.isWindows) {
-    await windowManager.ensureInitialized();
+Future<void> _showWindowsShell() async {
+  // Runs after runApp so the first Flutter frame (which releases the native
+  // `Show` gate) is never blocked by a slow/hung window_manager plugin.
+  try {
+    await windowManager.ensureInitialized().timeout(
+      const Duration(seconds: 8),
+    );
     const options = WindowOptions(
       size: Size(1440, 900),
       minimumSize: Size(1000, 650),
@@ -46,16 +37,63 @@ Future<void> main() async {
       titleBarStyle: TitleBarStyle.hidden,
       windowButtonVisibility: false,
     );
-    await windowManager.waitUntilReadyToShow(options, () async {
+    await windowManager
+        .waitUntilReadyToShow(options, () async {
+          await windowManager.show();
+          await windowManager.focus();
+        })
+        .timeout(const Duration(seconds: 10));
+  } catch (_) {
+    // Last resort: never leave a hidden/white window behind.
+    try {
       await windowManager.show();
-      await windowManager.focus();
-    });
+    } catch (_) {}
+  }
+}
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Enable the accessible DOM from the first frame on every browser.
+  if (kIsWeb) {
+    _webSemantics ??= SemanticsBinding.instance.ensureSemantics();
+  }
+  // A missing libmpv must break only video playback, never the whole window.
+  try {
+    MediaKit.ensureInitialized();
+  } catch (_) {}
+  DeviceBridge.initialize();
+  // Each pre-run init is bounded: a hung plugin/storage on Windows 10 must
+  // fall through to runApp instead of leaving a blank white window.
+  try {
+    await initializeDeviceLayout().timeout(const Duration(seconds: 8));
+  } catch (_) {}
+  try {
+    await DevicePerformance.initialize().timeout(const Duration(seconds: 8));
+  } catch (_) {}
+  try {
+    await AndroidNetworkTrust.initialize().timeout(const Duration(seconds: 8));
+  } catch (_) {}
+  try {
+    await AccessibilityService.instance.initialize().timeout(
+      const Duration(seconds: 8),
+    );
+  } catch (_) {}
+  if (isAndroidTv) {
+    FocusManager.instance.highlightStrategy =
+        FocusHighlightStrategy.alwaysTraditional;
+  }
+  if (Platform.isWindows) {
+    // Show the Flutter UI first; the window shell follows asynchronously.
+    runApp(const MbnmovieApp());
+    unawaited(_showWindowsShell());
   } else if (isAndroidTv) {
     await SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    if (!kIsWeb) UpdatePresentation.start();
+    runApp(const MbnmovieApp());
   } else {
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setSystemUIOverlayStyle(
@@ -67,9 +105,12 @@ Future<void> main() async {
         systemNavigationBarIconBrightness: Brightness.light,
       ),
     );
+    if (!kIsWeb) UpdatePresentation.start();
+    runApp(const MbnmovieApp());
   }
-  if (!kIsWeb) UpdatePresentation.start();
-  runApp(const MbnmovieApp());
+  if (Platform.isWindows) {
+    if (!kIsWeb) UpdatePresentation.start();
+  }
   WidgetsBinding.instance.addPostFrameCallback((_) {
     if (kIsWeb) return;
     AppLinks.registerThisApp(appId: 'MBNMovie', exeName: 'mbnmovie.exe');

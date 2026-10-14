@@ -28,6 +28,32 @@ void ActivateRunningWindow() {
     }
     ::Sleep(100);
   }
+  // The previous instance never published a window (e.g. crashed during
+  // startup while still holding the mutex name briefly): tell the user instead
+  // of exiting silently so a "nothing happens on second launch" is diagnosable.
+  ::MessageBoxW(nullptr,
+                L"برنامه در حال اجراست اما پنجره آن یافت نشد. لطفاً از Task Manager پردازش mbnmovie.exe را ببندید و دوباره باز کنید.",
+                L"MBNMovie", MB_OK | MB_ICONINFORMATION);
+}
+
+bool BundleLooksComplete() {
+  // Portable ZIPs must stay together: a lone mbnmovie.exe without its
+  // data/ folder (flutter_assets, app.so, icudtl.dat) renders as a white
+  // window. Fail fast with guidance instead of a blank screen.
+  const wchar_t* required[] = {
+      L"data\\flutter_assets\\AssetManifest.bin",
+      L"data\\flutter_assets\\AssetManifest.json",
+      L"data\\icudtl.dat",
+      L"flutter_windows.dll",
+  };
+  for (const wchar_t* relative : required) {
+    if (::GetFileAttributesW(relative) == INVALID_FILE_ATTRIBUTES) {
+      // AssetManifest.bin is optional on newer Flutter; check the folder too.
+      if (relative == required[0]) continue;
+      return false;
+    }
+  }
+  return true;
 }
 
 }  // namespace
@@ -60,6 +86,14 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     return EXIT_FAILURE;
   }
 #endif
+
+  if (!BundleLooksComplete()) {
+    ::MessageBoxW(nullptr,
+                  L"فایل‌های برنامه ناقص است. لطفاً کل پوشه MBNMovie (نه فقط mbnmovie.exe) را از فایل ZIP خارج کنید و دوباره اجرا کنید.",
+                  L"MBNMovie", MB_OK | MB_ICONWARNING);
+    ::CloseHandle(instance_mutex);
+    return EXIT_FAILURE;
+  }
 
   // Initialize COM, so that it is available for use in the library and/or
   // plugins.
