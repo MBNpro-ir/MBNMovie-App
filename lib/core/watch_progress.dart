@@ -7,6 +7,12 @@ import '../services/mbn_sync.dart';
 
 enum WatchStatus { unwatched, partial, watched }
 
+/// A relay cut to about a minute must never overwrite a known full episode.
+bool isTruncatedPlaybackDuration(Duration duration, Duration knownDuration) =>
+    duration > Duration.zero &&
+    duration < const Duration(minutes: 2) &&
+    knownDuration > duration + const Duration(minutes: 1);
+
 /// Saved playback position of a single episode.
 class SavedWatchProgress {
   const SavedWatchProgress({
@@ -66,11 +72,22 @@ class WatchProgressStore {
     bool markWatched = false,
   }) async {
     final prefs = await SharedPreferences.getInstance();
+    final knownDuration = Duration(
+      milliseconds: prefs.getInt(_durKey(contentId, episodeId)) ?? 0,
+    );
+    if (isTruncatedPlaybackDuration(duration, knownDuration)) return;
+    // A temporary unknown duration during seek/loading is not a new runtime.
+    final effectiveDuration = duration > Duration.zero
+        ? duration
+        : knownDuration;
     if (position > Duration.zero) {
       await prefs.remove(_statusKey(contentId, episodeId));
     }
     await prefs.setInt(_posKey(contentId, episodeId), position.inMilliseconds);
-    await prefs.setInt(_durKey(contentId, episodeId), duration.inMilliseconds);
+    await prefs.setInt(
+      _durKey(contentId, episodeId),
+      effectiveDuration.inMilliseconds,
+    );
     await prefs.setInt(
       _timeKey(contentId, episodeId),
       (prefs.getInt(_timeKey(contentId, episodeId)) ?? 0) >=
@@ -80,7 +97,7 @@ class WatchProgressStore {
     );
     final reachedEnd =
         duration > Duration.zero &&
-        position >= duration - const Duration(seconds: 10);
+        position >= effectiveDuration - const Duration(seconds: 10);
     if (markWatched || reachedEnd) {
       await prefs.remove(_statusKey(contentId, episodeId));
       await prefs.setBool(_watchedKey(contentId, episodeId), true);

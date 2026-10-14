@@ -139,4 +139,60 @@ void main() {
     await store.clear();
     expect(await store.load(), isNull);
   });
+  test(
+    'truncated checkpoint cannot erase known runtime or mark watched',
+    () async {
+      final store = WatchProgressStore();
+      await store.save(
+        contentId: 'c',
+        episodeId: 'e',
+        position: const Duration(minutes: 20),
+        duration: const Duration(minutes: 50),
+      );
+      await store.save(
+        contentId: 'c',
+        episodeId: 'e',
+        position: const Duration(seconds: 55),
+        duration: const Duration(seconds: 61),
+        markWatched: true,
+      );
+      final saved = (await store.load(contentId: 'c', episodeId: 'e'))!;
+      expect(saved.duration, const Duration(minutes: 50));
+      expect(saved.position, const Duration(minutes: 20));
+      expect(saved.watched, isFalse);
+    },
+  );
+
+  test(
+    'genuine short clips still complete and unknown durations retain runtime',
+    () async {
+      final store = WatchProgressStore();
+      await store.save(
+        contentId: 'c',
+        episodeId: 'clip',
+        position: const Duration(seconds: 55),
+        duration: const Duration(seconds: 61),
+      );
+      expect(
+        (await store.load(contentId: 'c', episodeId: 'clip'))!.watched,
+        isTrue,
+      );
+      await store.save(
+        contentId: 'c',
+        episodeId: 'long',
+        position: const Duration(minutes: 20),
+        duration: const Duration(minutes: 50),
+      );
+      await store.save(
+        contentId: 'c',
+        episodeId: 'long',
+        position: const Duration(minutes: 21),
+        duration: Duration.zero,
+      );
+      final saved = (await store.load(contentId: 'c', episodeId: 'long'))!;
+      expect(saved.duration, const Duration(minutes: 50));
+      expect(saved.position, const Duration(minutes: 21));
+      expect(saved.watched, isFalse);
+    },
+  );
 }
