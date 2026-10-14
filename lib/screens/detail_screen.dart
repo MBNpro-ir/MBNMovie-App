@@ -2545,10 +2545,18 @@ class _PlayerScreenState extends State<PlayerScreen>
     // error state, never as an unhandled async error.
     unawaited(
       _startInitialPlayback().catchError((Object error) {
-        if (!mounted || _playerTornDown) return;
-        // Route through the graced handler (suppressed while paused or
-        // transitioning) instead of a raw fullscreen error.
-        _handlePlaybackError('$error');
+        if (!mounted || _playerTornDown || _exitingPlayer || _transitioning) {
+          return;
+        }
+        // An explicit failed initial open is not a paused-stream stall: no
+        // playing event has occurred yet. Surface it instead of loading forever.
+        _playbackErrorTimer?.cancel();
+        setState(() {
+          _buffering = false;
+          _webNeedsTap = false;
+          _controlsVisible = false;
+          _error = 'این فایل فعلاً توسط سرور پخش نشد.';
+        });
       }),
     );
     _armHideTimer();
