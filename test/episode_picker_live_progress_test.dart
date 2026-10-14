@@ -51,9 +51,6 @@ void main() {
     bool remote = false;
     final auth = MbnAuth(
       client: MockClient((request) async {
-        print(
-          'AUDIT_BADGE_HTTP method=${request.method} remote=$remote group=${group.id}',
-        );
         return http.Response(
           jsonEncode({
             'progress': {
@@ -80,10 +77,7 @@ void main() {
         theme: ThemeData.dark(),
         home: Directionality(
           textDirection: TextDirection.rtl,
-          child: EpisodePickerScreen(
-            content: content,
-            onPlay: (_, __) async {},
-          ),
+          child: EpisodePickerScreen(content: content, onPlay: (_, _) async {}),
         ),
       ),
     );
@@ -96,13 +90,12 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 80));
     });
     await tester.pumpAndSettle();
-    final prefs = await SharedPreferences.getInstance();
-    print(
-      'BADGE_PREFS ' +
-          {for (final key in prefs.getKeys()) key: prefs.get(key)}.toString(),
-    );
-    print(
-      'BADGE_STORE watched=${(await WatchProgressStore().load(contentId: content.id, episodeId: group.id))?.watched}',
+    expect(
+      (await WatchProgressStore().load(
+        contentId: content.id,
+        episodeId: group.id,
+      ))!.watched,
+      isTrue,
     );
     expect(find.text('تماشا نشده'), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());

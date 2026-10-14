@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:typed_data';
 import '../core/app_platform.dart';
 
 import 'package:android_intent_plus/android_intent.dart';

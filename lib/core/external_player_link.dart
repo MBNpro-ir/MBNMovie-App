@@ -48,8 +48,9 @@ String? externalPlayerPlaylist({required String url, required String title}) {
       source.userInfo.isNotEmpty ||
       source.fragment.isNotEmpty ||
       source.path != '/api/web/media' ||
-      source.queryParameters['ticket']?.isNotEmpty != true)
+      source.queryParameters['ticket']?.isNotEmpty != true) {
     return null;
+  }
   final label = title.replaceAll(RegExp(r'[\x00-\x1f\x7f]'), ' ').trim();
   return '#EXTM3U\n#EXTENC:UTF-8\n#EXTINF:-1,$label\n${source.toString()}\n';
 }
