@@ -50,6 +50,7 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
   final _progress = WatchProgressStore();
   final _saved = <String, SavedWatchProgress>{};
   bool _loadingSaved = false;
+  bool _reloadSaved = false;
   late final EpisodeCatalog _catalog;
   int _seasonIndex = 0;
   String _selectedQuality = unknownQualityLabel;
@@ -134,10 +135,16 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
   }
 
   Future<void> _loadSaved() async {
-    if (_loadingSaved) return;
+    if (_loadingSaved) {
+      _reloadSaved = true;
+      return;
+    }
     _loadingSaved = true;
     try {
-      await _loadSavedNow();
+      do {
+        _reloadSaved = false;
+        await _loadSavedNow();
+      } while (_reloadSaved && mounted);
     } finally {
       _loadingSaved = false;
     }

@@ -277,11 +277,19 @@ class WatchProgressStore {
     required String episodeId,
   }) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_posKey(contentId, episodeId));
-    await prefs.remove(_durKey(contentId, episodeId));
-    await prefs.remove(_watchedKey(contentId, episodeId));
-    await prefs.remove(_statusKey(contentId, episodeId));
-    await prefs.remove(_timeKey(contentId, episodeId));
+    final keys = [
+      _posKey(contentId, episodeId),
+      _durKey(contentId, episodeId),
+      _watchedKey(contentId, episodeId),
+      _statusKey(contentId, episodeId),
+      _timeKey(contentId, episodeId),
+    ];
+    // Repeated badge refreshes must not upload deletions of absent legacy keys
+    // and trigger another sync/refresh forever.
+    if (!keys.any(prefs.containsKey)) return;
+    for (final key in keys) {
+      await prefs.remove(key);
+    }
     unawaited(MbnSync.instance.pushProgressThrottled());
   }
 }
