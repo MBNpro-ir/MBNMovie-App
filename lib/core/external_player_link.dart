@@ -21,18 +21,8 @@ Uri? externalPlayerLink({
       queryParameters: {'url': source.toString(), 'filename': title},
     );
   }
-  if (platform == 'windows' &&
-      player == 'vlc' &&
-      source.scheme == 'https' &&
-      ['anime.mbnpro.ir', 'movie.mbnpro.ir'].contains(source.host) &&
-      source.path == '/api/web/media' &&
-      source.queryParameters['ticket']?.isNotEmpty == true) {
-    return Uri(
-      scheme: appScheme,
-      host: 'vlc',
-      queryParameters: {'url': source.toString()},
-    );
-  }
+  // Classic VLC for Windows does not install a browser URL handler.
+  // The web client uses a VLC-compatible playlist instead of opening MBN.
   if (platform == 'android') {
     final package = switch (player) {
       'vlc' => 'org.videolan.vlc',
@@ -47,4 +37,19 @@ Uri? externalPlayerLink({
     );
   }
   return null;
+}
+
+/// Only the short-lived relay ticket is exported, never an account credential.
+String? externalPlayerPlaylist({required String url, required String title}) {
+  final source = Uri.tryParse(url);
+  if (source == null ||
+      source.scheme != 'https' ||
+      !['anime.mbnpro.ir', 'movie.mbnpro.ir'].contains(source.host) ||
+      source.userInfo.isNotEmpty ||
+      source.fragment.isNotEmpty ||
+      source.path != '/api/web/media' ||
+      source.queryParameters['ticket']?.isNotEmpty != true)
+    return null;
+  final label = title.replaceAll(RegExp(r'[\x00-\x1f\x7f]'), ' ').trim();
+  return '#EXTM3U\n#EXTENC:UTF-8\n#EXTINF:-1,$label\n${source.toString()}\n';
 }

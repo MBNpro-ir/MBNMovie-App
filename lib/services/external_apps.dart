@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'dart:typed_data';
 import '../core/app_platform.dart';
 
 import 'package:android_intent_plus/android_intent.dart';
@@ -63,6 +65,22 @@ class ExternalApps {
     required String url,
     required String title,
   }) async {
+    if (kIsWeb &&
+        !BrowserFeatures.isMobileBrowser &&
+        player == ExternalVideoPlayer.vlc) {
+      final playlist = externalPlayerPlaylist(url: url, title: title);
+      if (playlist == null) return ExternalLaunchResult.unavailable;
+      try {
+        BrowserFeatures.saveBytes(
+          Uint8List.fromList(utf8.encode(playlist)),
+          'MBNMovie-play.m3u',
+          'audio/x-mpegurl',
+        );
+        return ExternalLaunchResult.launched;
+      } catch (_) {
+        return ExternalLaunchResult.failed;
+      }
+    }
     if (kIsWeb || Platform.isIOS) {
       final uri = externalPlayerLink(
         player: player.name,

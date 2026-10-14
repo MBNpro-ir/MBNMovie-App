@@ -147,7 +147,12 @@ void main() {
             appScheme: 'test-player',
           );
       const url = 'https://anime.mbnpro.ir/api/web/media?ticket=abc%2Bxyz';
-      expect(link('windows', url)!.queryParameters['url'], url);
+      expect(link('windows', url), isNull);
+      expect(externalPlayerPlaylist(url: url, title: 'عنوان'), contains(url));
+      expect(
+        externalPlayerPlaylist(url: url, title: 'عنوان\n#EXTINF:1,evil'),
+        isNot(contains('\n#EXTINF:1,evil')),
+      );
       expect(link('ios', url)!.scheme, 'vlc-x-callback');
       expect(link('ios', url, player: 'mxPlayer'), isNull);
       for (final bad in [
@@ -156,6 +161,7 @@ void main() {
         'https://user@anime.mbnpro.ir/api/web/media?ticket=x',
       ]) {
         expect(link('windows', bad), isNull);
+        expect(externalPlayerPlaylist(url: bad, title: 'Test'), isNull);
       }
       expect(
         link('android', url, player: 'mxPlayerPro')!.toString(),

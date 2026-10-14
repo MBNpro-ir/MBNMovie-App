@@ -412,9 +412,9 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
           builder: (dialogContext) => AlertDialog(
             title: Text('پخش در ${ExternalApps.playerName(player)}'),
             content: Text(
-              BrowserFeatures.isAppleMobile
-                  ? 'پلیر باید روی آیفون نصب باشد. مرورگر ممکن است تأیید بازکردن برنامه را بخواهد.'
-                  : 'مرورگر نمی‌تواند مستقیم VLC را باز کند: «باز کردن خودکار» فقط لینک را به نسخهٔ ویندوز همین برنامه می‌دهد تا آن را به VLC بفرستد (پنجرهٔ برنامه فقط لحظه‌ای واسط است). اگر نمی‌خواهی برنامهٔ ویندوز باز شود، «کپی لینک مستقیم» را بزن و آن را در VLC (Media > Open Network Stream) بچسبان.',
+              BrowserFeatures.isMobileBrowser
+                  ? 'پلیر باید روی گوشی نصب باشد. مرورگر ممکن است تأیید بازکردن برنامه را بخواهد.'
+                  : 'فایل پخش را دریافت و با VLC باز کن؛ فیلم آنلاین پخش می‌شود. برای دفعات بعد VLC را برای فایل‌های M3U انتخاب کن و بازشدن خودکار این فایل‌ها را در مرورگر فعال کن.',
             ),
             actions: [
               TextButton(
@@ -457,9 +457,9 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
                   Navigator.pop(dialogContext);
                 },
                 child: Text(
-                  BrowserFeatures.isAppleMobile
+                  BrowserFeatures.isMobileBrowser
                       ? 'باز کردن پلیر'
-                      : 'باز کردن خودکار با VLC',
+                      : 'دریافت فایل پخش VLC',
                 ),
               ),
             ],
