@@ -1,3 +1,4 @@
+import '../core/player_exit.dart';
 import '../core/player_transitions.dart';
 import '../widgets/player_subtitle_text.dart';
 import '../widgets/player_control_shade.dart';
@@ -2458,7 +2459,10 @@ class _PlayerScreenState extends State<PlayerScreen>
   bool _playerTornDown = false;
 
   bool _isCurrentMediaOp(int generation) =>
-      mounted && !_playerTornDown && generation == _mediaGeneration;
+      mounted &&
+      !_exitingPlayer &&
+      !_playerTornDown &&
+      generation == _mediaGeneration;
   Offset? _doubleTapPosition;
   final _subtitleLines = ValueNotifier<List<String>>(const []);
   List<String> get _subtitles => _subtitleLines.value;
@@ -4341,46 +4345,27 @@ class _PlayerScreenState extends State<PlayerScreen>
   Future<void> _exitPlayer() async {
     if (_exitingPlayer) return;
     _exitingPlayer = true;
-    if (kIsWeb) {
-      await BrowserFeatures.fullscreen(false);
-    } else {
-      await PlayerSystemUi.exit();
-    }
-    try {
-      await _persistProgress();
-      // Remember the exact exit point for the section-scoped «ادامه تماشا»
-      // button. Only genuinely
-      // partial watches are kept; a finished (or barely started) title
-      // clears the slot so stale continuations are never offered.
-      try {
-        const store = LastWatchStore();
-        final atExit = LastWatch(
-          contentId: widget.content.id,
-          title: TitleLanguage.title(widget.content),
-          episodeId: _progressEpisodeId,
-          episodeName: _episode.name,
-          fileUrl: _episode.fileUrl,
-          positionMs: _position.inMilliseconds,
-          durationMs: _duration.inMilliseconds,
-          updatedAtMs: DateTime.now().millisecondsSinceEpoch,
-        );
-        if (atExit.isResumable) {
-          await store.save(atExit);
-        } else {
-          await store.clear();
-        }
-      } catch (_) {}
-      // Exit is the most important sync checkpoint: push now (not throttled)
-      // so a second device sees this episode within seconds.
-      try {
+    _saveTimer?.cancel();
+    exitPlayerWithoutWaiting(
+      // _persistProgress captures the current episode/time synchronously;
+      // its serialized local checkpoint survives disposal of this screen.
+      saveCheckpoint: () async {
+        await _persistProgress();
         await MbnSync.instance.pushProgressNow();
-      } catch (_) {}
-    } finally {
-      if (mounted) {
+      },
+      restoreSystemUi: () async {
+        if (kIsWeb) {
+          await BrowserFeatures.fullscreen(false);
+        } else {
+          await PlayerSystemUi.exit();
+        }
+      },
+      navigateBack: () {
+        if (!mounted) return;
         setState(() => _allowPlayerPop = true);
         Navigator.pop(context);
-      }
-    }
+      },
+    );
   }
 
   void _showFeedback(PlayerFeedbackKind kind, {double? value}) {
@@ -4627,8 +4612,9 @@ class _PlayerScreenState extends State<PlayerScreen>
     // Stop audio instantly, but defer the heavy native teardown until the
     // pop transition is over so back-navigation stays smooth.
     unawaited(_player.pause());
-    // Final safety flush. Normal back navigation already awaits this write.
-    unawaited(_persistProgress());
+    // Normal Back already queued its snapshot before navigating. Avoid a
+    // duplicate disposal write racing the final checkpoint.
+    if (!_exitingPlayer) unawaited(_persistProgress());
     for (final subscription in _subscriptions) {
       subscription.cancel();
     }
