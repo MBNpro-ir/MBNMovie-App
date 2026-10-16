@@ -94,6 +94,21 @@ class MbnAuth {
   MbnProfile? profile;
   String? forcedLogoutMessage;
 
+  /// Restores the locally cached identity without waiting for the account
+  /// server.  [restore] still runs immediately in the background to validate
+  /// the token and refresh the full profile.
+  Future<bool> restoreLocal() async {
+    forcedLogoutMessage = null;
+    try {
+      final token = await _secureStorage.read(key: _tokenKey);
+      if (token == null || token.isEmpty) return false;
+      this.token = token;
+      return await _restoreOfflineProfile();
+    } catch (_) {
+      return false;
+    }
+  }
+
   Uri _uri(String path, [Map<String, String>? query]) =>
       Uri.parse(baseUrl).replace(path: path, queryParameters: query);
 

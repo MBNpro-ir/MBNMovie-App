@@ -25,9 +25,7 @@ Future<void> _showWindowsShell() async {
   // Runs after runApp so the first Flutter frame (which releases the native
   // `Show` gate) is never blocked by a slow/hung window_manager plugin.
   try {
-    await windowManager.ensureInitialized().timeout(
-      const Duration(seconds: 8),
-    );
+    await windowManager.ensureInitialized().timeout(const Duration(seconds: 8));
     const options = WindowOptions(
       size: Size(1440, 900),
       minimumSize: Size(1000, 650),
@@ -51,6 +49,16 @@ Future<void> _showWindowsShell() async {
   }
 }
 
+Future<void> _initializeWebAfterFirstFrame() async {
+  // Browser storage and platform channels are allowed to be slow on Safari.
+  // They refine the already-visible UI instead of delaying its first frame.
+  try {
+    await AccessibilityService.instance.initialize().timeout(
+      const Duration(seconds: 8),
+    );
+  } catch (_) {}
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Enable the accessible DOM from the first frame on every browser.
@@ -62,6 +70,14 @@ Future<void> main() async {
     MediaKit.ensureInitialized();
   } catch (_) {}
   DeviceBridge.initialize();
+  if (kIsWeb) {
+    DevicePerformance.configureWeb();
+    runApp(const MbnmovieApp());
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => unawaited(_initializeWebAfterFirstFrame()),
+    );
+    return;
+  }
   // Each pre-run init is bounded: a hung plugin/storage on Windows 10 must
   // fall through to runApp instead of leaving a blank white window.
   try {

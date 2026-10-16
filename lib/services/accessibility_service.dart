@@ -31,7 +31,14 @@ enum DensityMode {
 /// سرویس مدیریت دسترسی‌پذیری و مقیاس نمای صفحه
 /// همگام‌سازی ابری این تنظیمات به‌صورت کاملاً مجزا برای گوشی و کامپیوتر در سرور ذخیره می‌شود.
 class AccessibilityService extends ChangeNotifier {
-  AccessibilityService._();
+  AccessibilityService._() {
+    // DevicePerformance.configureWeb runs before runApp, so Apple-mobile web
+    // gets its compact defaults on the very first frame as well.
+    if (DevicePerformance.appleMobileWeb) {
+      _uiScale = 0.80;
+      _densityMode = DensityMode.compact;
+    }
+  }
   static final AccessibilityService instance = AccessibilityService._();
 
   static const String keyUiScale = 'access_ui_scale';
@@ -68,6 +75,7 @@ class AccessibilityService extends ChangeNotifier {
     _initialized = true;
     final prefs = await SharedPreferences.getInstance();
     _readFromPrefs(prefs);
+    notifyListeners();
   }
 
   void _readFromPrefs(SharedPreferences prefs) {

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../core/app_platform.dart';
@@ -36,8 +37,21 @@ abstract final class DevicePerformance {
         : 380,
   );
 
-  static Future<void> initialize() async {
+  /// Detect the browser profile synchronously so the first web frame already
+  /// uses the lightweight Apple-mobile policy. Shared preferences are loaded
+  /// later and can refine the user-selected scale without blocking startup.
+  static void configureWeb() {
+    if (!kIsWeb) return;
     appleMobileWeb = BrowserFeatures.isAppleMobile;
+    if (appleMobileWeb) {
+      PaintingBinding.instance.imageCache
+        ..maximumSize = 80
+        ..maximumSizeBytes = 24 * 1024 * 1024;
+    }
+  }
+
+  static Future<void> initialize() async {
+    configureWeb();
     if (appleMobileWeb) {
       PaintingBinding.instance.imageCache
         ..maximumSize = 80

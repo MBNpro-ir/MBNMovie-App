@@ -217,10 +217,77 @@ class _ServerStatusGateState extends State<ServerStatusGate> {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 400),
-      child: _buildCurrentState(),
-    );
+    // A maintenance probe is best-effort.  Its first request can be delayed
+    // by Safari's network/storage scheduler; it must never sit above the app
+    // and swallow taps while the result is still `checking` (or when the
+    // device is temporarily offline).  Only an explicit maintenance response
+    // is a blocking state.
+    if (_state == ServerState.maintenance) return _buildCurrentState();
+    if (_state == ServerState.offline) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          widget.child,
+          Positioned(
+            top: 8,
+            left: 12,
+            right: 12,
+            child: SafeArea(
+              bottom: false,
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: Material(
+                  color: const Color(0xFF20242D),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsetsDirectional.only(
+                      start: 12,
+                      end: 6,
+                      top: 4,
+                      bottom: 4,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.cloud_off_rounded,
+                          size: 16,
+                          color: MovieColors.coral,
+                        ),
+                        const SizedBox(width: 6),
+                        const Text(
+                          'اتصال موقتاً در دسترس نیست',
+                          style: TextStyle(fontSize: 11, color: Colors.white70),
+                        ),
+                        const SizedBox(width: 4),
+                        TextButton(
+                          onPressed: _retrying ? null : _checkServer,
+                          style: TextButton.styleFrom(
+                            minimumSize: const Size(0, 30),
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          child: _retrying
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Text('تلاش مجدد'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+    return widget.child;
   }
 
   Widget _buildCurrentState() {
