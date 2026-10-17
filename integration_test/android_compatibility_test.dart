@@ -33,7 +33,7 @@ void main() {
       if (const bool.fromEnvironment('MBN_QA_EXPECT_TV')) {
         expect(isAndroidTv, isTrue);
       }
-      if (DevicePerformance.androidSdk < 31 || isAndroidTv) {
+      if (DevicePerformance.androidSdk <= 32 || isAndroidTv) {
         expect(DevicePerformance.lightweight, isTrue);
         expect(
           PaintingBinding.instance.imageCache.maximumSizeBytes,

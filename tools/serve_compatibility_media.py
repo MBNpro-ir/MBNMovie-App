@@ -5,8 +5,10 @@ import re
 import sys
 from urllib.parse import urlsplit
 
-fixture = pathlib.Path(sys.argv[1]).resolve() / "mbn-compatibility.mp4"
-assert fixture.is_file()
+directory = pathlib.Path(sys.argv[1]).resolve()
+assert directory.is_dir()
+port = int(sys.argv[2]) if len(sys.argv) > 2 else 8765
+fixtures = {"mbn-compatibility.mp4", "mbn-legacy-h264.mkv", "mbn-legacy-fallback.mkv"}
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_HEAD(self):
@@ -16,9 +18,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.serve(False)
 
     def serve(self, head):
-        if urlsplit(self.path).path != "/mbn-compatibility.mp4":
+        name = urlsplit(self.path).path.removeprefix("/")
+        if name not in fixtures or not (directory / name).is_file():
             self.send_error(404)
             return
+        fixture = directory / name
         size = fixture.stat().st_size
         start, end = 0, size - 1
         value = self.headers.get("Range")
@@ -33,7 +37,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             start = int(match[1])
             end = min(int(match[2]) if match[2] else end, end)
         self.send_response(206 if value else 200)
-        self.send_header("Content-Type", "video/mp4")
+        self.send_header("Content-Type", "video/mp4" if fixture.suffix == ".mp4" else "video/x-matroska")
         self.send_header("Accept-Ranges", "bytes")
         self.send_header("Content-Length", str(end - start + 1))
         if value:
@@ -52,4 +56,4 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass
 
-http.server.ThreadingHTTPServer(("127.0.0.1", 8765), Handler).serve_forever()
+http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()

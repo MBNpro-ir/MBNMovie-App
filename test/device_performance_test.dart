@@ -6,13 +6,14 @@ import 'package:mbnmovie/widgets/ambient_background.dart';
 void main() {
   tearDown(() {
     DevicePerformance.androidSdk = 0;
+    DevicePerformance.emulator = false;
     DevicePerformance.lowRam = false;
     DevicePerformance.television = false;
     DevicePerformance.appleMobileWeb = false;
   });
 
-  test('Android 6 through 11 use light UI, Android 12 keeps full UI', () {
-    for (final sdk in [23, 24, 26, 28, 29, 30]) {
+  test('Android 6 through 12L use light UI, Android 13 keeps full UI', () {
+    for (final sdk in [23, 24, 25, 26, 27, 28, 29, 30, 31, 32]) {
       expect(
         DevicePerformance.useLightweightUiFor(
           sdk: sdk,
@@ -22,7 +23,7 @@ void main() {
         isTrue,
       );
     }
-    for (final sdk in [0, 31, 33, 37]) {
+    for (final sdk in [0, 33, 34, 35, 37]) {
       expect(
         DevicePerformance.useLightweightUiFor(
           sdk: sdk,

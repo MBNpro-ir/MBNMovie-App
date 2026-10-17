@@ -25,6 +25,19 @@ class DeviceBridge(
     private val channel: MethodChannel,
 ) {
     companion object {
+        // Match media_kit's emulator guard when selecting native decoding.
+        private fun isEmulator(): Boolean =
+            (Build.BRAND.startsWith("generic") && Build.DEVICE.startsWith("generic")) ||
+            Build.FINGERPRINT.startsWith("generic") ||
+            Build.FINGERPRINT.startsWith("unknown") ||
+            Build.HARDWARE.contains("goldfish") ||
+            Build.HARDWARE.contains("ranchu") ||
+            Build.MODEL.contains("google_sdk") ||
+            Build.MODEL.contains("Emulator") ||
+            Build.MODEL.contains("Android SDK built for x86") ||
+            Build.MANUFACTURER.contains("Genymotion") ||
+            listOf("sdk", "vbox86p", "emulator", "simulator").any { Build.PRODUCT.contains(it) }
+
         internal const val installStatusAction = "com.mbn.movie.UPDATE_INSTALL_STATUS"
         private var statusChannel: MethodChannel? = null
 
@@ -61,6 +74,7 @@ class DeviceBridge(
                     val uiMode = activity.getSystemService(Context.UI_MODE_SERVICE) as android.app.UiModeManager
                     result.success(mapOf(
                         "sdk" to Build.VERSION.SDK_INT,
+                        "emulator" to isEmulator(),
                         "lowRam" to manager.isLowRamDevice,
                         "television" to (uiMode.currentModeType == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION ||
                             activity.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)),

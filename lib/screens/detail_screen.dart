@@ -19,6 +19,7 @@ import '../services/device_performance.dart';
 import '../widgets/adaptive_player_header.dart';
 import 'dart:convert';
 import '../core/native_player_properties.dart';
+import '../core/native_playback_policy.dart';
 import 'package:flutter/foundation.dart';
 import '../services/web_gateway.dart';
 import '../services/browser_features.dart';
@@ -2532,8 +2533,10 @@ class _PlayerScreenState extends State<PlayerScreen>
     );
     _video = VideoController(
       _player,
-      configuration: const VideoControllerConfiguration(
-        enableHardwareAcceleration: true,
+      configuration: NativePlaybackPolicy.videoConfiguration(
+        android: Platform.isAndroid,
+        sdk: DevicePerformance.androidSdk,
+        emulator: DevicePerformance.emulator,
       ),
     );
     _listen();

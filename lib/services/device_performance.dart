@@ -7,6 +7,7 @@ import 'browser_features.dart';
 /// Resource policy is local to the device, never copied by account sync.
 abstract final class DevicePerformance {
   static int androidSdk = 0;
+  static bool emulator = false;
   static bool lowRam = false;
   static bool television = false;
   static bool appleMobileWeb = false;
@@ -16,7 +17,7 @@ abstract final class DevicePerformance {
     required bool lowRam,
     required bool television,
     bool appleMobileWeb = false,
-  }) => appleMobileWeb || (sdk > 0 && sdk < 31) || lowRam || television;
+  }) => appleMobileWeb || (sdk > 0 && sdk <= 32) || lowRam || television;
 
   static bool get lightweight => useLightweightUiFor(
     sdk: androidSdk,
@@ -64,6 +65,7 @@ abstract final class DevicePerformance {
         'com.mbn.movie/device',
       ).invokeMapMethod<String, dynamic>('performanceInfo');
       androidSdk = (info?['sdk'] as num?)?.toInt() ?? 0;
+      emulator = info?['emulator'] == true;
       lowRam = info?['lowRam'] == true;
       television = info?['television'] == true;
     } on MissingPluginException {
