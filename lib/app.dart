@@ -529,12 +529,18 @@ class AccessibilityAppWrapper extends StatelessWidget {
           ),
         );
 
+        // FittedBox paints the scaled child correctly but does not inverse
+        // transform pointer hit testing on Flutter web. On Safari/PWA this
+        // made a button look like it was at one position while its tap target
+        // was offset. Transform keeps the same visual scale and maps pointer
+        // coordinates back into the child's logical space.
         return SizedBox(
           width: rawMedia.size.width,
           height: rawMedia.size.height,
-          child: FittedBox(
-            fit: BoxFit.fill,
+          child: Transform.scale(
+            scale: uiScale,
             alignment: Alignment.topLeft,
+            transformHitTests: true,
             child: SizedBox(
               width: targetWidth,
               height: targetHeight,

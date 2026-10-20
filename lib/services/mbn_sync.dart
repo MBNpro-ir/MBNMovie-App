@@ -47,9 +47,11 @@ class MbnSync {
 
   MbnAuth? _auth;
   DateTime? _lastHistoryPush;
+  DateTime? _lastProgressPush;
   DateTime? _lastProgressPull;
   Timer? _pendingProgressPush;
   Timer? _pendingPreferencesPush;
+  static const _progressPushInterval = Duration(seconds: 20);
   bool _syncing = false;
   bool _resyncRequested = false;
   int _generation = 0;
@@ -65,6 +67,7 @@ class MbnSync {
     _pendingProgressPush = null;
     _pendingPreferencesPush = null;
     _lastHistoryPush = null;
+    _lastProgressPush = null;
     _lastProgressPull = null;
     _pendingPushes.clear();
     _pushing = null;
@@ -183,11 +186,18 @@ class MbnSync {
   Future<void> _touchLocal(String category) async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final dirtyKey = 'mbn_sync_dirty_$category';
+      // Once a category is already dirty and no upload is in flight, its
+      // latest snapshot will be picked up by the next upload.  Avoid a
+      // preferences write and revision bump for every playback tick.  A
+      // bump is still required while a request is in flight so a late
+      // response cannot clear a newer edit.
+      if (prefs.getBool(dirtyKey) == true && _pushing == null) return;
       // Local revisions are independent of the wall clock and server cursor.
       await writePreferenceBatch(
         prefs,
         values: {
-          'mbn_sync_dirty_$category': true,
+          dirtyKey: true,
           'mbn_sync_rev_$category':
               (prefs.getInt('mbn_sync_rev_$category') ?? 0) + 1,
         },
@@ -534,7 +544,7 @@ class MbnSync {
         now.difference(_lastHistoryPush!) < const Duration(seconds: 5)) {
       await _touchLocal('history');
       await _touchLocal('progress');
-      _scheduleProgressPush();
+      _scheduleProgressPush(delay: const Duration(seconds: 5));
       return;
     }
     _lastHistoryPush = now;
@@ -548,12 +558,12 @@ class MbnSync {
     if (_auth?.token == null) return;
     await _touchLocal('progress');
     final now = DateTime.now();
-    if (_lastHistoryPush == null ||
-        now.difference(_lastHistoryPush!) >= const Duration(seconds: 5)) {
-      _lastHistoryPush = now;
+    if (_lastProgressPush == null ||
+        now.difference(_lastProgressPush!) >= _progressPushInterval) {
+      _lastProgressPush = now;
       await _pushCategories(['progress']);
     } else {
-      _scheduleProgressPush();
+      _scheduleProgressPush(delay: _progressPushDelay());
     }
   }
 
@@ -564,7 +574,7 @@ class MbnSync {
     if (_auth?.token == null) return;
     _pendingProgressPush?.cancel();
     _pendingProgressPush = null;
-    _lastHistoryPush = DateTime.now();
+    _lastProgressPush = DateTime.now();
     await _touchLocal('progress');
     await _pushCategories(['progress']);
   }
@@ -583,10 +593,18 @@ class MbnSync {
     await syncAll();
   }
 
-  void _scheduleProgressPush() {
-    _pendingProgressPush ??= Timer(const Duration(seconds: 5), () {
+  Duration _progressPushDelay() {
+    final last = _lastProgressPush;
+    if (last == null) return _progressPushInterval;
+    final remaining = _progressPushInterval - DateTime.now().difference(last);
+    return remaining.isNegative ? Duration.zero : remaining;
+  }
+
+  void _scheduleProgressPush({Duration? delay}) {
+    if (_pendingProgressPush != null) return;
+    _pendingProgressPush = Timer(delay ?? _progressPushDelay(), () {
       _pendingProgressPush = null;
-      _lastHistoryPush = DateTime.now();
+      _lastProgressPush = DateTime.now();
       unawaited(_pushPendingProgress());
     });
   }

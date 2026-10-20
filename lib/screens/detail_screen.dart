@@ -2421,6 +2421,9 @@ class _PlayerScreenState extends State<PlayerScreen>
   late MovieEpisode _episode;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
+  Duration? _lastCheckpointPosition;
+  Duration? _lastCheckpointDuration;
+  String? _lastCheckpointEpisodeId;
   bool _playing = false;
   bool _buffering = true;
   final _bufferingNotifier = ValueNotifier<bool>(true);
@@ -2485,10 +2488,9 @@ class _PlayerScreenState extends State<PlayerScreen>
   List<String> _webAssFonts = [];
   String? _webAssSource;
   int _assRenderingGeneration = 0;
-  bool get _assAvailable =>
-      kIsWeb
-          ? _webAssSource != null && !DevicePerformance.appleMobileWeb
-          : isAssTrack(_selectedSubtitle);
+  bool get _assAvailable => kIsWeb
+      ? _webAssSource != null && !DevicePerformance.appleMobileWeb
+      : isAssTrack(_selectedSubtitle);
   WebSubtitleDocument? _webSubtitle;
   int _webSubtitleSelection = 0;
   int _webAudioSelection = 0;
@@ -2921,7 +2923,7 @@ class _PlayerScreenState extends State<PlayerScreen>
 
   void _armSaveTimer() {
     _saveTimer?.cancel();
-    _saveTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+    _saveTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       // Suspend ordinary progress writes during a media transition so the
       // new timeline/duration cannot be attributed to the previous episode.
       if (_transitioning) return;
@@ -2949,13 +2951,30 @@ class _PlayerScreenState extends State<PlayerScreen>
           markWatched ||
           at != null,
     );
+    final progressId = episodeId ?? _progressEpisodeId;
     final position = at ?? _position;
+    final effectiveDuration = duration ?? _duration;
     if (position <= Duration.zero && !markWatched) return Future.value();
+    // Paused playback can leave the timer alive for hours.  Once the same
+    // checkpoint is persisted, do not rewrite preferences or enqueue another
+    // sync until the position, duration, or episode actually changes.
+    final unchanged =
+        !markWatched &&
+        at == null &&
+        !_exitingPlayer &&
+        !_playerTornDown &&
+        _lastCheckpointEpisodeId == progressId &&
+        _lastCheckpointPosition == position &&
+        _lastCheckpointDuration == effectiveDuration;
+    if (unchanged) return Future.value();
+    _lastCheckpointEpisodeId = progressId;
+    _lastCheckpointPosition = position;
+    _lastCheckpointDuration = effectiveDuration;
     return _progressStore.save(
       contentId: widget.content.id,
-      episodeId: episodeId ?? _progressEpisodeId,
+      episodeId: progressId,
       position: position,
-      duration: duration ?? _duration,
+      duration: effectiveDuration,
       markWatched: markWatched,
       // The screens behind playback only need a local refresh on leaving;
       // remote devices still receive every throttled checkpoint via sync.
@@ -2963,11 +2982,11 @@ class _PlayerScreenState extends State<PlayerScreen>
       lastWatch: LastWatch(
         contentId: widget.content.id,
         title: TitleLanguage.title(widget.content),
-        episodeId: episodeId ?? _progressEpisodeId,
+        episodeId: progressId,
         episodeName: _episode.name,
         fileUrl: _episode.fileUrl,
         positionMs: position.inMilliseconds,
-        durationMs: (duration ?? _duration).inMilliseconds,
+        durationMs: effectiveDuration.inMilliseconds,
         updatedAtMs: DateTime.now().millisecondsSinceEpoch,
       ),
     );
@@ -5706,6 +5725,13 @@ class _PlayerScreenState extends State<PlayerScreen>
                                       final volumeWidth = compact
                                           ? 150.0
                                           : 210.0;
+                                      final toolRow = Row(
+                                        textDirection: TextDirection.ltr,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: _playerToolControls(
+                                          compact: compact,
+                                        ),
+                                      );
                                       return Column(
                                         children: [
                                           GestureDetector(
@@ -5755,24 +5781,29 @@ class _PlayerScreenState extends State<PlayerScreen>
                                                 child: Align(
                                                   alignment:
                                                       Alignment.centerRight,
-                                                  child: FittedBox(
-                                                    key: const Key(
-                                                      'player-tool-controls',
-                                                    ),
-                                                    fit: BoxFit.scaleDown,
-                                                    alignment:
-                                                        Alignment.centerRight,
-                                                    child: Row(
-                                                      textDirection:
-                                                          TextDirection.ltr,
-                                                      mainAxisSize:
-                                                          MainAxisSize.min,
-                                                      children:
-                                                          _playerToolControls(
-                                                            compact: compact,
+                                                  child:
+                                                      DevicePerformance
+                                                          .appleMobileWeb
+                                                      ? Transform.scale(
+                                                          key: const Key(
+                                                            'player-tool-controls',
                                                           ),
-                                                    ),
-                                                  ),
+                                                          scale: 1,
+                                                          alignment: Alignment
+                                                              .centerRight,
+                                                          transformHitTests:
+                                                              true,
+                                                          child: toolRow,
+                                                        )
+                                                      : FittedBox(
+                                                          key: const Key(
+                                                            'player-tool-controls',
+                                                          ),
+                                                          fit: BoxFit.scaleDown,
+                                                          alignment: Alignment
+                                                              .centerRight,
+                                                          child: toolRow,
+                                                        ),
                                                 ),
                                               ),
                                             ],

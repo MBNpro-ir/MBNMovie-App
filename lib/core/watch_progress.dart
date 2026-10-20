@@ -8,6 +8,26 @@ import '../services/preference_batch.dart';
 
 enum WatchStatus { unwatched, partial, watched }
 
+class _WatchSaveRequest {
+  const _WatchSaveRequest({
+    required this.contentId,
+    required this.episodeId,
+    required this.position,
+    required this.duration,
+    required this.markWatched,
+    required this.lastWatch,
+    required this.notify,
+  });
+
+  final String contentId;
+  final String episodeId;
+  final Duration position;
+  final Duration duration;
+  final bool markWatched;
+  final LastWatch? lastWatch;
+  final bool notify;
+}
+
 /// A relay cut to about a minute must never overwrite a known full episode.
 bool isTruncatedPlaybackDuration(Duration duration, Duration knownDuration) =>
     duration > Duration.zero &&
@@ -65,7 +85,10 @@ class WatchProgressStore {
   static String _timeKey(String contentId, String episodeId) =>
       'watch_time_${contentId}_$episodeId';
 
-  Future<void> _pendingSave = Future<void>.value();
+  // Playback checkpoints arrive on a timer.  A slow preferences write must
+  // never create an unbounded FIFO: only the newest snapshot is useful.
+  _WatchSaveRequest? _queuedSave;
+  Future<void>? _saveDrain;
 
   Future<void> save({
     required String contentId,
@@ -76,20 +99,44 @@ class WatchProgressStore {
     LastWatch? lastWatch,
     bool notify = true,
   }) {
-    final next = _pendingSave.then(
-      (_) => _saveNow(
-        contentId: contentId,
-        episodeId: episodeId,
-        position: position,
-        duration: duration,
-        markWatched: markWatched,
-        lastWatch: lastWatch,
-        notify: notify,
-      ),
+    _queuedSave = _WatchSaveRequest(
+      contentId: contentId,
+      episodeId: episodeId,
+      position: position,
+      duration: duration,
+      markWatched: markWatched,
+      lastWatch: lastWatch,
+      notify: notify,
     );
-    // Failed disk writes must not poison subsequent checkpoints.
-    _pendingSave = next.catchError((Object _) {});
-    return next;
+    return _saveDrain ??= _drainSaves();
+  }
+
+  Future<void> _drainSaves() async {
+    try {
+      while (true) {
+        final request = _queuedSave;
+        if (request == null) return;
+        _queuedSave = null;
+        try {
+          await _saveNow(
+            contentId: request.contentId,
+            episodeId: request.episodeId,
+            position: request.position,
+            duration: request.duration,
+            markWatched: request.markWatched,
+            lastWatch: request.lastWatch,
+            notify: request.notify,
+          );
+        } catch (_) {
+          // A transient preferences failure must not poison the next
+          // checkpoint or surface as an unhandled async error from playback.
+        }
+      }
+    } finally {
+      _saveDrain = null;
+      // A checkpoint may have arrived during the final loop iteration.
+      if (_queuedSave != null) _saveDrain = _drainSaves();
+    }
   }
 
   Future<void> _saveNow({
