@@ -4,6 +4,7 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/mbn_sync.dart';
+import '../services/preference_batch.dart';
 
 enum WatchStatus { unwatched, partial, watched }
 
@@ -109,27 +110,33 @@ class WatchProgressStore {
     final effectiveDuration = duration > Duration.zero
         ? duration
         : knownDuration;
-    if (position > Duration.zero) {
-      await prefs.remove(_statusKey(contentId, episodeId));
+    final statusKey = _statusKey(contentId, episodeId);
+    final durationKey = _durKey(contentId, episodeId);
+    final timeKey = _timeKey(contentId, episodeId);
+    final removeKeys = <String>{};
+    final values = <String, Object>{
+      _posKey(contentId, episodeId): position.inMilliseconds,
+    };
+    if (position > Duration.zero && prefs.getString(statusKey) != null) {
+      removeKeys.add(statusKey);
     }
-    await prefs.setInt(_posKey(contentId, episodeId), position.inMilliseconds);
-    await prefs.setInt(
-      _durKey(contentId, episodeId),
-      effectiveDuration.inMilliseconds,
-    );
-    await prefs.setInt(
-      _timeKey(contentId, episodeId),
-      (prefs.getInt(_timeKey(contentId, episodeId)) ?? 0) >=
-              DateTime.now().millisecondsSinceEpoch
-          ? (prefs.getInt(_timeKey(contentId, episodeId)) ?? 0) + 1
-          : DateTime.now().millisecondsSinceEpoch,
-    );
+    // Duration is stable for ordinary checkpoints. Avoid rewriting the full
+    // Windows preferences document when only the position changed.
+    if (prefs.getInt(durationKey) != effectiveDuration.inMilliseconds) {
+      values[durationKey] = effectiveDuration.inMilliseconds;
+    }
+    final previousTime = prefs.getInt(timeKey) ?? 0;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final writtenAt = previousTime >= now ? previousTime + 1 : now;
+    values[timeKey] = writtenAt;
     final reachedEnd =
         duration > Duration.zero &&
         position >= effectiveDuration - const Duration(seconds: 10);
     if (markWatched || reachedEnd) {
-      await prefs.remove(_statusKey(contentId, episodeId));
-      await prefs.setBool(_watchedKey(contentId, episodeId), true);
+      removeKeys.add(statusKey);
+      if (prefs.getBool(_watchedKey(contentId, episodeId)) != true) {
+        values[_watchedKey(contentId, episodeId)] = true;
+      }
     }
     // Write the global Continue card in the same serialized checkpoint, before
     // scheduling its upload. Pause and ordinary ticks now identify this episode.
@@ -144,15 +151,12 @@ class WatchProgressStore {
           (effectiveDuration <= Duration.zero ||
               position < effectiveDuration - const Duration(seconds: 30));
       if (resumable) {
-        await prefs.setString(
-          slot,
-          jsonEncode({
-            ...lastWatch.toJson(),
-            'positionMs': position.inMilliseconds,
-            'durationMs': effectiveDuration.inMilliseconds,
-            'updatedAtMs': prefs.getInt(_timeKey(contentId, episodeId)),
-          }),
-        );
+        values[slot] = jsonEncode({
+          ...lastWatch.toJson(),
+          'positionMs': position.inMilliseconds,
+          'durationMs': effectiveDuration.inMilliseconds,
+          'updatedAtMs': writtenAt,
+        });
       } else {
         final raw = prefs.getString(slot);
         if (raw != null) {
@@ -160,13 +164,14 @@ class WatchProgressStore {
             final old = jsonDecode(raw) as Map;
             if (old['contentId'] == contentId &&
                 old['episodeId'] == episodeId) {
-              await prefs.remove(slot);
+              removeKeys.add(slot);
             }
           } catch (_) {}
         }
       }
       if (notify) changes.value++;
     }
+    await writePreferenceBatch(prefs, values: values, remove: removeKeys);
     unawaited(MbnSync.instance.pushProgressThrottled());
   }
 

@@ -3,6 +3,7 @@ import 'account_profile.dart';
 import 'app_links.dart';
 import '../core/sync_merge.dart';
 import '../core/watch_progress.dart';
+import 'preference_batch.dart';
 import 'dart:convert';
 import 'dart:async';
 import '../core/platform_ui.dart' show settingsDeviceProfile;
@@ -183,10 +184,13 @@ class MbnSync {
     try {
       final prefs = await SharedPreferences.getInstance();
       // Local revisions are independent of the wall clock and server cursor.
-      await prefs.setBool('mbn_sync_dirty_$category', true);
-      await prefs.setInt(
-        'mbn_sync_rev_$category',
-        (prefs.getInt('mbn_sync_rev_$category') ?? 0) + 1,
+      await writePreferenceBatch(
+        prefs,
+        values: {
+          'mbn_sync_dirty_$category': true,
+          'mbn_sync_rev_$category':
+              (prefs.getInt('mbn_sync_rev_$category') ?? 0) + 1,
+        },
       );
     } catch (_) {}
   }

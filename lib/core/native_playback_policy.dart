@@ -17,4 +17,18 @@ abstract final class NativePlaybackPolicy {
         ? 'mediacodec,mediacodec-copy'
         : null,
   );
+
+  /// Runtime mpv settings that keep the Windows Flutter texture responsive.
+  /// Disk caching is useful for a standalone mpv window, but writing a second
+  /// copy of a network stream competes with Flutter's texture upload thread.
+  /// Video framedrop is a last-resort safety valve: audio stays continuous
+  /// instead of the whole player stopping when a machine briefly falls behind.
+  static Map<String, String> playerProperties({required bool windows}) => {
+    if (windows) ...{
+      'cache-on-disk': 'no',
+      'framedrop': 'vo',
+      'interpolation': 'no',
+      'vd-lavc-threads': 'auto',
+    },
+  };
 }

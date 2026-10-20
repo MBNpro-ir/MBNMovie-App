@@ -326,22 +326,33 @@ class PlayerLoadingIndicator extends StatelessWidget {
     required this.preparing,
     required this.buffering,
     required this.enabled,
+    this.bufferingListenable,
   });
   final ValueListenable<bool> preparing;
   final bool buffering, enabled;
+  final ValueListenable<bool>? bufferingListenable;
   @override
-  Widget build(BuildContext context) => ValueListenableBuilder<bool>(
-    valueListenable: preparing,
-    builder: (_, value, _) {
-      if (!enabled) return const SizedBox.shrink();
-      if (value) return const PlaybackPreparationNotice();
-      return buffering
-          ? const IgnorePointer(
-              child: Center(child: CircularProgressIndicator()),
-            )
-          : const SizedBox.shrink();
-    },
-  );
+  Widget build(BuildContext context) {
+    Widget render(bool isBuffering) => ValueListenableBuilder<bool>(
+      valueListenable: preparing,
+      builder: (_, value, _) {
+        if (!enabled) return const SizedBox.shrink();
+        if (value) return const PlaybackPreparationNotice();
+        return isBuffering
+            ? const IgnorePointer(
+                child: Center(child: CircularProgressIndicator()),
+              )
+            : const SizedBox.shrink();
+      },
+    );
+    final listenable = bufferingListenable;
+    return listenable == null
+        ? render(buffering)
+        : ValueListenableBuilder<bool>(
+            valueListenable: listenable,
+            builder: (_, value, _) => render(value),
+          );
+  }
 }
 
 class SubtitlePanelToolbar extends StatelessWidget {

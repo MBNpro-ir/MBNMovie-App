@@ -60,11 +60,16 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _api.catalogRequest = (path, query) => _auth.getJson(path, query: query);
     unawaited(TitleLanguage.initialize());
-    _accountTimer = Timer.periodic(const Duration(seconds: 6), (_) {
-      unawaited(_checkAccount());
-    });
+    _accountTimer = Timer.periodic(
+      DevicePerformance.appleMobileWeb
+          ? const Duration(seconds: 30)
+          : const Duration(seconds: 6),
+      (_) => unawaited(_checkAccount()),
+    );
     _syncTimer = Timer.periodic(
-      const Duration(seconds: 60),
+      DevicePerformance.appleMobileWeb
+          ? const Duration(minutes: 5)
+          : const Duration(seconds: 60),
       (_) => unawaited(MbnSync.instance.syncAll()),
     );
     _restoreSession();
@@ -321,7 +326,12 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    _sessionWatch.track(_auth.token, _auth.baseUrl);
+    // Keep Safari PWA responsive by avoiding a long-lived SSE connection;
+    // foreground account polling still detects revocation promptly enough.
+    _sessionWatch.track(
+      DevicePerformance.appleMobileWeb ? null : _auth.token,
+      _auth.baseUrl,
+    );
     return ListenableBuilder(
       listenable: AccessibilityService.instance,
       builder: (context, _) {
@@ -369,7 +379,7 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
             ),
           ),
           home: AnimatedSwitcher(
-            duration: access.reduceMotion
+            duration: access.reduceMotion || DevicePerformance.appleMobileWeb
                 ? Duration.zero
                 : Duration(
                     milliseconds: DevicePerformance.lightweight ? 180 : 650,

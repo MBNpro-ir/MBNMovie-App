@@ -49,4 +49,19 @@ void main() {
       }
     },
   );
+
+  test(
+    'Windows player policy avoids disk-cache stalls and keeps audio clock',
+    () {
+      expect(
+        NativePlaybackPolicy.playerProperties(windows: true),
+        containsPair('cache-on-disk', 'no'),
+      );
+      expect(
+        NativePlaybackPolicy.playerProperties(windows: true),
+        containsPair('framedrop', 'vo'),
+      );
+      expect(NativePlaybackPolicy.playerProperties(windows: false), isEmpty);
+    },
+  );
 }

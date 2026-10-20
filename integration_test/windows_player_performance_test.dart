@@ -106,6 +106,15 @@ void main() {
           }
           heartbeat.cancel();
           binding.removeTimingsCallback(timings);
+          final runtimeProperties = <String, String?>{};
+          for (final name in const [
+            'cache-on-disk',
+            'framedrop',
+            'interpolation',
+            'vd-lavc-threads',
+          ]) {
+            runtimeProperties[name] = await native.getProperty(name);
+          }
           results.add({
             'syntheticWrites': bytes > 0,
             'preferenceBytes': bytes,
@@ -123,6 +132,7 @@ void main() {
             ),
             'outputDrops': await native.getProperty('frame-drop-count'),
             'hwdec': await native.getProperty('hwdec-current'),
+            'runtimeProperties': runtimeProperties,
             'positionSeconds': player.state.position.inSeconds,
           });
           final data =
@@ -140,6 +150,11 @@ void main() {
         }
         debugPrint('MBN_WINDOWS_PERFORMANCE ${jsonEncode(results)}');
         expect(await native.getProperty('decoder-frame-drop-count'), '0');
+        expect(await native.getProperty('cache-on-disk'), 'no');
+        expect(await native.getProperty('framedrop'), 'vo');
+        expect(await native.getProperty('interpolation'), 'no');
+        // mpv exposes the `auto` value as numeric zero through libmpv.
+        expect(await native.getProperty('vd-lavc-threads'), '0');
         expect(
           await native.getProperty('frame-drop-count'),
           dropsAtStart,

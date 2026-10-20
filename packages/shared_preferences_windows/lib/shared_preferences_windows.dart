@@ -137,6 +137,29 @@ class SharedPreferencesWindows extends SharedPreferencesStorePlatform {
       pathProvider: pathProvider,
     );
   }
+
+  /// Applies a group of mutations with one serialized file write.
+  ///
+  /// Playback checkpoints update several keys at once. Calling [setValue]
+  /// for each key would encode and write the complete preferences document
+  /// repeatedly, which can produce a visible hitch on Windows while a video
+  /// texture is being rendered.
+  Future<bool> updateValues(
+    Map<String, Object> values, {
+    Iterable<String> remove = const <String>[],
+  }) async {
+    final preferences = await _readPreferences();
+    for (final key in remove) {
+      preferences.remove(key);
+    }
+    preferences.addAll(values);
+    return _writePreferences(
+      preferences,
+      _defaultFileName,
+      fs: fs,
+      pathProvider: pathProvider,
+    );
+  }
 }
 
 /// The Windows implementation of [SharedPreferencesAsyncPlatform].
