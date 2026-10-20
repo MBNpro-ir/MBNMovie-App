@@ -481,22 +481,25 @@ class MovieApi implements ContentApi {
   Future<_AuthInit> _loginInit() async {
     // The catalog service consumes the guest auth for one vp1 request.
     // Reusing it makes every subsequent action fail with state_all=F.
-    final login = await sendBuffered(
-      _client,
-      'POST',
-      Uri.parse('${_base}users.php?key=$_key&action=login'),
-      headers: _headers,
-      body: {
-        'user_name': _delfanMobile,
-        if (_delfanMobile.isNotEmpty) 'pass': _delfanPassword,
-        'token': '',
-        'android_id': '',
-        'app_verion': '2',
-        'version_sp': 'ورژن 2',
-        'is_tv': '',
-        'apname': _delfanMobile.isEmpty ? _wireApp : 'Delfan',
-      },
-      timeout: const Duration(seconds: 20),
+    final login = await readWithRetry(
+      () => sendBuffered(
+        _client,
+        'POST',
+        Uri.parse('${_base}users.php?key=$_key&action=login'),
+        headers: _headers,
+        body: {
+          'user_name': _delfanMobile,
+          if (_delfanMobile.isNotEmpty) 'pass': _delfanPassword,
+          'token': '',
+          'android_id': '',
+          'app_verion': '2',
+          'version_sp': 'ورژن 2',
+          'is_tv': '',
+          'apname': _delfanMobile.isEmpty ? _wireApp : 'Delfan',
+        },
+        timeout: const Duration(seconds: 20),
+      ),
+      maxAttempts: 3,
     );
     final init = _map(jsonDecode(utf8.decode(login.bodyBytes)));
     final info = _map(_list(init['infos']).firstOrNull);
@@ -535,23 +538,26 @@ class MovieApi implements ContentApi {
           '${_md5('${nonce}cotation')}${init.auth}'
           'fdaa94a151e2c5d474a290e8${init.auth}y87mdjsodon'
           'c215sfxd545fgs${_md5('${DateTime.now().toUtc()}cotation')}';
-      final response = await sendBuffered(
-        _client,
-        'POST',
-        Uri.parse('${_base}vp1.php?key=$_key&action=$action'),
-        headers: _headers,
-        body: {
-          'user_name': init.mobile,
-          'token': init.token,
-          'body': body,
-          'an': _md5('${init.q1 + init.q2 + 101}'),
-          'langueg': TitleLanguage.english ? 'EN' : 'Fa',
-          'u_s': init.night,
-          's_n': init.tx,
-          'apname': init.mobile.isEmpty ? _wireApp : 'Delfan',
-          ...extra,
-        },
-        timeout: const Duration(seconds: 30),
+      final response = await readWithRetry(
+        () => sendBuffered(
+          _client,
+          'POST',
+          Uri.parse('${_base}vp1.php?key=$_key&action=$action'),
+          headers: _headers,
+          body: {
+            'user_name': init.mobile,
+            'token': init.token,
+            'body': body,
+            'an': _md5('${init.q1 + init.q2 + 101}'),
+            'langueg': TitleLanguage.english ? 'EN' : 'Fa',
+            'u_s': init.night,
+            's_n': init.tx,
+            'apname': init.mobile.isEmpty ? _wireApp : 'Delfan',
+            ...extra,
+          },
+          timeout: const Duration(seconds: 30),
+        ),
+        maxAttempts: 2,
       );
       _checkSession(generation);
       if (response.statusCode != 200 || response.bodyBytes.isEmpty) {
@@ -699,8 +705,23 @@ class MovieApi implements ContentApi {
       .toList();
 
   Future<HomeCatalog> home() async {
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await _homeOnce();
+      } catch (_) {
+        if (attempt == 2) {
+          throw const MovieApiException('کاتالوگ MBNMovie قابل خواندن نیست.');
+        }
+        _homeData = null;
+        await Future<void>.delayed(Duration(milliseconds: 350 * (attempt + 1)));
+      }
+    }
+    throw StateError('unreachable');
+  }
+
+  Future<HomeCatalog> _homeOnce() async {
+    _homeData = null;
     try {
-      _homeData = null;
       final data = await _home();
       final movies = _items(data['NewMovie'], ContentKind.movie);
       final series = _items(data['NewSerie'], ContentKind.series);

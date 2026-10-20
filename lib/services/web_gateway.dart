@@ -47,18 +47,21 @@ abstract final class WebGateway {
 
     final response = await _requests.run('$generation $path $encoded', () {
       check();
-      return sendBuffered(
-        _client,
-        'POST',
-        endpoint(path),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $credential',
-        },
-        body: encoded,
-        timeout: const Duration(seconds: 25),
-        maxBytes: 2 * 1024 * 1024,
-        followRedirects: false,
+      return readWithRetry(
+        () => sendBuffered(
+          _client,
+          'POST',
+          endpoint(path),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $credential',
+          },
+          body: encoded,
+          timeout: const Duration(seconds: 25),
+          maxBytes: 2 * 1024 * 1024,
+          followRedirects: false,
+        ),
+        maxAttempts: 2,
       );
     });
     check();
@@ -150,31 +153,37 @@ class WebCatalogClient extends http.BaseClient {
     if (credential == null) {
       throw http.ClientException('نشست شما پایان یافته است.');
     }
-    final response = await sendBuffered(
-      _inner,
-      'POST',
-      _endpoint,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $credential',
-      },
-      body: jsonEncode({
-        'url': request.url.toString(),
-        'method': request.method,
-        'headers': request.headers.map(
-          (k, v) => MapEntry(
-            k
-                .split('-')
-                .map((s) => s[0].toUpperCase() + s.substring(1))
-                .join('-'),
-            v,
+    final response = await readWithRetry(
+      () => sendBuffered(
+        _inner,
+        'POST',
+        _endpoint,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $credential',
+        },
+        body: jsonEncode({
+          'url': request.url.toString(),
+          'method': request.method,
+          'headers': request.headers.map(
+            (k, v) => MapEntry(
+              k
+                  .split('-')
+                  .map((s) => s[0].toUpperCase() + s.substring(1))
+                  .join('-'),
+              v,
+            ),
           ),
-        ),
-        'body': base64Encode(body),
-      }),
-      timeout: const Duration(seconds: 35),
-      followRedirects: false,
-      abortTrigger: request is http.Abortable ? request.abortTrigger : null,
+          'body': base64Encode(body),
+        }),
+        timeout: const Duration(seconds: 35),
+        followRedirects: false,
+        abortTrigger: request is http.Abortable ? request.abortTrigger : null,
+      ),
+      maxAttempts:
+          request.method == 'GET' || request.url.path.endsWith('/vp1.php')
+          ? 2
+          : 1,
     );
     if (generation != WebGateway._generation) {
       throw http.ClientException('حساب تغییر کرده است.');

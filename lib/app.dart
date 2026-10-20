@@ -534,17 +534,28 @@ class AccessibilityAppWrapper extends StatelessWidget {
         // made a button look like it was at one position while its tap target
         // was offset. Transform keeps the same visual scale and maps pointer
         // coordinates back into the child's logical space.
+        // Keep the scaled child at its logical (expanded) size before the
+        // transform is applied.  A tight parent constraint makes Transform
+        // lay out the child at the physical width first, then scales that
+        // width down again, leaving a black strip on the right on phones.
         return SizedBox(
           width: rawMedia.size.width,
           height: rawMedia.size.height,
-          child: Transform.scale(
-            scale: uiScale,
+          child: OverflowBox(
             alignment: Alignment.topLeft,
-            transformHitTests: true,
-            child: SizedBox(
-              width: targetWidth,
-              height: targetHeight,
-              child: MediaQuery(data: scaledMedia, child: child),
+            minWidth: targetWidth,
+            maxWidth: targetWidth,
+            minHeight: targetHeight,
+            maxHeight: targetHeight,
+            child: Transform.scale(
+              scale: uiScale,
+              alignment: Alignment.topLeft,
+              transformHitTests: true,
+              child: SizedBox(
+                width: targetWidth,
+                height: targetHeight,
+                child: MediaQuery(data: scaledMedia, child: child),
+              ),
             ),
           ),
         );

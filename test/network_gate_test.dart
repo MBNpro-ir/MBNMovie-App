@@ -237,6 +237,17 @@ void main() {
     },
   );
 
+  test('transient transport failures are retried for reads', () async {
+    var calls = 0;
+    final result = await readWithRetry(() async {
+      calls++;
+      if (calls == 1) throw http.ClientException('temporary offline');
+      return http.Response('{}', 200);
+    });
+    expect(result.statusCode, 200);
+    expect(calls, 2);
+  });
+
   test(
     'an earlier login response cannot apply even if its token is restored',
     () async {

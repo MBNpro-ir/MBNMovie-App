@@ -147,15 +147,38 @@ Future<http.Response> sendBuffered(
   }
 }
 
-/// Only read operations opt in to a single retry. Rate limits, maintenance,
-/// authorization failures and writes are returned immediately to the caller.
+/// Read operations may retry short-lived transport/gateway failures. Writes,
+/// authorization failures and permanent server errors are returned directly.
 Future<http.Response> readWithRetry(
-  Future<http.Response> Function() send,
-) async {
-  final response = await send();
-  if (response.statusCode != 502 && response.statusCode != 504) return response;
-  final retryAfter = int.tryParse(response.headers['retry-after'] ?? '');
-  if (retryAfter != null && retryAfter > 2) return response;
+  Future<http.Response> Function() send, {
+  int maxAttempts = 2,
+}) async {
+  final attempts = max(1, min(maxAttempts, 4));
+  for (var attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      final response = await send();
+      final retryable =
+          response.statusCode == 408 ||
+          response.statusCode == 502 ||
+          response.statusCode == 504;
+      if (!retryable || attempt == attempts) return response;
+      final retryAfter = int.tryParse(response.headers['retry-after'] ?? '');
+      if (retryAfter != null && retryAfter > 2) return response;
+      await _retryDelay(response);
+    } on TimeoutException {
+      if (attempt == attempts) rethrow;
+      await _retryDelay();
+    } on http.ClientException {
+      if (attempt == attempts) rethrow;
+      await _retryDelay();
+    }
+  }
+  throw StateError('unreachable');
+}
+
+Future<void> _retryDelay([http.Response? response]) async {
+  final retryAfter = int.tryParse(response?.headers['retry-after'] ?? '');
+  if (retryAfter != null && retryAfter > 2) return;
   await Future<void>.delayed(
     Duration(
       milliseconds: retryAfter != null
@@ -163,5 +186,4 @@ Future<http.Response> readWithRetry(
           : 300 + Random().nextInt(250),
     ),
   );
-  return send();
 }
