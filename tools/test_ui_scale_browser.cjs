@@ -25,6 +25,15 @@ const assert = require('node:assert/strict');
       assert.equal(await page.locator('#mbn-viewport-host').count(), 1);
       let touches = 0;
       async function assertLayout() {
+        // Host CSS and Flutter's ResizeObserver update on different frames.
+        // Wait for both to agree, rather than assuming a 120ms fixed delay.
+        await page.waitForFunction(() => {
+          const state = JSON.parse(window.mbnProbeState()), full = state.boxes.viewport;
+          const root = document.querySelector('flutter-view').getBoundingClientRect();
+          const box = state.boxes['safe-content'], safe = state.safeArea;
+          return Math.abs(full.width - root.width) < 1 && Math.abs(full.height - root.height) < 1 &&
+            Math.abs(box.y - safe.top) < 1 && Math.abs(box.y + box.height - root.height + safe.bottom) < 1;
+        }, null, {timeout: 5000});
         const state = await page.evaluate(() => JSON.parse(window.mbnProbeState()));
         const root = await page.locator('flutter-view').boundingBox();
         const full = state.boxes.viewport, content = state.boxes['safe-content'], safe = state.safeArea;
@@ -53,6 +62,22 @@ const assert = require('node:assert/strict');
         assert.equal(after.taps.length, before.taps.length + 1, name);
         assert.equal(after.taps.at(-1), name);
         touches++;
+      }
+      await page.evaluate(() => window.mbnProbeScale(.6));
+      await page.waitForTimeout(150);
+      await assertLayout();
+      // Safari can finalize its home-indicator inset after the first frame,
+      // without resizing the viewport. No navigation or scale change should
+      // be needed to make the bottom of the app usable.
+      for (const bottom of [52, 0, 34]) {
+        await page.evaluate(bottom => document.documentElement.style.setProperty('--probe-bottom', bottom + 'px'), bottom);
+        await page.waitForFunction(() => {
+          const state = JSON.parse(window.mbnProbeState()), box = state.boxes['safe-content'];
+          const root = document.querySelector('flutter-view').getBoundingClientRect();
+          return Math.abs(box.y + box.height - (root.height - state.safeArea.bottom)) < 1;
+        }, null, {timeout: 3000}).catch(() => {throw new Error('Late Safari safe-area change was not applied without navigation');});
+        await assertLayout();
+        await tap('bottom');
       }
       for (const viewport of [{width:375,height:812}, {width:812,height:375}, {width:375,height:480}, {width:375,height:812}]) {
         const landscape = viewport.width > viewport.height;

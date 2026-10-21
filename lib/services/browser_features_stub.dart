@@ -1,6 +1,8 @@
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show ValueNotifier;
 
 abstract final class BrowserFeatures {
+  static final safeAreaChanges = ValueNotifier<int>(0);
   static Future<void> ass(
     String source, {
     List<String> fonts = const [],

@@ -3,6 +3,7 @@
 const mbnAppleMobile = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.vendor.includes('Apple') && navigator.maxTouchPoints > 1);
 if (mbnAppleMobile) document.documentElement.classList.add('mbn-apple-mobile');
 const mbnAssetRoot = new URL('.', document.currentScript.src).href;
+let mbnRefreshViewport = () => {};
 
 // Safari's visual viewport can move independently of the layout viewport
 // after keyboard use, page zoom or rotation. Let Flutter measure the same
@@ -16,6 +17,7 @@ function mbnCreateViewportHost() {
   document.body.appendChild(host);
   const viewport = window.visualViewport;
   let frame = 0;
+  let settleTimers = [];
   function sync() {
     frame = 0;
     const values = {
@@ -32,13 +34,25 @@ function mbnCreateViewportHost() {
   function schedule() {
     if (!frame) frame = requestAnimationFrame(sync);
   }
+  function settle() {
+    for (const timer of settleTimers) clearTimeout(timer);
+    settleTimers = [];
+    if (document.hidden) return;
+    schedule();
+    // Installed Safari may finalize its viewport after launch/resume without
+    // another resize event. Re-measure briefly, then remain idle.
+    settleTimers = [100, 350, 1000].map(delay => setTimeout(schedule, delay));
+  }
+  mbnRefreshViewport = settle;
   sync();
   viewport?.addEventListener('resize', schedule, {passive: true});
   viewport?.addEventListener('scroll', schedule, {passive: true});
   window.addEventListener('resize', schedule, {passive: true});
-  window.addEventListener('orientationchange', schedule, {passive: true});
-  document.addEventListener('focusout', schedule);
-  document.addEventListener('visibilitychange', schedule);
+  window.addEventListener('orientationchange', settle, {passive: true});
+  window.addEventListener('pageshow', settle, {passive: true});
+  window.addEventListener('focus', settle, {passive: true});
+  document.addEventListener('focusout', settle);
+  document.addEventListener('visibilitychange', settle);
   return host;
 }
 _flutter.loader.load({
@@ -49,6 +63,7 @@ _flutter.loader.load({
     const hostElement = mbnCreateViewportHost();
     const appRunner = await engineInitializer.initializeEngine({assetBase: mbnAssetRoot, ...(hostElement ? {hostElement} : {})});
     await appRunner.runApp();
+    mbnRefreshViewport();
     document.getElementById('loading')?.remove();
     document.documentElement.classList.add('mbn-flutter-ready');
   }

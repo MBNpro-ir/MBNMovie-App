@@ -485,7 +485,10 @@ class AccessibilityAppWrapper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: AccessibilityService.instance,
+      listenable: Listenable.merge([
+        AccessibilityService.instance,
+        if (DevicePerformance.appleMobileWeb) BrowserFeatures.safeAreaChanges,
+      ]),
       builder: (context, _) => LayoutBuilder(
         builder: (context, constraints) {
           final access = AccessibilityService.instance;

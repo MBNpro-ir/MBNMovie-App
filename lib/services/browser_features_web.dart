@@ -3,6 +3,7 @@ import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 import 'dart:typed_data';
 import 'package:web/web.dart' as web;
+import 'package:flutter/foundation.dart' show ValueNotifier;
 
 abstract final class BrowserFeatures {
   static bool get isAndroidBrowser =>
@@ -31,15 +32,15 @@ abstract final class BrowserFeatures {
   static void setPlayerActive(bool active) =>
       globalContext.setProperty('mbnPlayerActive'.toJS, active.toJS);
 
+  static final safeAreaChanges = ValueNotifier<int>(0);
   static web.HTMLDivElement? _safeAreaProbe;
-  static ({double left, double top, double right, double bottom}) get safeArea {
-    final probe = _safeAreaProbe ??= web.HTMLDivElement()
-      ..id = 'mbn-safe-area'
-      ..style.cssText =
-          'position:fixed;visibility:hidden;pointer-events:none;'
-          'padding:env(safe-area-inset-top) env(safe-area-inset-right) '
-          'env(safe-area-inset-bottom) env(safe-area-inset-left);';
-    if (!probe.isConnected) web.document.body!.appendChild(probe);
+  static web.ResizeObserver? _safeAreaObserver;
+  static ({double left, double top, double right, double bottom})?
+  _observedSafeArea;
+
+  static ({double left, double top, double right, double bottom}) _readSafeArea(
+    web.HTMLDivElement probe,
+  ) {
     final style = web.window.getComputedStyle(probe);
     double px(String value) => double.tryParse(value.replaceAll('px', '')) ?? 0;
     return (
@@ -48,6 +49,41 @@ abstract final class BrowserFeatures {
       right: px(style.paddingRight),
       bottom: px(style.paddingBottom),
     );
+  }
+
+  static ({double left, double top, double right, double bottom}) get safeArea {
+    final probe = _safeAreaProbe ??= web.HTMLDivElement()
+      ..id = 'mbn-safe-area'
+      ..style.cssText =
+          'position:fixed;top:0;left:0;width:0;height:0;'
+          'visibility:hidden;pointer-events:none;'
+          'padding:env(safe-area-inset-top) env(safe-area-inset-right) '
+          'env(safe-area-inset-bottom) env(safe-area-inset-left);';
+    if (!probe.isConnected) web.document.body!.appendChild(probe);
+    if (_safeAreaObserver == null) {
+      _observedSafeArea = _readSafeArea(probe);
+      // iOS can finalize its safe areas after launch/resume without changing
+      // the Flutter host's size. Observe the padding border box, not its zero
+      // content box, and rebuild only when the actual inset values change.
+      void refresh() {
+        final area = _readSafeArea(probe);
+        if (area == _observedSafeArea) return;
+        _observedSafeArea = area;
+        safeAreaChanges.value++;
+      }
+
+      _safeAreaObserver = web.ResizeObserver(
+        ((JSArray<web.ResizeObserverEntry> _, web.ResizeObserver _) {
+          refresh();
+        }).toJS,
+      )..observe(probe, web.ResizeObserverOptions(box: 'border-box'));
+      final onMetrics = ((web.Event _) => refresh()).toJS;
+      web.window.addEventListener('resize', onMetrics);
+      web.window.addEventListener('orientationchange', onMetrics);
+      web.window.addEventListener('pageshow', onMetrics);
+      web.document.addEventListener('visibilitychange', onMetrics);
+    }
+    return _readSafeArea(probe);
   }
 
   static bool get isMobileBrowser {
