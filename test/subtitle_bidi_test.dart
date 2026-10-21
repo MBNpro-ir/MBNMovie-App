@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mbnmovie/core/subtitle_bidi.dart';
 import 'package:mbnmovie/core/web_subtitles.dart';
 import 'package:mbnmovie/widgets/player_subtitle_text.dart';
+import 'fixtures/subtitle_bidi_cases.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -19,8 +20,7 @@ void main() {
     () {
       const source = 'سریال House of the Dragon و MRI/CT شماره 12.5 است.';
       final normalized = normalizePersianSubtitle(source);
-      expect(normalized, contains('\u2066House of the Dragon\u2069'));
-      expect(normalized, contains('\u2066MRI/CT\u2069'));
+      expect(normalized.replaceAll('\u200E', ''), source);
       expect(normalizePersianSubtitle(normalized), normalized);
       expect(normalizePersianSubtitle('می\u200Cروم'), 'می\u200Cروم');
       expect(
@@ -44,6 +44,61 @@ void main() {
       expect(parsed.vtt(), contains(subtitleDisplayText([source])));
     }
   });
+
+  for (final sample in subtitleBidiCases) {
+    for (final width in [760.0, 260.0]) {
+      testWidgets('${sample.id}: glyph reading order at width $width', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          Directionality(
+            textDirection: TextDirection.ltr,
+            child: Center(
+              child: SizedBox(
+                width: width,
+                child: PlayerSubtitleText(
+                  lines: [sample.text],
+                  style: const TextStyle(fontFamily: 'Vazirmatn', fontSize: 24),
+                ),
+              ),
+            ),
+          ),
+        );
+        final paragraph = tester.renderObject<RenderParagraph>(
+          find.byType(RichText),
+        );
+        final text = paragraph.text.toPlainText();
+        Rect box(String word) {
+          final (start, end) = subtitleTokenRange(text, word);
+          final boxes = paragraph.getBoxesForSelection(
+            TextSelection(baseOffset: start, extentOffset: end),
+          );
+          expect(boxes, isNotEmpty);
+          return boxes.first.toRect();
+        }
+
+        for (final (rtl, pairs) in [(false, sample.ltr), (true, sample.rtl)]) {
+          for (final (first, second) in pairs) {
+            final a = box(first), b = box(second);
+            if ((a.top - b.top).abs() > 1) {
+              expect(
+                a.top,
+                lessThan(b.top),
+                reason: '$first before $second in ${sample.text}',
+              );
+            } else {
+              expect(
+                a.center.dx,
+                rtl ? greaterThan(b.center.dx) : lessThan(b.center.dx),
+                reason: '$first before $second in ${sample.text}',
+              );
+            }
+          }
+        }
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
 
   for (final surroundingDirection in TextDirection.values) {
     testWidgets(
