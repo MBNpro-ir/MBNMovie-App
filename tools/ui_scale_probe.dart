@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:web/web.dart' as web;
 import 'package:mbnmovie/app.dart';
 import 'package:mbnmovie/core/episode_catalog.dart';
@@ -12,6 +13,7 @@ import 'package:mbnmovie/services/accessibility_service.dart';
 import 'package:mbnmovie/services/browser_features.dart';
 import 'package:mbnmovie/services/device_performance.dart';
 import 'package:mbnmovie/widgets/player_season_selector.dart';
+import 'package:mbnmovie/widgets/responsive_web_layout.dart';
 
 final targets = <String, GlobalKey>{
   for (final name in [
@@ -23,14 +25,24 @@ final targets = <String, GlobalKey>{
     'input',
     'dropdown',
     'modal',
+    'loading',
   ])
     name: GlobalKey(),
 };
 final taps = <String>[];
+final playerMode = ValueNotifier<bool>(false);
+final preparing = ValueNotifier<bool>(true);
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   DevicePerformance.configureWeb();
+  globalContext.setProperty(
+    'mbnProbePlayer'.toJS,
+    ((JSBoolean active) {
+      playerMode.value = active.toDart;
+      BrowserFeatures.setPlayerActive(active.toDart);
+    }).toJS,
+  );
   globalContext.setProperty(
     'mbnProbeScale'.toJS,
     ((JSNumber scale) {
@@ -42,8 +54,20 @@ void main() {
     (() {
       final boxes = <String, Object>{};
       for (final entry in targets.entries) {
-        final box =
-            entry.value.currentContext?.findRenderObject() as RenderBox?;
+        RenderObject? object = entry.value.currentContext?.findRenderObject();
+        if (entry.key == 'loading' && object != null) {
+          // Measure the actual production preparation label, not its full-size
+          // Center. Its position must stay fixed while Safari reports noise.
+          RenderParagraph? label;
+          void findLabel(RenderObject child) {
+            if (child is RenderParagraph) label = child;
+            child.visitChildren(findLabel);
+          }
+
+          findLabel(object);
+          object = label;
+        }
+        final box = object as RenderBox?;
         if (box == null || !box.attached) continue;
         final origin = box.localToGlobal(Offset.zero);
         final end = box.localToGlobal(box.size.bottomRight(Offset.zero));
@@ -71,13 +95,17 @@ void main() {
     MaterialApp(
       theme: ThemeData.dark(),
       builder: (_, child) => AccessibilityAppWrapper(child: child!),
-      home: const _Probe(),
+      home: ValueListenableBuilder<bool>(
+        valueListenable: playerMode,
+        builder: (_, player, _) => _Probe(player: player),
+      ),
     ),
   );
 }
 
 class _Probe extends StatefulWidget {
-  const _Probe();
+  const _Probe({required this.player});
+  final bool player;
   @override
   State<_Probe> createState() => _ProbeState();
 }
@@ -109,48 +137,74 @@ class _ProbeState extends State<_Probe> {
   @override
   Widget build(BuildContext context) => Scaffold(
     key: targets['viewport'],
-    body: SafeArea(
-      child: Stack(
-        key: targets['safe-content'],
-        children: [
-          Positioned.fill(
-            child: HtmlElementView.fromTagName(
-              tagName: 'div',
-              onElementCreated: (element) =>
-                  (element as web.HTMLDivElement).style.pointerEvents = 'none',
-            ),
-          ),
-          Column(
+    body: widget.player
+        ? Stack(
+            fit: StackFit.expand,
             children: [
-              button('top'),
-              TextField(
-                key: targets['input'],
-                onSubmitted: (_) => FocusScope.of(context).unfocus(),
+              HtmlElementView.fromTagName(
+                tagName: 'video',
+                onElementCreated: (element) =>
+                    (element as web.HTMLVideoElement).style.pointerEvents =
+                        'none',
               ),
-              PlayerSeasonSelector(
-                key: targets['dropdown'],
-                selectedIndex: season,
-                seasons: [
-                  for (var i = 0; i < 3; i++)
-                    EpisodeSeasonGroup(
-                      id: '$i',
-                      name: 'Season ${i + 1}',
-                      episodes: const [],
-                    ),
-                ],
-                onChanged: (value) {
-                  setState(() => season = value);
-                  taps.add('season$value');
-                },
+              PlayerLoadingIndicator(
+                key: targets['loading'],
+                preparing: preparing,
+                buffering: false,
+                enabled: true,
               ),
-              const Spacer(),
-              button('middle'),
-              const Spacer(),
-              button('bottom'),
+              SafeArea(
+                child: Column(
+                  key: targets['safe-content'],
+                  children: [button('top'), const Spacer(), button('bottom')],
+                ),
+              ),
             ],
+          )
+        : homeBody(context),
+  );
+
+  Widget homeBody(BuildContext context) => SafeArea(
+    child: Stack(
+      key: targets['safe-content'],
+      children: [
+        Positioned.fill(
+          child: HtmlElementView.fromTagName(
+            tagName: 'div',
+            onElementCreated: (element) =>
+                (element as web.HTMLDivElement).style.pointerEvents = 'none',
           ),
-        ],
-      ),
+        ),
+        Column(
+          children: [
+            button('top'),
+            TextField(
+              key: targets['input'],
+              onSubmitted: (_) => FocusScope.of(context).unfocus(),
+            ),
+            PlayerSeasonSelector(
+              key: targets['dropdown'],
+              selectedIndex: season,
+              seasons: [
+                for (var i = 0; i < 3; i++)
+                  EpisodeSeasonGroup(
+                    id: '$i',
+                    name: 'Season ${i + 1}',
+                    episodes: const [],
+                  ),
+              ],
+              onChanged: (value) {
+                setState(() => season = value);
+                taps.add('season$value');
+              },
+            ),
+            const Spacer(),
+            button('middle'),
+            const Spacer(),
+            button('bottom'),
+          ],
+        ),
+      ],
     ),
   );
 }

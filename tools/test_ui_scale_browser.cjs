@@ -27,15 +27,17 @@ const assert = require('node:assert/strict');
       async function assertLayout() {
         // Host CSS and Flutter's ResizeObserver update on different frames.
         // Wait for both to agree, rather than assuming a 120ms fixed delay.
-        await page.waitForFunction(() => {
+        const snapshot = await page.waitForFunction(() => {
           const state = JSON.parse(window.mbnProbeState()), full = state.boxes.viewport;
           const root = document.querySelector('flutter-view').getBoundingClientRect();
+          const host = document.querySelector('#mbn-viewport-host').getBoundingClientRect();
           const box = state.boxes['safe-content'], safe = state.safeArea;
-          return Math.abs(full.width - root.width) < 1 && Math.abs(full.height - root.height) < 1 &&
+          const ready = Math.abs(host.height - root.height) < 1 && Math.abs(host.width - root.width) < 1 &&
+            Math.abs(full.width - root.width) < 1 && Math.abs(full.height - root.height) < 1 &&
             Math.abs(box.y - safe.top) < 1 && Math.abs(box.y + box.height - root.height + safe.bottom) < 1;
+          return ready && {state, root:{x:root.x, y:root.y, width:root.width, height:root.height}};
         }, null, {timeout: 5000});
-        const state = await page.evaluate(() => JSON.parse(window.mbnProbeState()));
-        const root = await page.locator('flutter-view').boundingBox();
+        const {state, root} = await snapshot.jsonValue();
         const full = state.boxes.viewport, content = state.boxes['safe-content'], safe = state.safeArea;
         function near(actual, expected, name) {
           assert(Math.abs(actual - expected) < 1, `${name}: ${actual} != ${expected}`);
@@ -63,6 +65,45 @@ const assert = require('node:assert/strict');
         assert.equal(after.taps.at(-1), name);
         touches++;
       }
+      // The production loading widget and player controls must not follow
+      // Safari's transient visual viewport when the CSS viewport is unchanged.
+      await page.evaluate(() => window.mbnProbePlayer(true));
+      await page.waitForFunction(() => JSON.parse(window.mbnProbeState()).boxes.loading);
+      await assertLayout();
+      const playerFrame = await page.evaluate(() => {
+        const state = JSON.parse(window.mbnProbeState());
+        const root = document.querySelector('flutter-view').getBoundingClientRect();
+        return {root: {x:root.x, y:root.y, width:root.width, height:root.height},
+          loading:{x:state.boxes.loading.x + state.boxes.loading.width / 2,
+            y:state.boxes.loading.y + state.boxes.loading.height / 2}, bottom:state.boxes.bottom};
+      });
+      for (let frame = 0; frame < 24; frame++) {
+        await page.evaluate(frame => {
+          const values = {pageTop:frame % 2 ? 34 : 0, offsetTop:frame % 2 ? 34 : 0,
+            pageLeft:0, width:innerWidth, height:innerHeight - (frame % 2 ? 68 : 24)};
+          for (const [name, value] of Object.entries(values))
+            Object.defineProperty(visualViewport, name, {configurable:true, get:() => value});
+          visualViewport.dispatchEvent(new Event('resize'));
+          visualViewport.dispatchEvent(new Event('scroll'));
+          window.dispatchEvent(new Event('resize'));
+        }, frame);
+        await page.waitForTimeout(50);
+        const current = await page.evaluate(() => {
+          const state = JSON.parse(window.mbnProbeState());
+          const root = document.querySelector('flutter-view').getBoundingClientRect();
+          return {root: {x:root.x, y:root.y, width:root.width, height:root.height},
+            loading:{x:state.boxes.loading.x + state.boxes.loading.width / 2,
+            y:state.boxes.loading.y + state.boxes.loading.height / 2}, bottom:state.boxes.bottom};
+        });
+        assert.deepEqual(current, playerFrame, 'loading and player controls moved with visualViewport noise');
+      }
+      await tap('top'); await tap('bottom');
+      await page.evaluate(() => {
+        for (const name of ['pageLeft','pageTop','offsetTop','width','height']) delete visualViewport[name];
+        visualViewport.dispatchEvent(new Event('resize'));
+        window.mbnProbePlayer(false);
+      });
+      await page.waitForFunction(() => JSON.parse(window.mbnProbeState()).boxes.input);
       await page.evaluate(() => window.mbnProbeScale(.6));
       await page.waitForTimeout(150);
       await assertLayout();
@@ -96,8 +137,8 @@ const assert = require('node:assert/strict');
         }
       }
       await page.screenshot({path: process.env.MBN_PROBE_SCREENSHOT || `build/iphone-safe-area-${engine}-dpr${dpr}.png`});
-      // Reproduce a keyboard-panned visual viewport without synthesizing taps
-      // or editing pointer coordinates. Flutter still receives real touches.
+      // Transient viewport displacement outside text editing must not crop
+      // the app or change the touch coordinates.
       await page.evaluate(() => {
         for (const [name, value] of Object.entries({pageLeft:5, pageTop:100, width:360, height:430}))
           Object.defineProperty(visualViewport, name, {configurable:true, get:() => value});
@@ -114,8 +155,33 @@ const assert = require('node:assert/strict');
       await page.waitForTimeout(200);
       await assertLayout();
       await tap('bottom');
+      const inputBox = await page.evaluate(() => JSON.parse(window.mbnProbeState()).boxes.input);
+      await page.touchscreen.tap(inputBox.x + inputBox.width / 2, inputBox.y + inputBox.height / 2);
+      await page.waitForFunction(() => /^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName));
+      await page.keyboard.type('keyboard regression');
+      await page.evaluate(() => {
+        for (const [name, value] of Object.entries({offsetTop:70, pageTop:170, height:430, scale:1}))
+          Object.defineProperty(visualViewport, name, {configurable:true, get:() => value});
+        visualViewport.dispatchEvent(new Event('resize'));
+      });
+      await page.waitForFunction(() => {
+        const host = document.querySelector('#mbn-viewport-host').getBoundingClientRect();
+        return host.y === 70 && host.height === 430;
+      });
+      await assertLayout();
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(() => {
+        const root = document.querySelector('flutter-view').getBoundingClientRect();
+        return root.y === 0 && root.height === 812;
+      });
+      await page.evaluate(() => {
+        for (const name of ['offsetTop','pageTop','height','scale']) delete visualViewport[name];
+        visualViewport.dispatchEvent(new Event('resize'));
+      });
+      await assertLayout();
+      await tap('top'); await tap('bottom');
       assert.deepEqual(errors, []);
-      console.log(`${engine} iPhone 11 Pro DPR ${dpr}: ${touches} exact-centre touches, simulated portrait/landscape safe areas, full canvas, live zoom 60–150%, rotation, displaced viewport, HTML surface and modal close PASS`);
+      console.log(`${engine} iPhone 11 Pro DPR ${dpr}: ${touches} exact-centre touches, 24 player jitter frames, simulated safe areas, full canvas, zoom 60–150%, rotation, focused keyboard/blur, HTML video surface and modal close PASS`);
       await context.close();
     }
   } finally { await browser.close(); }

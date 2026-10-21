@@ -29,8 +29,12 @@ abstract final class BrowserFeatures {
         double.infinity,
       );
 
-  static void setPlayerActive(bool active) =>
-      globalContext.setProperty('mbnPlayerActive'.toJS, active.toJS);
+  static void setPlayerActive(bool active) {
+    globalContext.setProperty('mbnPlayerActive'.toJS, active.toJS);
+    // Restore the full CSS viewport even if a hidden search field retained
+    // focus while navigating into the player.
+    web.window.dispatchEvent(web.Event('mbn-player-state-change'));
+  }
 
   static final safeAreaChanges = ValueNotifier<int>(0);
   static web.HTMLDivElement? _safeAreaProbe;
