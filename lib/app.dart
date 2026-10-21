@@ -485,81 +485,89 @@ class AccessibilityAppWrapper extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: AccessibilityService.instance,
-      builder: (context, _) {
-        final access = AccessibilityService.instance;
-        final uiScale = access.uiScale;
-        final textScale = access.textScale;
+      builder: (context, _) => LayoutBuilder(
+        builder: (context, constraints) {
+          final access = AccessibilityService.instance;
+          final uiScale = access.uiScale;
+          final textScale = access.textScale;
 
-        final rawMedia = MediaQuery.of(context);
-        final baseMedia = rawMedia.copyWith(
-          textScaler: TextScaler.linear(textScale),
-          boldText: access.boldText,
-          disableAnimations: access.reduceMotion,
-        );
+          final inheritedMedia = MediaQuery.of(context);
+          // Layout constraints describe this viewport, including keyboard,
+          // fullscreen and desktop chrome changes. An inherited screen size may
+          // still describe the previous viewport during a metrics update.
+          final rawMedia = inheritedMedia.copyWith(
+            size: Size(
+              constraints.hasBoundedWidth
+                  ? constraints.maxWidth
+                  : inheritedMedia.size.width,
+              constraints.hasBoundedHeight
+                  ? constraints.maxHeight
+                  : inheritedMedia.size.height,
+            ),
+          );
+          final baseMedia = rawMedia.copyWith(
+            textScaler: TextScaler.linear(textScale),
+            boldText: access.boldText,
+            disableAnimations: access.reduceMotion,
+          );
 
-        if (rawMedia.size.isEmpty ||
-            rawMedia.size.width <= 0 ||
-            rawMedia.size.height <= 0 ||
-            (uiScale - 1.0).abs() < 0.005) {
-          return MediaQuery(data: baseMedia, child: child);
-        }
+          if (rawMedia.size.isEmpty ||
+              rawMedia.size.width <= 0 ||
+              rawMedia.size.height <= 0 ||
+              (uiScale - 1.0).abs() < 0.005) {
+            return MediaQuery(data: baseMedia, child: child);
+          }
 
-        final targetWidth = rawMedia.size.width / uiScale;
-        final targetHeight = rawMedia.size.height / uiScale;
+          final targetWidth = rawMedia.size.width / uiScale;
+          final targetHeight = rawMedia.size.height / uiScale;
 
-        final scaledMedia = baseMedia.copyWith(
-          size: Size(targetWidth, targetHeight),
-          padding: EdgeInsets.fromLTRB(
-            rawMedia.padding.left / uiScale,
-            rawMedia.padding.top / uiScale,
-            rawMedia.padding.right / uiScale,
-            rawMedia.padding.bottom / uiScale,
-          ),
-          viewPadding: EdgeInsets.fromLTRB(
-            rawMedia.viewPadding.left / uiScale,
-            rawMedia.viewPadding.top / uiScale,
-            rawMedia.viewPadding.right / uiScale,
-            rawMedia.viewPadding.bottom / uiScale,
-          ),
-          viewInsets: EdgeInsets.fromLTRB(
-            rawMedia.viewInsets.left / uiScale,
-            rawMedia.viewInsets.top / uiScale,
-            rawMedia.viewInsets.right / uiScale,
-            rawMedia.viewInsets.bottom / uiScale,
-          ),
-        );
+          final scaledMedia = baseMedia.copyWith(
+            size: Size(targetWidth, targetHeight),
+            padding: EdgeInsets.fromLTRB(
+              rawMedia.padding.left / uiScale,
+              rawMedia.padding.top / uiScale,
+              rawMedia.padding.right / uiScale,
+              rawMedia.padding.bottom / uiScale,
+            ),
+            viewPadding: EdgeInsets.fromLTRB(
+              rawMedia.viewPadding.left / uiScale,
+              rawMedia.viewPadding.top / uiScale,
+              rawMedia.viewPadding.right / uiScale,
+              rawMedia.viewPadding.bottom / uiScale,
+            ),
+            viewInsets: EdgeInsets.fromLTRB(
+              rawMedia.viewInsets.left / uiScale,
+              rawMedia.viewInsets.top / uiScale,
+              rawMedia.viewInsets.right / uiScale,
+              rawMedia.viewInsets.bottom / uiScale,
+            ),
+          );
 
-        // FittedBox paints the scaled child correctly but does not inverse
-        // transform pointer hit testing on Flutter web. On Safari/PWA this
-        // made a button look like it was at one position while its tap target
-        // was offset. Transform keeps the same visual scale and maps pointer
-        // coordinates back into the child's logical space.
-        // Keep the scaled child at its logical (expanded) size before the
-        // transform is applied.  A tight parent constraint makes Transform
-        // lay out the child at the physical width first, then scales that
-        // width down again, leaving a black strip on the right on phones.
-        return SizedBox(
-          width: rawMedia.size.width,
-          height: rawMedia.size.height,
-          child: OverflowBox(
-            alignment: Alignment.topLeft,
-            minWidth: targetWidth,
-            maxWidth: targetWidth,
-            minHeight: targetHeight,
-            maxHeight: targetHeight,
-            child: Transform.scale(
-              scale: uiScale,
+          // Use one top-left transform for paint and inverse hit testing. Keep
+          // its logical child unconstrained so the scaled UI fills the viewport.
+          return SizedBox(
+            width: rawMedia.size.width,
+            height: rawMedia.size.height,
+            child: OverflowBox(
               alignment: Alignment.topLeft,
-              transformHitTests: true,
-              child: SizedBox(
-                width: targetWidth,
-                height: targetHeight,
-                child: MediaQuery(data: scaledMedia, child: child),
+              minWidth: targetWidth,
+              maxWidth: targetWidth,
+              minHeight: targetHeight,
+              maxHeight: targetHeight,
+              child: Transform.scale(
+                scale: uiScale,
+                alignment: Alignment.topLeft,
+                transformHitTests: true,
+                child: SizedBox(
+                  width: targetWidth,
+                  height: targetHeight,
+                  child: MediaQuery(data: scaledMedia, child: child),
+                ),
               ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }
