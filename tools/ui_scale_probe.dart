@@ -6,14 +6,24 @@ import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 import 'package:flutter/material.dart';
 import 'package:web/web.dart' as web;
-import '../lib/app.dart';
-import '../lib/core/episode_catalog.dart';
-import '../lib/services/accessibility_service.dart';
-import '../lib/services/device_performance.dart';
-import '../lib/widgets/player_season_selector.dart';
+import 'package:mbnmovie/app.dart';
+import 'package:mbnmovie/core/episode_catalog.dart';
+import 'package:mbnmovie/services/accessibility_service.dart';
+import 'package:mbnmovie/services/browser_features.dart';
+import 'package:mbnmovie/services/device_performance.dart';
+import 'package:mbnmovie/widgets/player_season_selector.dart';
 
 final targets = <String, GlobalKey>{
-  for (final name in ['top', 'middle', 'bottom', 'input', 'dropdown', 'modal'])
+  for (final name in [
+    'viewport',
+    'safe-content',
+    'top',
+    'middle',
+    'bottom',
+    'input',
+    'dropdown',
+    'modal',
+  ])
     name: GlobalKey(),
 };
 final taps = <String>[];
@@ -48,6 +58,12 @@ void main() {
         'boxes': boxes,
         'taps': taps,
         'scale': AccessibilityService.instance.uiScale,
+        'safeArea': {
+          'left': BrowserFeatures.safeArea.left,
+          'top': BrowserFeatures.safeArea.top,
+          'right': BrowserFeatures.safeArea.right,
+          'bottom': BrowserFeatures.safeArea.bottom,
+        },
       }).toJS;
     }).toJS,
   );
@@ -72,7 +88,7 @@ class _ProbeState extends State<_Probe> {
     key: targets[name],
     onPressed: () {
       taps.add(name);
-      if (name == 'middle')
+      if (name == 'middle') {
         showDialog<void>(
           context: context,
           builder: (context) => AlertDialog(
@@ -86,13 +102,16 @@ class _ProbeState extends State<_Probe> {
             ),
           ),
         );
+      }
     },
     child: Text(name),
   );
   @override
   Widget build(BuildContext context) => Scaffold(
+    key: targets['viewport'],
     body: SafeArea(
       child: Stack(
+        key: targets['safe-content'],
         children: [
           Positioned.fill(
             child: HtmlElementView.fromTagName(

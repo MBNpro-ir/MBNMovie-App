@@ -34,6 +34,7 @@ abstract final class BrowserFeatures {
   static web.HTMLDivElement? _safeAreaProbe;
   static ({double left, double top, double right, double bottom}) get safeArea {
     final probe = _safeAreaProbe ??= web.HTMLDivElement()
+      ..id = 'mbn-safe-area'
       ..style.cssText =
           'position:fixed;visibility:hidden;pointer-events:none;'
           'padding:env(safe-area-inset-top) env(safe-area-inset-right) '

@@ -44,6 +44,8 @@ function mbnCreateViewportHost() {
 _flutter.loader.load({
   config: {entryPointBaseUrl: mbnAssetRoot, assetBase: mbnAssetRoot, canvasKitBaseUrl: mbnAssetRoot + 'canvaskit/', ...(mbnAppleMobile ? {canvasKitMaximumSurfaces: 2} : {})},
   onEntrypointLoaded: async function(engineInitializer) {
+    // Custom embedding preserves viewport-fit=cover. The app imports Safari's
+    // CSS safe-area insets into MediaQuery before scaling its content.
     const hostElement = mbnCreateViewportHost();
     const appRunner = await engineInitializer.initializeEngine({assetBase: mbnAssetRoot, ...(hostElement ? {hostElement} : {})});
     await appRunner.runApp();

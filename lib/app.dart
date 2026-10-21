@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/services.dart';
 import 'services/device_performance.dart';
 import 'dart:async';
@@ -495,7 +496,7 @@ class AccessibilityAppWrapper extends StatelessWidget {
           // Layout constraints describe this viewport, including keyboard,
           // fullscreen and desktop chrome changes. An inherited screen size may
           // still describe the previous viewport during a metrics update.
-          final rawMedia = inheritedMedia.copyWith(
+          var rawMedia = inheritedMedia.copyWith(
             size: Size(
               constraints.hasBoundedWidth
                   ? constraints.maxWidth
@@ -505,6 +506,29 @@ class AccessibilityAppWrapper extends StatelessWidget {
                   : inheritedMedia.size.height,
             ),
           );
+          if (DevicePerformance.appleMobileWeb) {
+            // Custom web embedding keeps viewport-fit=cover. Flutter does not
+            // supply iOS safe-area insets in that mode, so import Safari's real
+            // CSS insets before UI scaling. SafeArea reserves this space inside
+            // the viewport; neither the canvas nor pointer coordinates move.
+            final area = BrowserFeatures.safeArea;
+            final viewPadding = EdgeInsets.fromLTRB(
+              math.max(rawMedia.viewPadding.left, area.left),
+              math.max(rawMedia.viewPadding.top, area.top),
+              math.max(rawMedia.viewPadding.right, area.right),
+              math.max(rawMedia.viewPadding.bottom, area.bottom),
+            );
+            final insets = rawMedia.viewInsets;
+            rawMedia = rawMedia.copyWith(
+              viewPadding: viewPadding,
+              padding: EdgeInsets.fromLTRB(
+                math.max(0, viewPadding.left - insets.left),
+                math.max(0, viewPadding.top - insets.top),
+                math.max(0, viewPadding.right - insets.right),
+                math.max(0, viewPadding.bottom - insets.bottom),
+              ),
+            );
+          }
           final baseMedia = rawMedia.copyWith(
             textScaler: TextScaler.linear(textScale),
             boldText: access.boldText,
