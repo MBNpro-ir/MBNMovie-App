@@ -58,6 +58,24 @@ void main() {
     }
   });
 
+  test('repairs visual-order Persian chunks around an English acronym', () {
+    const source = 'هم روی صورتت هست KS و نهایتا یه زخم';
+    const expected = 'و نهایتا یه زخم KS هم روی صورتت هست';
+    expect(normalizePersianSubtitle(source).replaceAll('\u200E', ''), expected);
+    expect(
+      normalizePersianSubtitle(expected).replaceAll('\u200E', ''),
+      expected,
+    );
+
+    const ana = '.برای "لوپوس" هم منفی بود ANA تست';
+    expect(
+      normalizePersianSubtitle(ana).replaceAll('\u200E', ''),
+      'تست ANA برای "لوپوس" هم منفی بود.',
+    );
+    const logical = 'این مشکل MRI و بعد حل شد';
+    expect(normalizePersianSubtitle(logical).replaceAll('\u200E', ''), logical);
+  });
+
   test('web SRT, VTT and plain ASS share the native bidi policy', () {
     const source = '،احتمالش زیاده مرخص بشه\n.باشه، خداحافظ';
     for (final document in [

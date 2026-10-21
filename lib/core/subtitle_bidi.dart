@@ -9,6 +9,33 @@ final _latinPhrase = RegExp(
   r"(?:[+-](?=[0-9]))?[A-Za-z0-9]+(?:[+./:_'\-][A-Za-z0-9]+)*(?:[ \t]+[A-Za-z0-9]+(?:[+./:_'\-][A-Za-z0-9]+)*)*(?:\+\+|#)?",
 );
 final _latinLetters = RegExp(r'[A-Za-z]');
+final _rtlWord = RegExp(
+  r'[\u0590-\u05FF\u0620-\u064A\u066E-\u066F\u0671-\u06D3\u06D5\u06EE-\u06EF\u06FA-\u06FC\u0750-\u077F\u08A0-\u08C9\uFB1D-\uFDFF\uFE70-\uFEFC]+',
+);
+final _visualOrderSuffix = <String>{
+  'و',
+  'اما',
+  'ولی',
+  'که',
+  'از',
+  'به',
+  'در',
+  'با',
+  'برای',
+  'این',
+  'آن',
+  'یک',
+};
+final _visualOrderPrefix = <String>{'از', 'به', 'در', 'با', 'برای'};
+final _visualOrderVerbTail = <String>{
+  'است',
+  'هست',
+  'بود',
+  'شد',
+  'شدن',
+  'دارد',
+  'ندارد',
+};
 final _delimitedText = RegExp(
   r'''"[^"\n]*"|'[^'\n]*'|«[^«»\n]*»|“[^“”\n]*”|‘[^‘’\n]*’|\([^()\n]*\)|\[[^\[\]\n]*\]|\{[^{}\n]*\}''',
 );
@@ -40,6 +67,67 @@ String _logicalRtlPunctuation(String line) {
     sentence = sentence.substring(0, dialogue.start);
   }
   return '$prefix$sentence$punctuation';
+}
+
+bool _insideDelimitedText(String line, int start, int end) => _delimitedText
+    .allMatches(line)
+    .any((match) => match.start <= start && match.end >= end);
+
+/// A few older Persian subtitle sources were authored in visual order around
+/// Latin acronyms. For example, `هم روی صورتت هست KS و نهایتا یه زخم` is the
+/// visual-order form of `و نهایتا یه زخم KS هم روی صورتت هست`. Rotate only when
+/// the Latin run is between two substantial RTL chunks and the boundary words
+/// look like a sentence continuation. This leaves normal logical lines such as
+/// `نتیجه (MRI, CT) آماده است` and `این فیلم House را دیدم` untouched.
+String _repairVisualMixedOrder(String line) {
+  final matches = _latinPhrase.allMatches(line).where((match) {
+    final text = match.group(0)!;
+    return _latinLetters.hasMatch(text) &&
+        subtitleHasRtlLetters(line.substring(0, match.start)) &&
+        subtitleHasRtlLetters(line.substring(match.end)) &&
+        !_insideDelimitedText(line, match.start, match.end);
+  }).toList();
+  for (final match in matches) {
+    final before = line.substring(0, match.start).trimRight();
+    final after = line.substring(match.end).trimLeft();
+    final beforeWords = _rtlWord
+        .allMatches(before)
+        .map((m) => m.group(0)!)
+        .toList(growable: false);
+    final afterWords = _rtlWord
+        .allMatches(after)
+        .map((m) => m.group(0)!)
+        .toList(growable: false);
+    if (beforeWords.length < 2 || afterWords.isEmpty) continue;
+    final afterLead = afterWords.first;
+    final beforeLead = beforeWords.first;
+    final beforeTail = beforeWords.last;
+    final verbLikeTail =
+        _visualOrderVerbTail.contains(beforeTail) ||
+        beforeTail.startsWith('می') ||
+        beforeTail.startsWith('نمی');
+    if (!_visualOrderSuffix.contains(afterLead) &&
+        !(beforeWords.length >= 3 &&
+            afterWords.length <= 2 &&
+            _visualOrderPrefix.contains(beforeLead) &&
+            verbLikeTail)) {
+      continue;
+    }
+    if (_visualOrderSuffix.contains(afterLead) &&
+        (beforeWords.length < 3 || !verbLikeTail)) {
+      continue;
+    }
+    // Keep a terminal mark attached to the sentence after rotating the chunks.
+    final terminal = RegExp(r'([.!?,;:…،؛؟]+)[ \t]*$').firstMatch(after);
+    final afterBody = terminal == null
+        ? after
+        : after.substring(0, terminal.start).trimRight();
+    final punctuation = terminal?.group(1) ?? '';
+    final prefix = before.trim();
+    final latin = match.group(0)!.trim();
+    return '${afterBody.isEmpty ? '' : '$afterBody '}$latin $prefix$punctuation';
+  }
+  return line;
 }
 
 String _markLatinPunctuation(
@@ -77,7 +165,7 @@ String normalizePersianSubtitle(String input) => input
     .map(
       (line) => subtitleHasRtlLetters(line)
           ? _markLatinPunctuation(
-              _logicalRtlPunctuation(line),
+              _repairVisualMixedOrder(_logicalRtlPunctuation(line)),
             ).replaceAllMapped(_latinPhrase, (match) {
               final text = match.group(0)!;
               final suffix = text.endsWith('++') || text.endsWith('#')
