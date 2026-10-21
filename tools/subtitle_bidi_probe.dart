@@ -1,6 +1,7 @@
 // Render the production subtitle widget in CanvasKit for browser regression
 // checks. Build this target separately; it is never used by the application.
 import 'dart:convert';
+import 'dart:ui' as ui;
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 
@@ -64,6 +65,7 @@ Future<void> main() async {
         final rect = paragraph
             .getBoxesForSelection(
               TextSelection(baseOffset: start, extentOffset: end),
+              boxHeightStyle: ui.BoxHeightStyle.max,
             )
             .first
             .toRect();

@@ -1,3 +1,4 @@
+import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -30,12 +31,39 @@ void main() {
     },
   );
 
+  test('restores legacy terminal marks without changing logical sources', () {
+    const cases = {
+      '،احتمالش زیاده مرخص بشه': 'احتمالش زیاده مرخص بشه،',
+      '.باشه، خداحافظ': 'باشه، خداحافظ.',
+      '؟نتیجه (MRI, CT) آماده است': 'نتیجه (MRI, CT) آماده است؟',
+      '!بالاخره خوش اومدی -': '- بالاخره خوش اومدی!',
+      '- !سلام': '- سلام!',
+      '.«خداحافظ»': '«خداحافظ».',
+    };
+    for (final entry in cases.entries) {
+      final expected = normalizePersianSubtitle(entry.value);
+      expect(normalizePersianSubtitle(entry.key), expected);
+      expect(normalizePersianSubtitle(expected), expected);
+    }
+    for (final source in [
+      'باشه، خداحافظ.',
+      '...ادامه دارد',
+      '…ادامه دارد',
+      '.NET برای ویندوز',
+      '.5 ثانیه',
+      '..:: زیرنویس فارسی ::..',
+      'Hello, world!',
+    ]) {
+      expect(normalizePersianSubtitle(source).replaceAll('\u200E', ''), source);
+    }
+  });
+
   test('web SRT, VTT and plain ASS share the native bidi policy', () {
-    const source = '- بیمار MRI و House of the Dragon را دید.';
+    const source = '،احتمالش زیاده مرخص بشه\n.باشه، خداحافظ';
     for (final document in [
       '1\n00:00:01,000 --> 00:00:03,000\n$source',
       'WEBVTT\n\n00:00:01.000 --> 00:00:03.000\n$source',
-      'Dialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,$source',
+      'Dialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,${source.replaceAll('\n', r'\N')}',
     ]) {
       final parsed = WebSubtitleDocument.parse(document);
       expect(parsed.at(const Duration(seconds: 2)), [
@@ -72,6 +100,7 @@ void main() {
           final (start, end) = subtitleTokenRange(text, word);
           final boxes = paragraph.getBoxesForSelection(
             TextSelection(baseOffset: start, extentOffset: end),
+            boxHeightStyle: ui.BoxHeightStyle.max,
           );
           expect(boxes, isNotEmpty);
           return boxes.first.toRect();

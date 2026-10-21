@@ -14,6 +14,34 @@ final _delimitedText = RegExp(
 );
 final _terminalPunctuation = RegExp(r'[.!?,;:…]+[ \t]*$');
 
+final _legacyLeadingPunctuation = RegExp(
+  r'^([ \t]*(?:[-–—][ \t]*)?)([.,،;؛!?؟]+)[ \t]*',
+);
+final _openingDelimiters = RegExp(r'''^[ \t"'«“‘(\[{]*''');
+
+String _logicalRtlPunctuation(String line) {
+  final match = _legacyLeadingPunctuation.firstMatch(line);
+  if (match == null) return line;
+  final punctuation = match.group(2)!;
+  // Some older Persian subtitles store terminal marks at the logical start
+  // to compensate for LTR-only players. The RTL renderer must first restore
+  // logical order. Leave intentional leading ellipses, .NET, decimals and
+  // decorative punctuation alone; a Persian sentence must follow the mark.
+  if (punctuation.contains('..')) return line;
+  var sentence = line.substring(match.end).trimRight();
+  final content = sentence.replaceFirst(_openingDelimiters, '');
+  if (_rtlLetters.matchAsPrefix(content) == null) return line;
+  var prefix = match.group(1)!;
+  // Legacy dialogue may also put its dash at the opposite edge: !سلام -
+  // Preserve the speaker marker when restoring that same authored convention.
+  final dialogue = RegExp(r'[ \t]+([-–—])$').firstMatch(sentence);
+  if (prefix.trim().isEmpty && dialogue != null) {
+    prefix = '$prefix${dialogue.group(1)} ';
+    sentence = sentence.substring(0, dialogue.start);
+  }
+  return '$prefix$sentence$punctuation';
+}
+
 String _markLatinPunctuation(
   String line,
 ) => line.replaceAllMapped(_delimitedText, (match) {
@@ -48,7 +76,9 @@ String normalizePersianSubtitle(String input) => input
     .split('\n')
     .map(
       (line) => subtitleHasRtlLetters(line)
-          ? _markLatinPunctuation(line).replaceAllMapped(_latinPhrase, (match) {
+          ? _markLatinPunctuation(
+              _logicalRtlPunctuation(line),
+            ).replaceAllMapped(_latinPhrase, (match) {
               final text = match.group(0)!;
               final suffix = text.endsWith('++') || text.endsWith('#')
                   ? '\u200E'

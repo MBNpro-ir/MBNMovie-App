@@ -33,6 +33,43 @@ class SubtitleBidiCase {
 
 const subtitleBidiCases = [
   SubtitleBidiCase(
+    'legacy-two-line-screenshot',
+    '،احتمالش زیاده مرخص بشه\n.باشه، خداحافظ',
+    rtl: [('احتمالش', 'بشه'), ('باشه', 'خداحافظ'), ('خداحافظ', '.')],
+  ),
+  // Legacy logical sources reproduce the misplaced marks in the report.
+  SubtitleBidiCase(
+    'legacy-comma-screenshot',
+    '،احتمالش زیاده مرخص بشه',
+    rtl: [
+      ('احتمالش', 'زیاده'),
+      ('زیاده', 'مرخص'),
+      ('مرخص', 'بشه'),
+      ('بشه', '،'),
+    ],
+  ),
+  SubtitleBidiCase(
+    'legacy-period-screenshot',
+    '.باشه، خداحافظ',
+    rtl: [('باشه', '،'), ('،', 'خداحافظ'), ('خداحافظ', '.')],
+  ),
+  SubtitleBidiCase(
+    'legacy-mixed-question',
+    '؟نتیجه (MRI, CT) آماده است',
+    ltr: [('MRI', ','), (',', 'CT')],
+    rtl: [('نتیجه', 'MRI'), ('CT', 'آماده'), ('است', '؟')],
+  ),
+  SubtitleBidiCase(
+    'legacy-dialogue',
+    '!بالاخره خوش اومدی -',
+    rtl: [
+      ('-', 'بالاخره'),
+      ('بالاخره', 'خوش'),
+      ('خوش', 'اومدی'),
+      ('اومدی', '!'),
+    ],
+  ),
+  SubtitleBidiCase(
     'reported-persian',
     'آره، بچه های احمق خنگ.',
     rtl: [('آره', '،'), ('،', 'بچه'), ('بچه', 'خنگ'), ('خنگ', '.')],

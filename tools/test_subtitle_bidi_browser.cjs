@@ -15,7 +15,7 @@ const assert=require('node:assert/strict');
     await page.goto(process.env.MBN_SUBTITLE_PROBE_URL||'http://127.0.0.1:8771/');
     await page.waitForFunction(()=>window.mbnSubtitleState&&JSON.parse(mbnSubtitleState()).pairs,null,{timeout:60000});
     const caseCount=await page.evaluate(()=>window.mbnSubtitleCount);
-    assert(caseCount>=15,'expected the shared subtitle fixtures');
+    assert(caseCount>=20,'expected the shared subtitle fixtures');
     let checked=0;
     for(const font of ['Vazirmatn','NotoSansArabic','NotoNaskhArabic','MarkaziText']) {
       for(const width of [760,260]) for(const rtl of [true,false]) {
@@ -36,8 +36,11 @@ const assert=require('node:assert/strict');
       }
     }
     await page.evaluate(()=>mbnSubtitleSet(0,760,true,'Vazirmatn'));
-    await page.waitForFunction(()=>JSON.parse(mbnSubtitleState()).id==='reported-persian');
-    if(engine==='chrome')await page.screenshot({path:'build/subtitle-bidi-chrome.png'});
+    await page.waitForFunction(()=>JSON.parse(mbnSubtitleState()).id==='legacy-two-line-screenshot');
+    if(engine==='chrome') {
+      await page.screenshot({path:'build/subtitle-bidi-chrome.png'});
+      await page.screenshot({path:'build/subtitle-punctuation-verified.png',clip:{x:0,y:370,width:900,height:160}});
+    }
     assert.deepEqual(errors,[]);
     console.log(`${engine}: ${checked} production subtitle layouts PASS (four fonts, RTL/LTR surroundings, wide/wrapped lines, punctuation, numbers and presentation forms)`);
     await context.close();
