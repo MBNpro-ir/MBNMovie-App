@@ -1,3 +1,4 @@
+import '../widgets/player_season_selector.dart';
 import '../core/player_exit.dart';
 import '../core/player_transitions.dart';
 import '../widgets/player_subtitle_text.dart';
@@ -3977,20 +3978,12 @@ class _PlayerScreenState extends State<PlayerScreen>
                         ),
                       ),
                       if (_episodeCatalog.seasons.length > 1) ...[
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            for (final (index, item)
-                                in _episodeCatalog.seasons.indexed)
-                              ChoiceChip(
-                                key: Key('player-season-${item.id}'),
-                                label: Text(item.name),
-                                selected: index == seasonIndex,
-                                onSelected: (_) =>
-                                    updateSheet(() => seasonIndex = index),
-                              ),
-                          ],
+                        PlayerSeasonSelector(
+                          seasons: _episodeCatalog.seasons,
+                          selectedIndex: seasonIndex,
+                          onChanged: (index) =>
+                              updateSheet(() => seasonIndex = index),
+                          wrapDesktop: true,
                         ),
                         const SizedBox(height: 12),
                       ],
