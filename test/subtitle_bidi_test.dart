@@ -72,6 +72,11 @@ void main() {
       normalizePersianSubtitle(ana).replaceAll('\u200E', ''),
       'تست ANA برای "لوپوس" هم منفی بود.',
     );
+    const mri = '.بگیرید MRI از خودش و خواهرش همین الان یه';
+    expect(
+      normalizePersianSubtitle(mri).replaceAll('\u200E', ''),
+      'از خودش و خواهرش همین الان یه MRI بگیرید.',
+    );
     const logical = 'این مشکل MRI و بعد حل شد';
     expect(normalizePersianSubtitle(logical).replaceAll('\u200E', ''), logical);
   });

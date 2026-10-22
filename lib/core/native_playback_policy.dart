@@ -23,12 +23,37 @@ abstract final class NativePlaybackPolicy {
   /// copy of a network stream competes with Flutter's texture upload thread.
   /// Video framedrop is a last-resort safety valve: audio stays continuous
   /// instead of the whole player stopping when a machine briefly falls behind.
-  static Map<String, String> playerProperties({required bool windows}) => {
-    if (windows) ...{
-      'cache-on-disk': 'no',
-      'framedrop': 'vo',
-      'interpolation': 'no',
-      'vd-lavc-threads': 'auto',
-    },
-  };
+  static Map<String, String> playerProperties({
+    required bool windows,
+    bool android = false,
+    int sdk = 0,
+    bool television = false,
+  }) {
+    final properties = <String, String>{
+      if (windows) ...{
+        'cache-on-disk': 'no',
+        'framedrop': 'vo',
+        'interpolation': 'no',
+        'vd-lavc-threads': 'auto',
+      },
+    };
+    // API 23–32 devices and Android TV often decode 720p successfully but
+    // cannot upload every late frame to Flutter's surface. Keep the audio
+    // clock continuous and use the cheapest GPU scaler so a short decoder
+    // hiccup drops a video frame instead of freezing the whole route.
+    if (android && (television || (sdk >= 23 && sdk <= 32))) {
+      properties.addAll({
+        'framedrop': 'vo',
+        'interpolation': 'no',
+        'scale': 'bilinear',
+        'cscale': 'bilinear',
+        'dscale': 'bilinear',
+        'deband': 'no',
+        'sigmoid-upscaling': 'no',
+        'correct-downscaling': 'no',
+        'vd-lavc-threads': 'auto',
+      });
+    }
+    return properties;
+  }
 }

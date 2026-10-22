@@ -3,6 +3,7 @@ import 'app_platform.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/mbn_sync.dart';
+import '../services/preference_batch.dart';
 
 class SubtitlePreferences {
   const SubtitlePreferences({
@@ -94,19 +95,27 @@ class SubtitlePreferences {
       );
 
   Future<void> save(SharedPreferences prefs) async {
-    await prefs.setBool('sub_original_ass', originalAss);
-    await prefs.setString('sub_font', fontFamily);
-    await prefs.setDouble('sub_size', size);
-    await prefs.setDouble('sub_height', lineHeight);
-    await prefs.setInt('sub_bg_color', backgroundColor.toARGB32());
-    await prefs.setDouble('sub_bg', backgroundOpacity);
-    await prefs.setDouble('sub_radius', cornerRadius);
-    await prefs.setDouble('sub_bottom', bottomPadding);
-    await prefs.setInt('sub_color', color.toARGB32());
-    await prefs.setBool('sub_bold', bold);
-    await prefs.setBool('sub_shadow', shadow);
-    await prefs.setDouble('sub_delay', delay);
-    await prefs.setDouble('sub_timing_scale', timingScale);
+    // A slider can emit dozens of updates while the video is playing. Keep
+    // the local preference write atomic so Windows/Android never queue one
+    // platform-channel write per field and never expose a half-written style.
+    await writePreferenceBatch(
+      prefs,
+      values: {
+        'sub_original_ass': originalAss,
+        'sub_font': fontFamily,
+        'sub_size': size,
+        'sub_height': lineHeight,
+        'sub_bg_color': backgroundColor.toARGB32(),
+        'sub_bg': backgroundOpacity,
+        'sub_radius': cornerRadius,
+        'sub_bottom': bottomPadding,
+        'sub_color': color.toARGB32(),
+        'sub_bold': bold,
+        'sub_shadow': shadow,
+        'sub_delay': delay,
+        'sub_timing_scale': timingScale,
+      },
+    );
     await MbnSync.instance.pushPreferences();
   }
 }

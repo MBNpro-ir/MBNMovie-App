@@ -50,18 +50,39 @@ void main() {
     },
   );
 
-  test(
-    'Windows player policy avoids disk-cache stalls and keeps audio clock',
-    () {
-      expect(
-        NativePlaybackPolicy.playerProperties(windows: true),
-        containsPair('cache-on-disk', 'no'),
-      );
-      expect(
-        NativePlaybackPolicy.playerProperties(windows: true),
-        containsPair('framedrop', 'vo'),
-      );
-      expect(NativePlaybackPolicy.playerProperties(windows: false), isEmpty);
-    },
-  );
+  test('native player policies avoid stalls on Windows and old Android', () {
+    expect(
+      NativePlaybackPolicy.playerProperties(windows: true),
+      containsPair('cache-on-disk', 'no'),
+    );
+    expect(
+      NativePlaybackPolicy.playerProperties(windows: true),
+      containsPair('framedrop', 'vo'),
+    );
+    final android = NativePlaybackPolicy.playerProperties(
+      windows: false,
+      android: true,
+      sdk: 23,
+    );
+    expect(android, containsPair('framedrop', 'vo'));
+    expect(android, containsPair('scale', 'bilinear'));
+    expect(android, containsPair('dscale', 'bilinear'));
+    expect(
+      NativePlaybackPolicy.playerProperties(
+        windows: false,
+        android: true,
+        sdk: 33,
+      ),
+      isEmpty,
+    );
+    expect(
+      NativePlaybackPolicy.playerProperties(
+        windows: false,
+        android: true,
+        sdk: 33,
+        television: true,
+      ),
+      containsPair('framedrop', 'vo'),
+    );
+  });
 }

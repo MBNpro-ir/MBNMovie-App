@@ -35,6 +35,16 @@ final _visualOrderVerbTail = <String>{
   'شدن',
   'دارد',
   'ندارد',
+  'بگیر',
+  'بگیرید',
+  'بگو',
+  'بگویید',
+  'بده',
+  'بدهید',
+  'کن',
+  'کنید',
+  'نکن',
+  'نکنید',
 };
 final _delimitedText = RegExp(
   r'''"[^"\n]*"|'[^'\n]*'|«[^«»\n]*»|“[^“”\n]*”|‘[^‘’\n]*’|\([^()\n]*\)|\[[^\[\]\n]*\]|\{[^{}\n]*\}''',
@@ -98,7 +108,7 @@ String _repairVisualMixedOrder(String line) {
         .allMatches(after)
         .map((m) => m.group(0)!)
         .toList(growable: false);
-    if (beforeWords.length < 2 || afterWords.isEmpty) continue;
+    if (beforeWords.isEmpty || afterWords.isEmpty) continue;
     final afterLead = afterWords.first;
     final beforeLead = beforeWords.first;
     final beforeTail = beforeWords.last;
@@ -106,6 +116,11 @@ String _repairVisualMixedOrder(String line) {
         _visualOrderVerbTail.contains(beforeTail) ||
         beforeTail.startsWith('می') ||
         beforeTail.startsWith('نمی');
+    // Imperative endings can be the only RTL word before the Latin run in
+    // legacy visual-order captions (for example `بگیرید MRI ...`).
+    // Require a larger chunk for every other boundary to avoid rotating
+    // ordinary logical sentences.
+    if (beforeWords.length < 2 && !verbLikeTail) continue;
     if (!_visualOrderSuffix.contains(afterLead) &&
         !(beforeWords.length >= 3 &&
             afterWords.length <= 2 &&
@@ -114,7 +129,7 @@ String _repairVisualMixedOrder(String line) {
       continue;
     }
     if (_visualOrderSuffix.contains(afterLead) &&
-        (beforeWords.length < 3 || !verbLikeTail)) {
+        (beforeWords.length < 3 && !verbLikeTail)) {
       continue;
     }
     // Keep a terminal mark attached to the sentence after rotating the chunks.

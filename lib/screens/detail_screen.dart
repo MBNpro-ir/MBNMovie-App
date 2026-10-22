@@ -2720,6 +2720,9 @@ class _PlayerScreenState extends State<PlayerScreen>
     if (!kIsWeb) {
       for (final entry in NativePlaybackPolicy.playerProperties(
         windows: Platform.isWindows,
+        android: Platform.isAndroid,
+        sdk: DevicePerformance.androidSdk,
+        television: DevicePerformance.television,
       ).entries) {
         await setNativePlayerProperty(
           _player.platform!,
@@ -6227,14 +6230,31 @@ class _SubtitleSettings extends StatefulWidget {
 
 class _SubtitleSettingsState extends State<_SubtitleSettings> {
   late SubtitlePreferences value = widget.initial;
+  Timer? _saveTimer;
 
   void _update(SubtitlePreferences next) {
     setState(() => value = next);
-    unawaited(() async {
-      final prefs = await SharedPreferences.getInstance();
-      await next.save(prefs);
-      unawaited(MbnSync.instance.pushPreferencesThrottled());
-    }());
+    _saveTimer?.cancel();
+    // Keep the preview live, but persist only after the slider settles. This
+    // prevents style changes from competing with the decoder/UI frame loop.
+    _saveTimer = Timer(const Duration(milliseconds: 350), () {
+      _saveTimer = null;
+      unawaited(_persist(value));
+    });
+  }
+
+  Future<void> _persist(SubtitlePreferences next) async {
+    final prefs = await SharedPreferences.getInstance();
+    await next.save(prefs);
+  }
+
+  @override
+  void dispose() {
+    final pending = _saveTimer != null ? value : null;
+    _saveTimer?.cancel();
+    _saveTimer = null;
+    if (pending != null) unawaited(_persist(pending));
+    super.dispose();
   }
 
   @override
