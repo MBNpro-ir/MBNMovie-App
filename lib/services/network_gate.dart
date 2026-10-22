@@ -2,7 +2,27 @@ import 'dart:async';
 import 'dart:collection';
 import 'dart:math';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+
+/// Process-wide switch used when the account server is unavailable.
+///
+/// Media URLs and local downloads remain independent from this switch. It
+/// only stops account/sync traffic from retrying while the user is in the
+/// explicitly-confirmed offline mode.
+abstract final class OfflineMode {
+  static final ValueNotifier<bool> changes = ValueNotifier<bool>(false);
+
+  static bool get active => changes.value;
+
+  static void enter() {
+    if (!changes.value) changes.value = true;
+  }
+
+  static void leave() {
+    if (changes.value) changes.value = false;
+  }
+}
 
 /// Bounded FIFO queue. Identical reads share only their in-flight future;
 /// completed results and failures are never cached here.

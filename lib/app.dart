@@ -22,6 +22,7 @@ import 'screens/splash_screen.dart';
 import 'screens/update_screen.dart';
 import 'services/mbn_auth.dart';
 import 'services/mbn_sync.dart';
+import 'services/network_gate.dart';
 import 'services/movie_api.dart';
 import 'services/accessibility_service.dart';
 import 'services/cross_app_auth.dart';
@@ -98,7 +99,8 @@ class _MbnmovieAppState extends State<MbnmovieApp> with WidgetsBindingObserver {
   }
 
   Future<void> _checkAccount() async {
-    if ((_auth.token == null && !_loggedIn) ||
+    if (OfflineMode.active ||
+        (_auth.token == null && !_loggedIn) ||
         _checkingAccount ||
         _restoringRemote ||
         _terminating) {

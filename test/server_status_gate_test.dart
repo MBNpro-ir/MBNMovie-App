@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 import 'package:mbnmovie/widgets/server_status_gate.dart';
 
 void main() {
+  tearDown(() {
+    ServerStatusGate.bypassForTesting = false;
+  });
+
   testWidgets('does not block taps while the status probe is pending', (
     tester,
   ) async {
@@ -32,7 +38,30 @@ void main() {
     await tester.pump();
     expect(taps, 1);
 
-    ServerStatusGate.bypassForTesting = true;
     await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('offers confirmed offline mode after a failed probe', (
+    tester,
+  ) async {
+    final client = MockClient((_) async {
+      throw http.ClientException('offline');
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ServerStatusGate(client: client, child: const Text('local app')),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.text('سرور در دسترس نیست'), findsOneWidget);
+    expect(find.text('ادامه دادن'), findsOneWidget);
+    await tester.tap(find.text('ادامه دادن'));
+    await tester.pump();
+    expect(find.text('ادامه در حالت آفلاین'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'ادامه دادن').last);
+    await tester.pump();
+    expect(find.text('local app'), findsOneWidget);
   });
 }

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../core/theme.dart';
+import '../core/app_platform.dart';
 import '../services/mbn_auth.dart';
 import '../services/network_gate.dart';
 
@@ -14,10 +15,12 @@ class ServerStatusGate extends StatefulWidget {
     super.key,
     required this.child,
     this.baseUrl = MbnAuth.defaultBaseUrl,
+    this.client,
   });
 
   final Widget child;
   final String baseUrl;
+  final http.Client? client;
 
   static void notifyMaintenance(Map<String, dynamic> data) {
     _instance?._onMaintenanceTriggered(data);
@@ -40,14 +43,20 @@ class _ServerStatusGateState extends State<ServerStatusGate> {
   Duration _currentPollInterval = const Duration(seconds: 10);
   bool _retrying = false;
   bool _polling = false;
-  final http.Client _client = http.Client();
+  bool _offlineMode = false;
+  late final http.Client _client;
+
+  bool get _canContinueOffline => !kIsWeb && !Platform.isIOS;
 
   @override
   void initState() {
     super.initState();
+    _client = widget.client ?? http.Client();
     ServerStatusGate._instance = this;
     if (ServerStatusGate.bypassForTesting ||
-        WidgetsBinding.instance.runtimeType.toString().contains('Test')) {
+        (widget.client == null &&
+            WidgetsBinding.instance.runtimeType.toString().contains('Test'))) {
+      OfflineMode.leave();
       _state = ServerState.online;
       return;
     }
@@ -79,11 +88,12 @@ class _ServerStatusGateState extends State<ServerStatusGate> {
     _pollTimer?.cancel();
     _countdownTimer?.cancel();
     _client.close();
+    OfflineMode.leave();
     super.dispose();
   }
 
   void _onMaintenanceTriggered(Map<String, dynamic> data) {
-    if (!mounted) return;
+    if (!mounted || _offlineMode) return;
     setState(() {
       _maintenanceData = data;
       _calcRemaining(data);
@@ -108,7 +118,7 @@ class _ServerStatusGateState extends State<ServerStatusGate> {
   }
 
   Future<void> _checkServer() async {
-    if (_polling) return;
+    if (_polling || _offlineMode) return;
     _polling = true;
     setState(() => _retrying = true);
     try {
@@ -145,6 +155,7 @@ class _ServerStatusGateState extends State<ServerStatusGate> {
           _remainingSeconds = 0;
           _state = ServerState.online;
         });
+        OfflineMode.leave();
         _adjustPollInterval(const Duration(seconds: 10));
       } else {
         setState(() => _state = ServerState.offline);
@@ -178,7 +189,7 @@ class _ServerStatusGateState extends State<ServerStatusGate> {
             jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
         final m = (data['maintenance'] as Map<String, dynamic>?) ?? data;
         final enabled = m['enabled'] == true;
-        if (enabled) {
+        if (enabled && !_offlineMode) {
           _calcRemaining(m);
           if (_remainingSeconds > 0 || (m['ends_at'] as num? ?? 0) == 0) {
             setState(() {
@@ -192,7 +203,10 @@ class _ServerStatusGateState extends State<ServerStatusGate> {
         // If maintenance is turned off or time elapsed:
         if (_state == ServerState.maintenance ||
             _state == ServerState.checking ||
-            _state == ServerState.offline) {
+            _state == ServerState.offline ||
+            _offlineMode) {
+          _offlineMode = false;
+          OfflineMode.leave();
           setState(() {
             _maintenanceData = null;
             _remainingSeconds = 0;
@@ -217,77 +231,49 @@ class _ServerStatusGateState extends State<ServerStatusGate> {
 
   @override
   Widget build(BuildContext context) {
-    // A maintenance probe is best-effort.  Its first request can be delayed
-    // by Safari's network/storage scheduler; it must never sit above the app
-    // and swallow taps while the result is still `checking` (or when the
-    // device is temporarily offline).  Only an explicit maintenance response
-    // is a blocking state.
-    if (_state == ServerState.maintenance) return _buildCurrentState();
-    if (_state == ServerState.offline) {
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          widget.child,
-          Positioned(
-            top: 8,
-            left: 12,
-            right: 12,
-            child: SafeArea(
-              bottom: false,
-              child: Align(
-                alignment: Alignment.topCenter,
-                child: Material(
-                  color: const Color(0xFF20242D),
-                  borderRadius: BorderRadius.circular(12),
-                  child: Padding(
-                    padding: const EdgeInsetsDirectional.only(
-                      start: 12,
-                      end: 6,
-                      top: 4,
-                      bottom: 4,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.cloud_off_rounded,
-                          size: 16,
-                          color: MovieColors.coral,
-                        ),
-                        const SizedBox(width: 6),
-                        const Text(
-                          'اتصال موقتاً در دسترس نیست',
-                          style: TextStyle(fontSize: 11, color: Colors.white70),
-                        ),
-                        const SizedBox(width: 4),
-                        TextButton(
-                          onPressed: _retrying ? null : _checkServer,
-                          style: TextButton.styleFrom(
-                            minimumSize: const Size(0, 30),
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          ),
-                          child: _retrying
-                              ? const SizedBox(
-                                  width: 14,
-                                  height: 14,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Text('تلاش مجدد'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      );
+    // A pending probe must never cover the app or swallow taps. Once the
+    // server is known to be unavailable, show an explicit decision screen.
+    if (_offlineMode) return widget.child;
+    if (_state == ServerState.maintenance || _state == ServerState.offline) {
+      return _buildCurrentState();
     }
     return widget.child;
+  }
+
+  Future<void> _continueOffline() async {
+    if (!_canContinueOffline || !mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('ادامه در حالت آفلاین'),
+        content: const Text(
+          'در صورت ادامه، به دلیل قطع بودن سرور مرکزی ممکن است پلی‌لیست‌ها، تنظیمات، علاقه‌مندی‌ها و اطلاعات مشابه ذخیره یا همگام نشوند. در این حالت فقط اپلیکیشن قابل استفاده است و نسخهٔ وب یا iOS در دسترس نیست.',
+          textAlign: TextAlign.right,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('لغو'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: MovieColors.coral,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('ادامه دادن'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    _pollTimer?.cancel();
+    _offlineMode = true;
+    OfflineMode.enter();
+    _currentPollInterval = const Duration(minutes: 1);
+    _pollTimer = Timer.periodic(_currentPollInterval, (_) => _pollServer());
+    setState(() {});
   }
 
   Widget _buildCurrentState() {
@@ -336,7 +322,7 @@ class _ServerStatusGateState extends State<ServerStatusGate> {
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 14, color: Colors.white70),
                   ),
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 24),
                   FilledButton.icon(
                     onPressed: _retrying ? null : _checkServer,
                     icon: _retrying
@@ -359,6 +345,29 @@ class _ServerStatusGateState extends State<ServerStatusGate> {
                       ),
                     ),
                   ),
+                  if (_canContinueOffline) ...[
+                    const SizedBox(height: 10),
+                    FilledButton.icon(
+                      onPressed: _retrying ? null : _continueOffline,
+                      icon: const Icon(Icons.play_arrow_rounded),
+                      label: const Text('ادامه دادن'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: MovieColors.coral,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 32,
+                          vertical: 14,
+                        ),
+                      ),
+                    ),
+                  ] else ...[
+                    const SizedBox(height: 12),
+                    const Text(
+                      'در نسخهٔ وب و iOS هنگام قطعی سرور امکان ادامه وجود ندارد.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 12, color: Colors.white54),
+                    ),
+                  ],
                 ],
               ),
             ),

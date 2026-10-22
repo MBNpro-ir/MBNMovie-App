@@ -2,10 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:http/http.dart' as http;
+import 'network_gate.dart';
 
 /// A dedicated live connection; the regular account timer remains a fallback.
 class SessionWatch {
-  SessionWatch(this.onRevoked, {this.onSync, this.app = 'anime'});
   final Future<void> Function(String) onRevoked;
   final Future<void> Function()? onSync;
   final String app;
@@ -17,6 +17,20 @@ class SessionWatch {
   String _base = '';
   int _generation = 0;
   int _failures = 0;
+  SessionWatch(this.onRevoked, {this.onSync, this.app = 'anime'}) {
+    OfflineMode.changes.addListener(_offlineChanged);
+  }
+  void _offlineChanged() {
+    _generation++;
+    _retry?.cancel();
+    _retry = null;
+    if (_abort?.isCompleted == false) _abort!.complete();
+    _client?.close();
+    if (!OfflineMode.active && _token != null) {
+      unawaited(_connect(_generation));
+    }
+  }
+
   void track(String? token, String base) {
     if (_token == token && _base == base) return;
     _generation++;
@@ -27,10 +41,13 @@ class SessionWatch {
     _retry?.cancel();
     _token = token;
     _base = base;
-    if (token != null) unawaited(_connect(_generation));
+    if (token != null && !OfflineMode.active) {
+      unawaited(_connect(_generation));
+    }
   }
 
   Future<void> _connect(int generation) async {
+    if (OfflineMode.active || _token == null) return;
     final client = http.Client();
     final abort = Completer<void>();
     _abort = abort;
@@ -96,5 +113,6 @@ class SessionWatch {
     _retry?.cancel();
     if (_abort?.isCompleted == false) _abort!.complete();
     _client?.close();
+    OfflineMode.changes.removeListener(_offlineChanged);
   }
 }

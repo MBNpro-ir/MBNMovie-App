@@ -16,6 +16,7 @@ import '../core/playlist_store.dart';
 import '../models/movie_content.dart';
 import 'accessibility_service.dart';
 import 'mbn_auth.dart';
+import 'network_gate.dart';
 
 /// Server sync for favorites / playlists / history / watch progress.
 ///
@@ -240,6 +241,7 @@ class MbnSync {
 
   /// Full sync: pull newer server rows, push newer local rows.
   Future<void> syncAll() async {
+    if (OfflineMode.active) return;
     final auth = _auth;
     if (auth?.token == null) return;
     if (_syncing) {
@@ -316,6 +318,7 @@ class MbnSync {
   }
 
   Future<void> _pushCategories(List<String> targets) {
+    if (OfflineMode.active) return Future.value();
     if (_auth?.token == null) return Future.value();
     _pendingPushes.addAll(
       targets.where((c) => c != 'preferences' || !_settingsChoicePending),
@@ -630,6 +633,7 @@ class MbnSync {
   }
 
   Future<void> flushPending() async {
+    if (OfflineMode.active) return;
     _pendingProgressPush?.cancel();
     _pendingProgressPush = null;
     _pendingPreferencesPush?.cancel();
