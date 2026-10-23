@@ -34,6 +34,7 @@ class ServerStatusGate extends StatefulWidget {
 }
 
 class _ServerStatusGateState extends State<ServerStatusGate> {
+  static const _offlineContinueColor = Color(0xFFEF4444);
   ServerState _state = ServerState.checking;
   Map<String, dynamic>? _maintenanceData;
   Timer? _pollTimer;
@@ -133,7 +134,7 @@ class _ServerStatusGateState extends State<ServerStatusGate> {
         maxBytes: 64 * 1024,
         followRedirects: false,
       );
-      if (!mounted) return;
+      if (!mounted || _offlineMode) return;
       if (res.statusCode == 200 || res.statusCode == 503) {
         final data =
             jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
@@ -161,7 +162,9 @@ class _ServerStatusGateState extends State<ServerStatusGate> {
         setState(() => _state = ServerState.offline);
       }
     } catch (_) {
-      if (mounted) setState(() => _state = ServerState.offline);
+      if (mounted && !_offlineMode) {
+        setState(() => _state = ServerState.offline);
+      }
     } finally {
       _polling = false;
       if (mounted) setState(() => _retrying = false);
@@ -170,6 +173,7 @@ class _ServerStatusGateState extends State<ServerStatusGate> {
 
   Future<void> _pollServer() async {
     if (_polling || !mounted) return;
+    final startedOffline = _offlineMode;
     _polling = true;
     try {
       final uri = Uri.parse(
@@ -183,20 +187,22 @@ class _ServerStatusGateState extends State<ServerStatusGate> {
         maxBytes: 64 * 1024,
         followRedirects: false,
       );
-      if (!mounted) return;
+      if (!mounted || (!startedOffline && _offlineMode)) return;
       if (res.statusCode == 200 || res.statusCode == 503) {
         final data =
             jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
         final m = (data['maintenance'] as Map<String, dynamic>?) ?? data;
         final enabled = m['enabled'] == true;
-        if (enabled && !_offlineMode) {
+        if (enabled) {
           _calcRemaining(m);
           if (_remainingSeconds > 0 || (m['ends_at'] as num? ?? 0) == 0) {
-            setState(() {
-              _maintenanceData = m;
-              _state = ServerState.maintenance;
-            });
-            _adjustPollInterval(const Duration(seconds: 3));
+            if (!_offlineMode) {
+              setState(() {
+                _maintenanceData = m;
+                _state = ServerState.maintenance;
+              });
+              _adjustPollInterval(const Duration(seconds: 3));
+            }
             return;
           }
         }
@@ -233,19 +239,50 @@ class _ServerStatusGateState extends State<ServerStatusGate> {
   Widget build(BuildContext context) {
     // A pending probe must never cover the app or swallow taps. Once the
     // server is known to be unavailable, show an explicit decision screen.
-    if (_offlineMode) return widget.child;
-    if (_state == ServerState.maintenance || _state == ServerState.offline) {
-      return _buildCurrentState();
-    }
-    return widget.child;
+    final blocked =
+        !_offlineMode &&
+        (_state == ServerState.maintenance || _state == ServerState.offline);
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // Keep the app Navigator and its current route mounted while blocked.
+        Offstage(
+          offstage: blocked,
+          child: TickerMode(
+            enabled: !blocked,
+            child: ExcludeFocus(excluding: blocked, child: widget.child),
+          ),
+        ),
+        if (blocked)
+          // In MaterialApp.builder this gate is ABOVE the app Navigator.
+          // Give status screens their own Navigator for the warning dialog.
+          HeroControllerScope.none(
+            child: Navigator(
+              pages: [
+                MaterialPage<void>(
+                  child: PopScope(
+                    canPop: false,
+                    child: Builder(builder: _buildCurrentState),
+                  ),
+                ),
+              ],
+              onDidRemovePage: (_) {},
+            ),
+          ),
+      ],
+    );
   }
 
-  Future<void> _continueOffline() async {
-    if (!_canContinueOffline || !mounted) return;
+  Future<void> _continueOffline(BuildContext statusContext) async {
+    if (!_canContinueOffline || !mounted || !statusContext.mounted) return;
+    // A second tap must not stack another warning on top of the first one.
+    if (Navigator.of(statusContext).canPop()) return;
     final confirmed = await showDialog<bool>(
-      context: context,
+      context: statusContext,
+      useRootNavigator: false,
       barrierDismissible: false,
       builder: (dialogContext) => AlertDialog(
+        scrollable: true,
         title: const Text('ادامه در حالت آفلاین'),
         content: const Text(
           'در صورت ادامه، به دلیل قطع بودن سرور مرکزی ممکن است پلی‌لیست‌ها، تنظیمات، علاقه‌مندی‌ها و اطلاعات مشابه ذخیره یا همگام نشوند. در این حالت فقط اپلیکیشن قابل استفاده است و نسخهٔ وب یا iOS در دسترس نیست.',
@@ -258,7 +295,7 @@ class _ServerStatusGateState extends State<ServerStatusGate> {
           ),
           FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: MovieColors.coral,
+              backgroundColor: _offlineContinueColor,
               foregroundColor: Colors.white,
             ),
             onPressed: () => Navigator.pop(dialogContext, true),
@@ -267,7 +304,12 @@ class _ServerStatusGateState extends State<ServerStatusGate> {
         ],
       ),
     );
-    if (confirmed != true || !mounted) return;
+    if (confirmed != true ||
+        !mounted ||
+        !statusContext.mounted ||
+        _state != ServerState.offline) {
+      return;
+    }
     _pollTimer?.cancel();
     _offlineMode = true;
     OfflineMode.enter();
@@ -276,7 +318,7 @@ class _ServerStatusGateState extends State<ServerStatusGate> {
     setState(() {});
   }
 
-  Widget _buildCurrentState() {
+  Widget _buildCurrentState(BuildContext statusContext) {
     switch (_state) {
       case ServerState.checking:
         return const Scaffold(
@@ -289,7 +331,7 @@ class _ServerStatusGateState extends State<ServerStatusGate> {
         return Scaffold(
           backgroundColor: const Color(0xFF080A0F),
           body: Center(
-            child: Padding(
+            child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 28),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -348,11 +390,11 @@ class _ServerStatusGateState extends State<ServerStatusGate> {
                   if (_canContinueOffline) ...[
                     const SizedBox(height: 10),
                     FilledButton.icon(
-                      onPressed: _retrying ? null : _continueOffline,
+                      onPressed: () => _continueOffline(statusContext),
                       icon: const Icon(Icons.play_arrow_rounded),
                       label: const Text('ادامه دادن'),
                       style: FilledButton.styleFrom(
-                        backgroundColor: MovieColors.coral,
+                        backgroundColor: _offlineContinueColor,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(
                           horizontal: 32,
