@@ -51,6 +51,7 @@ import '../core/title_language.dart';
 import '../core/watch_progress.dart';
 import '../models/movie_content.dart';
 import '../services/movie_api.dart';
+import '../services/network_gate.dart';
 import '../services/device_bridge.dart';
 import '../services/mbn_sync.dart';
 import '../services/picture_in_picture.dart';
@@ -118,10 +119,23 @@ class _DetailScreenState extends State<DetailScreen> {
   @override
   void initState() {
     super.initState();
+    OfflineMode.changes.addListener(_catalogModeChanged);
     // Comments are preloaded for instant tab switches, but their FutureBuilder
     // only exists on the comments tab. Guard eagerly so an early failure
     // cannot report as unhandled while another tab is selected.
     unawaited(_comments.then<void>((_) {}, onError: (_) {}));
+  }
+
+  @override
+  void dispose() {
+    OfflineMode.changes.removeListener(_catalogModeChanged);
+    super.dispose();
+  }
+
+  void _catalogModeChanged() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _retry();
+    });
   }
 
   void _retry() => setState(() {

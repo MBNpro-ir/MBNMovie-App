@@ -59,6 +59,14 @@ void main() {
       NativePlaybackPolicy.playerProperties(windows: true),
       containsPair('framedrop', 'vo'),
     );
+    expect(
+      int.tryParse(
+        NativePlaybackPolicy.playerProperties(
+          windows: true,
+        )['vd-lavc-threads']!,
+      ),
+      0,
+    );
     final android = NativePlaybackPolicy.playerProperties(
       windows: false,
       android: true,
@@ -67,6 +75,7 @@ void main() {
     expect(android, containsPair('framedrop', 'vo'));
     expect(android, containsPair('scale', 'bilinear'));
     expect(android, containsPair('dscale', 'bilinear'));
+    expect(int.tryParse(android['vd-lavc-threads']!), 0);
     expect(
       NativePlaybackPolicy.playerProperties(
         windows: false,

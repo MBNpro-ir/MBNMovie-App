@@ -1,12 +1,15 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:async';
 import 'web_gateway.dart';
 import 'network_gate.dart';
 import 'dart:convert';
+import '../core/app_platform.dart';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
 import 'package:html/parser.dart' as html;
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/title_language.dart';
 import '../models/movie_content.dart';
@@ -16,6 +19,10 @@ class MovieApiException implements Exception {
   final String message;
   @override
   String toString() => message;
+}
+
+class _CatalogRouteChanged implements Exception {
+  const _CatalogRouteChanged();
 }
 
 class HomeCatalog {
@@ -99,9 +106,13 @@ abstract interface class ContentApi {
 
 /// Connects the existing MBNMovie interface to the film catalog service.
 class MovieApi implements ContentApi {
-  MovieApi({http.Client? client, Future<String> Function()? indexLoader})
-    : _client = client ?? WebCatalogClient(),
-      _indexLoader = indexLoader ?? _loadBundledIndex;
+  MovieApi({
+    http.Client? client,
+    http.Client? offlineClient,
+    Future<String> Function()? indexLoader,
+  }) : _client = client ?? WebCatalogClient(),
+       _offlineClient = offlineClient ?? client ?? http.Client(),
+       _indexLoader = indexLoader ?? _loadBundledIndex;
 
   static Future<String> _loadBundledIndex() =>
       rootBundle.loadString('assets/catalog_index.json');
@@ -121,6 +132,53 @@ class MovieApi implements ContentApi {
   Future<Map<String, dynamic>> Function(String path, Map<String, String> query)?
   catalogRequest;
   Future<List<Map<String, dynamic>>>? _indexFuture;
+
+  static const _detailCachePrefix = 'mbnmovie_detail_cache_v1_';
+  static const _homeCacheKey = 'mbnmovie_home_cache_v1';
+
+  Future<void> _cacheJson(String key, Map<String, dynamic> value) async {
+    try {
+      // Only catalog fields are persisted, never source login/session data.
+      final fields = key == _homeCacheKey
+          ? const [
+              'NewMovie',
+              'NewSerie',
+              'updated_serie',
+              'vige',
+              'Nostalgy',
+              'casts',
+              'Collection',
+              'banner_cnt',
+              'mazamin',
+              'genre',
+              'country',
+            ]
+          : const ['detiles', 'details', 'detile', 'casts', 'comments'];
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        key,
+        jsonEncode({
+          for (final field in fields)
+            if (value.containsKey(field)) field: value[field],
+        }),
+      );
+    } catch (_) {
+      // A cache write must never affect playback or catalog rendering.
+    }
+  }
+
+  Future<Map<String, dynamic>?> _readCachedJson(String key) async {
+    try {
+      final raw = (await SharedPreferences.getInstance()).getString(key);
+      if (raw == null || raw.isEmpty) return null;
+      final decoded = jsonDecode(raw);
+      return decoded is Map
+          ? decoded.map((key, value) => MapEntry('$key', value))
+          : null;
+    } catch (_) {
+      return null;
+    }
+  }
 
   Future<List<Map<String, dynamic>>> _index() => _indexFuture ??= () async {
     try {
@@ -400,11 +458,16 @@ class MovieApi implements ContentApi {
   static const _wireApp = 'Delfan';
   static const _headers = {'User-Agent': 'Mozilla/5.0 (Linux; Android 15)'};
   final http.Client _client;
+  // The provider's guest catalogue can be read without the account server.
+  // Never send a linked account's password/token over this HTTP-only route.
+  final http.Client _offlineClient;
+  bool get _directGuest => OfflineMode.active && !kIsWeb && !Platform.isIOS;
   int _sessionGeneration = 0;
   // The provider consumes each guest nonce once, so catalog pairs stay serial.
   // Bound waiting work instead of growing a Future chain indefinitely.
   final NetworkRequestGate _requests = NetworkRequestGate(maxConcurrent: 1);
   Map<String, dynamic>? _homeData;
+  String? _homeRoute;
   final Map<String, List<MovieContent>> _catalogPageCache = {};
   final Map<String, ({List<String> genres, List<String> countries})>
   _groupDetailCache = {};
@@ -452,16 +515,50 @@ class MovieApi implements ContentApi {
     final fields = extra.entries.toList()
       ..sort((a, b) => a.key.compareTo(b.key));
     final generation = _sessionGeneration;
+    final directGuest = _directGuest;
     final key = jsonEncode([
       action,
       generation,
+      directGuest,
       TitleLanguage.english,
       {for (final field in fields) field.key: field.value},
     ]);
     try {
-      final result = await _requests.run(key, () {
-        _checkSession(generation);
-        return _send(action, extra, generation);
+      final result = await _requests.run(key, () async {
+        while (true) {
+          _checkSession(generation);
+          final useDirect = _directGuest;
+          final changed = Completer<void>();
+          void checkRoute() {
+            if (useDirect != _directGuest && !changed.isCompleted) {
+              changed.complete();
+            }
+          }
+
+          OfflineMode.changes.addListener(checkRoute);
+          try {
+            // Changing mode releases a stalled bridge read immediately. The
+            // abort also reaches its real HTTP request; late data is ignored.
+            return await Future.any([
+              _send(
+                action,
+                extra,
+                generation,
+                directGuest: useDirect,
+                abortTrigger: changed.future,
+              ),
+              changed.future.then<Map<String, dynamic>>(
+                (_) => throw const _CatalogRouteChanged(),
+              ),
+            ]);
+          } on _CatalogRouteChanged {
+            // Re-evaluate the route when this queued read actually executes.
+          } catch (_) {
+            if (useDirect == _directGuest) rethrow;
+          } finally {
+            OfflineMode.changes.removeListener(checkRoute);
+          }
+        }
       });
       _checkSession(generation);
       return result;
@@ -478,32 +575,43 @@ class MovieApi implements ContentApi {
     }
   }
 
-  Future<_AuthInit> _loginInit() async {
+  void _checkRoute(bool directGuest) {
+    if (directGuest != _directGuest) throw const _CatalogRouteChanged();
+  }
+
+  Future<_AuthInit> _loginInit({
+    required bool directGuest,
+    required Future<void> abortTrigger,
+  }) async {
     // The catalog service consumes the guest auth for one vp1 request.
     // Reusing it makes every subsequent action fail with state_all=F.
-    final login = await readWithRetry(
-      () => sendBuffered(
-        _client,
+    final mobile = directGuest ? '' : _delfanMobile;
+    final password = directGuest ? '' : _delfanPassword;
+    final login = await readWithRetry(() {
+      _checkRoute(directGuest);
+      return sendBuffered(
+        directGuest ? _offlineClient : _client,
         'POST',
         Uri.parse('${_base}users.php?key=$_key&action=login'),
         headers: _headers,
         body: {
-          'user_name': _delfanMobile,
-          if (_delfanMobile.isNotEmpty) 'pass': _delfanPassword,
+          'user_name': mobile,
+          if (mobile.isNotEmpty) 'pass': password,
           'token': '',
           'android_id': '',
           'app_verion': '2',
           'version_sp': 'ورژن 2',
           'is_tv': '',
-          'apname': _delfanMobile.isEmpty ? _wireApp : 'Delfan',
+          'apname': _wireApp,
         },
-        timeout: const Duration(seconds: 20),
-      ),
-      maxAttempts: 3,
-    );
+        timeout: Duration(seconds: directGuest ? 8 : 20),
+        abortTrigger: abortTrigger,
+      );
+    }, maxAttempts: directGuest ? 1 : 3);
+    _checkRoute(directGuest);
     final init = _map(jsonDecode(utf8.decode(login.bodyBytes)));
     final info = _map(_list(init['infos']).firstOrNull);
-    if (_delfanMobile.isNotEmpty && _text(info['login']) != 'T') {
+    if (mobile.isNotEmpty && _text(info['login']) != 'T') {
       throw FormatException(
         _text(info['msg']).isEmpty
             ? 'اتصال حساب برقرار نشد'
@@ -518,7 +626,7 @@ class MovieApi implements ContentApi {
       q2: int.tryParse(_text(init['q2'])) ?? 0,
       night: _text(init['night_mode']),
       tx: _text(init['tx_size']),
-      mobile: _delfanMobile,
+      mobile: mobile,
       token: _text(info['token']),
     );
     return parsed;
@@ -527,20 +635,26 @@ class MovieApi implements ContentApi {
   Future<Map<String, dynamic>> _send(
     String action,
     Map<String, String> extra,
-    int generation,
-  ) async {
+    int generation, {
+    required bool directGuest,
+    required Future<void> abortTrigger,
+  }) async {
     for (var attempt = 0; attempt < 2; attempt++) {
       _checkSession(generation);
-      final init = await _loginInit();
+      final init = await _loginInit(
+        directGuest: directGuest,
+        abortTrigger: abortTrigger,
+      );
       _checkSession(generation);
       final nonce = DateTime.now().microsecondsSinceEpoch % 500;
       final body =
           '${_md5('${nonce}cotation')}${init.auth}'
           'fdaa94a151e2c5d474a290e8${init.auth}y87mdjsodon'
           'c215sfxd545fgs${_md5('${DateTime.now().toUtc()}cotation')}';
-      final response = await readWithRetry(
-        () => sendBuffered(
-          _client,
+      final response = await readWithRetry(() {
+        _checkRoute(directGuest);
+        return sendBuffered(
+          directGuest ? _offlineClient : _client,
           'POST',
           Uri.parse('${_base}vp1.php?key=$_key&action=$action'),
           headers: _headers,
@@ -555,11 +669,12 @@ class MovieApi implements ContentApi {
             'apname': init.mobile.isEmpty ? _wireApp : 'Delfan',
             ...extra,
           },
-          timeout: const Duration(seconds: 30),
-        ),
-        maxAttempts: 2,
-      );
+          timeout: Duration(seconds: directGuest ? 15 : 30),
+          abortTrigger: abortTrigger,
+        );
+      }, maxAttempts: directGuest ? 1 : 2);
       _checkSession(generation);
+      _checkRoute(directGuest);
       if (response.statusCode != 200 || response.bodyBytes.isEmpty) {
         throw const FormatException('سرور پاسخ نداد');
       }
@@ -618,8 +733,37 @@ class MovieApi implements ContentApi {
             !isPromotionalContent(item),
       )
       .toList();
-  Future<Map<String, dynamic>> _home() async =>
-      _homeData ??= await _request('vitrin');
+  Future<Map<String, dynamic>> _home() async {
+    final route = '$_directGuest:${TitleLanguage.english}';
+    if (_homeData != null && _homeRoute == route) return _homeData!;
+    Map<String, dynamic> data;
+    try {
+      data = await _request('vitrin');
+      if ([
+        'NewMovie',
+        'NewSerie',
+        'updated_serie',
+        'vige',
+        'Nostalgy',
+        'genre',
+        'country',
+        'casts',
+        'Collection',
+        'banner_cnt',
+        'mazamin',
+      ].any((key) => _list(data[key]).isNotEmpty)) {
+        await _cacheJson(_homeCacheKey, data);
+      } else {
+        data = await _readCachedJson(_homeCacheKey) ?? data;
+      }
+    } catch (_) {
+      final cached = await _readCachedJson(_homeCacheKey);
+      if (cached == null) rethrow;
+      data = cached;
+    }
+    _homeRoute = '$_directGuest:${TitleLanguage.english}';
+    return _homeData = data;
+  }
 
   List<MoviePerson> _people(Object? rows) => _list(rows)
       .map(_map)
@@ -709,7 +853,17 @@ class MovieApi implements ContentApi {
       try {
         return await _homeOnce();
       } catch (_) {
-        if (attempt == 2) {
+        if (OfflineMode.active || attempt == 2) {
+          // The server gate can be confirmed offline while this first home
+          // request is still in flight. Resolve the same request from the
+          // bundled catalogue so the already-mounted app does not remain on
+          // an error screen after the user chooses «ادامه دادن».
+          try {
+            final fallback = await _offlineHome();
+            if (fallback.movies.isNotEmpty || fallback.series.isNotEmpty) {
+              return fallback;
+            }
+          } catch (_) {}
           throw const MovieApiException('کاتالوگ MBNMovie قابل خواندن نیست.');
         }
         _homeData = null;
@@ -725,6 +879,11 @@ class MovieApi implements ContentApi {
       final data = await _home();
       final movies = _items(data['NewMovie'], ContentKind.movie);
       final series = _items(data['NewSerie'], ContentKind.series);
+      if (OfflineMode.active && movies.isEmpty && series.isEmpty) {
+        final fallback = await _offlineHome();
+        movies.addAll(fallback.movies);
+        series.addAll(fallback.series);
+      }
       return HomeCatalog(
         featured: [...movies, ...series].take(8).toList(),
         movies: movies,
@@ -758,6 +917,43 @@ class MovieApi implements ContentApi {
     }
   }
 
+  /// The bundled index is deliberately complete and is the native fallback
+  /// when the account/catalog server is unavailable. It contains the same
+  /// title IDs used by the detail cache, so cached episode links remain
+  /// selectable instead of turning the home page into an empty error state.
+  Future<HomeCatalog> _offlineHome() async {
+    final rows = await _index();
+    final items = rows
+        .map(_indexItem)
+        .where((item) => item.id.isNotEmpty && !isPromotionalContent(item))
+        .toList(growable: false);
+    final movies = items
+        .where((item) => item.kind == ContentKind.movie)
+        .toList();
+    final series = items
+        .where((item) => item.kind == ContentKind.series)
+        .toList();
+    return HomeCatalog(
+      featured: items.take(8).toList(),
+      movies: movies,
+      series: series,
+      sections: [
+        if (series.isNotEmpty)
+          HomeSection(
+            id: 'offline-series',
+            title: 'سریال‌ها',
+            items: series.take(20).toList(),
+          ),
+        if (movies.isNotEmpty)
+          HomeSection(
+            id: 'offline-movies',
+            title: 'فیلم‌ها',
+            items: movies.take(20).toList(),
+          ),
+      ],
+    );
+  }
+
   Future<List<MovieContent>> catalog({
     required ContentKind kind,
     int page = 1,
@@ -775,6 +971,12 @@ class MovieApi implements ContentApi {
       if (page > 1) return await fetch();
       return await _firstPageWithRetry(fetch);
     } catch (_) {
+      if (OfflineMode.active) {
+        return _indexFilter(
+          type: kind == ContentKind.series ? 'serie' : 'movie',
+          page: page,
+        );
+      }
       throw const MovieApiException('فهرست محتوا قابل خواندن نیست.');
     }
   }
@@ -878,10 +1080,26 @@ class MovieApi implements ContentApi {
             group.id.isNotEmpty && group.name.isNotEmpty && !_adult(group.name),
       )
       .toList();
-  Future<List<CatalogGroup>> genres() async =>
-      _groups((await _home())['genre'], 'genre_id');
-  Future<List<CatalogGroup>> countries() async =>
-      _groups((await _home())['country'], 'country_id');
+  Future<List<CatalogGroup>> _catalogGroups({required bool country}) async {
+    try {
+      final groups = _groups(
+        (await _home())[country ? 'country' : 'genre'],
+        country ? 'country_id' : 'genre_id',
+      );
+      if (groups.isNotEmpty) return groups;
+    } catch (_) {}
+    final names = <String>{};
+    for (final row in await _index()) {
+      names.addAll(
+        country ? _indexItem(row).countries : _indexItem(row).genres,
+      );
+    }
+    final sorted = names.where((name) => !_adult(name)).toList()..sort();
+    return sorted.map((name) => CatalogGroup(id: name, name: name)).toList();
+  }
+
+  Future<List<CatalogGroup>> genres() => _catalogGroups(country: false);
+  Future<List<CatalogGroup>> countries() => _catalogGroups(country: true);
   Future<List<CatalogGroup>> countriesWithContent() => countries();
   Future<List<MoviePerson>> actors({int page = 1}) async {
     if (page <= 1) {
@@ -910,7 +1128,9 @@ class MovieApi implements ContentApi {
         'q': query.trim(),
         'cast_type': 'cast',
       });
-      return _people(data['casts'] ?? data['cast_list'] ?? data['all']);
+      return _people(
+        data['casts'] ?? data['cast_list'] ?? data['movie_list'] ?? data['all'],
+      );
     } catch (_) {
       throw const MovieApiException('جست‌وجوی بازیگران در دسترس نیست.');
     }
@@ -1079,7 +1299,9 @@ class MovieApi implements ContentApi {
       onPartial?.call(local);
       return local;
     }
-    if (catalogRequest != null && isCanceled?.call() != true) {
+    if (!OfflineMode.active &&
+        catalogRequest != null &&
+        isCanceled?.call() != true) {
       try {
         final data = await catalogRequest!('/api/catalog/movie/search', {
           'q': trimmed,
@@ -1184,7 +1406,7 @@ class MovieApi implements ContentApi {
   }
 
   Future<List<MovieContent>> _catalogPage(ContentKind kind, int page) async {
-    final key = '${TitleLanguage.english}:${kind.name}:$page';
+    final key = '$_directGuest:${TitleLanguage.english}:${kind.name}:$page';
     final cached = _catalogPageCache[key];
     if (cached != null) return cached;
     final data = await _request('movie_list&pageno=$page', {
@@ -1193,7 +1415,10 @@ class MovieApi implements ContentApi {
       'is_movie': kind == ContentKind.series ? 'serie' : 'movie',
     });
     final items = _items(data['all'], kind);
-    _catalogPageCache[key] = items;
+    // A pending bridge request may have resumed through the guest route.
+    // Cache its result under the route that actually returned the data.
+    _catalogPageCache['$_directGuest:${TitleLanguage.english}:${kind.name}:$page'] =
+        items;
     return items;
   }
 
@@ -1481,178 +1706,205 @@ class MovieApi implements ContentApi {
 
   @override
   Future<MovieContent> details(MovieContent summary) async {
+    final cacheKey = '$_detailCachePrefix${summary.id}';
     try {
       final data = await _detailData(summary.id);
-      final row = _map(
-        _list(data['detiles'] ?? data['details'] ?? data['detile']).firstOrNull,
-      );
-      if (row.isEmpty) throw const FormatException('جزئیات خالی است');
-      final rawDescription = _plainDescription(
-        row['description'] ??
-            row['des'] ??
-            row['story'] ??
-            row['plot'] ??
-            row['summary'] ??
-            row['bio'] ??
-            row['about'],
-      );
-      final biography = _splitBiography(rawDescription);
-      final description = rawDescription;
-      final alternateTitles = biography.$2 == null
-          ? const <String>[]
-          : <String>[biography.$2!];
-      final linkGroups = _list(row['download_link']).map(_map).toList();
-      final flatLinks = linkGroups
-          .where((group) => group['link'] != null)
-          .toList();
-      final flatEpisodes = _episodesFromLinks(flatLinks);
-      // کیفیت‌های تخت فیلم + لینک‌های تودرتوی فصل‌ها (سریال) در تب دانلود
-      // یکجا دیده می‌شوند تا دکمه «دانلود همه کیفیت‌ها» برای سریال خالی نماند.
-      final nestedEpisodes = [
-        for (final group in linkGroups)
-          ..._episodesFromLinks(_list(group['links']).map(_map).toList()),
-      ];
-      final allDownloads = <MovieDownload>[
-        for (final episode in [...flatEpisodes, ...nestedEpisodes])
-          MovieDownload(
-            id: episode.id,
-            label: episode.name,
-            url: episode.fileUrl,
-            fileSize: episode.fileSize,
-          ),
-      ];
-      // حذف تکراری‌ها بر اساس نشانی فایل.
-      final seenUrls = <String>{};
-      final downloads = [
-        for (final item in allDownloads)
-          if (seenUrls.add(item.url)) item,
-      ];
-      final movieEpisodes = flatEpisodes
-          .map(
-            (episode) => MovieEpisode(
-              id: episode.id,
-              name: episode.name.isEmpty ? 'پخش فیلم' : episode.name,
-              fileUrl: episode.fileUrl,
-              fileSize: episode.fileSize,
-              fileType: episode.fileType,
-            ),
-          )
-          .toList();
-      final seasons = <MovieSeason>[
-        if (movieEpisodes.isNotEmpty)
-          MovieSeason(
-            id: 'movie',
-            name: 'کیفیت‌های پخش',
-            episodes: movieEpisodes,
-          ),
-        for (final (index, group) in linkGroups.indexed)
-          if (_list(group['links']).isNotEmpty)
-            MovieSeason(
-              id: 'season-$index',
-              name: _text(group['session_title']).isEmpty
-                  ? 'فصل ${index + 1}'
-                  : _text(group['session_title']),
-              episodes: _episodesFromLinks(
-                _list(group['links']).map(_map).toList(),
-              ),
-            ),
-      ]..removeWhere((season) => season.episodes.isEmpty);
-      final image = _text(
-        row['poster_url'] ??
-            row['thumbnail_url'] ??
-            row['poster'] ??
-            row['pic'] ??
-            row['image'] ??
-            row['cover'],
-      );
-      final genres = _text(row['genre'] ?? row['genres'])
-          .split(RegExp(r'[,،]'))
-          .map((part) => part.trim())
-          .where((part) => part.isNotEmpty && !_adult(part))
-          .toList();
-      final countries = _text(row['country'] ?? row['countries'])
-          .split(RegExp(r'[,،]'))
-          .map((part) => part.trim())
-          .where((part) => part.isNotEmpty)
-          .toList();
-      final castRows = _list(data['casts']).isNotEmpty
-          ? _list(data['casts'])
-          : _list(row['casts']);
-      final cast = castRows
-          .map(_map)
-          .map(
-            (person) => MoviePerson(
-              id: _text(person['id']),
-              name: _text(person['name']),
-              imageUrl: _text(person['pic_url']),
-              role: _text(person['action_user']),
-            ),
-          )
-          .where((person) => person.id.isNotEmpty && person.name.isNotEmpty)
-          .toList();
-      final kind = _kind(row, summary.kind);
-      final related = [
-        ..._items(row['related_movie'], kind),
-        ..._items(row['related_tvseries'], kind),
-        ..._items(row['related'], kind),
-      ];
-      final relatedSeen = <String>{};
-      final relatedUnique = [
-        for (final item in related)
-          if (relatedSeen.add(item.id)) item,
-      ];
-      final trailer = _text(row['trailer_url'] ?? row['trailer']);
-      final isDubbed =
-          _text(
-            row['is_duble'] ?? row['is_dubbed'] ?? row['dubbed'],
-          ).toUpperCase() ==
-          'T';
-      final shareText = _text(row['shareText'] ?? row['share_text']);
-      final year =
-          int.tryParse(
-            _text(row['year'] ?? row['sal'] ?? row['release_year']),
-          ) ??
-          summary.year;
-      final rating =
-          double.tryParse(
-            _text(
-              row['imdb_rating'] ?? row['imdb'] ?? row['rate'] ?? row['rating'],
-            ),
-          ) ??
-          summary.rating;
-      return MovieContent(
-        id: summary.id,
-        title: _text(row['title']).isEmpty
-            ? summary.title
-            : _text(row['title']),
-        subtitle: kind == ContentKind.series ? 'سریال' : 'فیلم',
-        description: description,
-        year: year,
-        rating: rating,
-        kind: kind,
-        colors: summary.colors,
-        genres: genres,
-        countries: countries,
-        alternateTitles: alternateTitles,
-        imageUrl: image.isEmpty ? summary.imageUrl : image,
-        backdropUrl: image.isEmpty ? summary.backdropUrl : image,
-        cast: cast,
-        downloads: downloads,
-        seasons: seasons,
-        related: relatedUnique,
-        trailerUrl: trailer.isEmpty ? null : trailer,
-        isDubbed: isDubbed,
-        shareText: shareText,
-      );
+      final content = _contentFromDetail(data, summary);
+      if (content.seasons.any((season) => season.episodes.isNotEmpty)) {
+        await _cacheJson(cacheKey, data);
+        return content;
+      }
+      final cached = await _readCachedJson(cacheKey);
+      return cached == null ? content : _contentFromDetail(cached, summary);
     } catch (_) {
+      final cached = await _readCachedJson(cacheKey);
+      if (cached != null) {
+        try {
+          return _contentFromDetail(cached, summary);
+        } catch (_) {}
+      }
       throw const MovieApiException('جزئیات این عنوان قابل خواندن نیست.');
     }
+  }
+
+  MovieContent _contentFromDetail(
+    Map<String, dynamic> data,
+    MovieContent summary,
+  ) {
+    final row = _map(
+      _list(data['detiles'] ?? data['details'] ?? data['detile']).firstOrNull,
+    );
+    if (row.isEmpty) throw const FormatException('جزئیات خالی است');
+    final id = _text(row['id'] ?? row['videos_id']);
+    if (id.isNotEmpty && id != summary.id) {
+      throw const FormatException('شناسهٔ جزئیات ناسازگار است');
+    }
+    final rawDescription = _plainDescription(
+      row['description'] ??
+          row['des'] ??
+          row['story'] ??
+          row['plot'] ??
+          row['summary'] ??
+          row['bio'] ??
+          row['about'],
+    );
+    final biography = _splitBiography(rawDescription);
+    final description = rawDescription;
+    final alternateTitles = biography.$2 == null
+        ? const <String>[]
+        : <String>[biography.$2!];
+    final linkGroups = _list(row['download_link']).map(_map).toList();
+    final flatLinks = linkGroups
+        .where((group) => group['link'] != null)
+        .toList();
+    final flatEpisodes = _episodesFromLinks(flatLinks);
+    // کیفیت‌های تخت فیلم + لینک‌های تودرتوی فصل‌ها (سریال) در تب دانلود
+    // یکجا دیده می‌شوند تا دکمه «دانلود همه کیفیت‌ها» برای سریال خالی نماند.
+    final nestedEpisodes = [
+      for (final group in linkGroups)
+        ..._episodesFromLinks(_list(group['links']).map(_map).toList()),
+    ];
+    final allDownloads = <MovieDownload>[
+      for (final episode in [...flatEpisodes, ...nestedEpisodes])
+        MovieDownload(
+          id: episode.id,
+          label: episode.name,
+          url: episode.fileUrl,
+          fileSize: episode.fileSize,
+        ),
+    ];
+    // حذف تکراری‌ها بر اساس نشانی فایل.
+    final seenUrls = <String>{};
+    final downloads = [
+      for (final item in allDownloads)
+        if (seenUrls.add(item.url)) item,
+    ];
+    final movieEpisodes = flatEpisodes
+        .map(
+          (episode) => MovieEpisode(
+            id: episode.id,
+            name: episode.name.isEmpty ? 'پخش فیلم' : episode.name,
+            fileUrl: episode.fileUrl,
+            fileSize: episode.fileSize,
+            fileType: episode.fileType,
+          ),
+        )
+        .toList();
+    final seasons = <MovieSeason>[
+      if (movieEpisodes.isNotEmpty)
+        MovieSeason(
+          id: 'movie',
+          name: 'کیفیت‌های پخش',
+          episodes: movieEpisodes,
+        ),
+      for (final (index, group) in linkGroups.indexed)
+        if (_list(group['links']).isNotEmpty)
+          MovieSeason(
+            id: 'season-$index',
+            name: _text(group['session_title']).isEmpty
+                ? 'فصل ${index + 1}'
+                : _text(group['session_title']),
+            episodes: _episodesFromLinks(
+              _list(group['links']).map(_map).toList(),
+            ),
+          ),
+    ]..removeWhere((season) => season.episodes.isEmpty);
+    final image = _text(
+      row['poster_url'] ??
+          row['thumbnail_url'] ??
+          row['poster'] ??
+          row['pic'] ??
+          row['image'] ??
+          row['cover'],
+    );
+    final genres = _text(row['genre'] ?? row['genres'])
+        .split(RegExp(r'[,،]'))
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty && !_adult(part))
+        .toList();
+    final countries = _text(row['country'] ?? row['countries'])
+        .split(RegExp(r'[,،]'))
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .toList();
+    final castRows = _list(data['casts']).isNotEmpty
+        ? _list(data['casts'])
+        : _list(row['casts']);
+    final cast = castRows
+        .map(_map)
+        .map(
+          (person) => MoviePerson(
+            id: _text(person['id']),
+            name: _text(person['name']),
+            imageUrl: _text(person['pic_url']),
+            role: _text(person['action_user']),
+          ),
+        )
+        .where((person) => person.id.isNotEmpty && person.name.isNotEmpty)
+        .toList();
+    final kind = _kind(row, summary.kind);
+    final related = [
+      ..._items(row['related_movie'], kind),
+      ..._items(row['related_tvseries'], kind),
+      ..._items(row['related'], kind),
+    ];
+    final relatedSeen = <String>{};
+    final relatedUnique = [
+      for (final item in related)
+        if (relatedSeen.add(item.id)) item,
+    ];
+    final trailer = _text(row['trailer_url'] ?? row['trailer']);
+    final isDubbed =
+        _text(
+          row['is_duble'] ?? row['is_dubbed'] ?? row['dubbed'],
+        ).toUpperCase() ==
+        'T';
+    final shareText = _text(row['shareText'] ?? row['share_text']);
+    final year =
+        int.tryParse(_text(row['year'] ?? row['sal'] ?? row['release_year'])) ??
+        summary.year;
+    final rating =
+        double.tryParse(
+          _text(
+            row['imdb_rating'] ?? row['imdb'] ?? row['rate'] ?? row['rating'],
+          ),
+        ) ??
+        summary.rating;
+    return MovieContent(
+      id: summary.id,
+      title: _text(row['title']).isEmpty ? summary.title : _text(row['title']),
+      subtitle: kind == ContentKind.series ? 'سریال' : 'فیلم',
+      description: description,
+      year: year,
+      rating: rating,
+      kind: kind,
+      colors: summary.colors,
+      genres: genres,
+      countries: countries,
+      alternateTitles: alternateTitles,
+      imageUrl: image.isEmpty ? summary.imageUrl : image,
+      backdropUrl: image.isEmpty ? summary.backdropUrl : image,
+      cast: cast,
+      downloads: downloads,
+      seasons: seasons,
+      related: relatedUnique,
+      trailerUrl: trailer.isEmpty ? null : trailer,
+      isDubbed: isDubbed,
+      shareText: shareText,
+    );
   }
 
   @override
   Future<List<MovieComment>> comments(String contentId) async {
     try {
-      final data = await _detailData(contentId);
+      Map<String, dynamic> data;
+      try {
+        data = await _detailData(contentId);
+      } catch (_) {
+        final cached = await _readCachedJson('$_detailCachePrefix$contentId');
+        if (cached == null) rethrow;
+        data = cached;
+      }
       return _list(data['comments'])
           .map(_map)
           .map((row) {

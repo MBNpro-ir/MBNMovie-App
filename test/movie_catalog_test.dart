@@ -6,8 +6,73 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:mbnmovie/models/movie_content.dart';
 import 'package:mbnmovie/services/movie_api.dart';
+import 'package:mbnmovie/services/network_gate.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  tearDown(() => OfflineMode.leave());
+
+  test(
+    'native offline mode keeps the bundled catalog and cached episodes',
+    () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      SharedPreferences.setMockInitialValues({});
+      final online = MovieApi(
+        client: MockClient((request) async {
+          if (request.url.queryParameters['action'] == 'login') {
+            return http.Response(
+              jsonEncode({
+                'infos': [
+                  {'auth': 'guest'},
+                ],
+                'q1': 1,
+                'q2': 2,
+              }),
+              200,
+            );
+          }
+          return http.Response(
+            jsonEncode({
+              'state_all': 'T',
+              'detiles': [
+                {
+                  'id': 6510,
+                  'title': 'Five Feet Apart',
+                  'is_movie': '1',
+                  'download_link': [
+                    {
+                      'id': 1,
+                      'name': '720p',
+                      'link': 'https://cdn.example/movie.mp4',
+                    },
+                  ],
+                },
+              ],
+            }),
+            200,
+          );
+        }),
+      );
+      final summary = (await online.search('five feet apart')).first;
+      final detail = await online.details(summary);
+      expect(
+        detail.seasons.single.episodes.single.fileUrl,
+        'https://cdn.example/movie.mp4',
+      );
+
+      OfflineMode.enter();
+      final offline = MovieApi(
+        client: MockClient((_) async => throw StateError('server down')),
+      );
+      final home = await offline.home();
+      expect(home.movies, isNotEmpty);
+      final cached = await offline.details(summary);
+      expect(
+        cached.seasons.single.episodes.single.fileUrl,
+        'https://cdn.example/movie.mp4',
+      );
+    },
+  );
   test(
     'Five Feet Apart resolves immediately without upstream traffic',
     () async {

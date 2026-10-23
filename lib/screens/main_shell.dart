@@ -22,6 +22,7 @@ import '../services/accessibility_service.dart';
 import '../services/mbn_sync.dart';
 import '../services/mbn_auth.dart';
 import '../services/movie_api.dart';
+import '../services/network_gate.dart';
 import '../widgets/ambient_background.dart';
 import '../widgets/brand_mark.dart';
 import '../widgets/browsable_shelf.dart';
@@ -1155,14 +1156,22 @@ class _HomePageState extends State<_HomePage> {
   @override
   void initState() {
     super.initState();
+    OfflineMode.changes.addListener(_catalogModeChanged);
     WatchProgressStore.changes.addListener(_reloadContinueWatch);
     _reloadContinueWatch();
   }
 
   @override
   void dispose() {
+    OfflineMode.changes.removeListener(_catalogModeChanged);
     WatchProgressStore.changes.removeListener(_reloadContinueWatch);
     super.dispose();
+  }
+
+  void _catalogModeChanged() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_reload());
+    });
   }
 
   Future<void> _reload() async {
@@ -2189,6 +2198,7 @@ class _CatalogPageState extends State<_CatalogPage> {
   @override
   void initState() {
     super.initState();
+    OfflineMode.changes.addListener(_catalogModeChanged);
     scroll.addListener(() {
       if (scroll.position.extentAfter < 450) _load();
     });
@@ -2197,8 +2207,15 @@ class _CatalogPageState extends State<_CatalogPage> {
 
   @override
   void dispose() {
+    OfflineMode.changes.removeListener(_catalogModeChanged);
     scroll.dispose();
     super.dispose();
+  }
+
+  void _catalogModeChanged() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !loading) unawaited(_load(reset: true));
+    });
   }
 
   Future<void> _load({bool reset = false}) async {

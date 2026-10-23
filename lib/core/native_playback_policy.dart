@@ -34,7 +34,8 @@ abstract final class NativePlaybackPolicy {
         'cache-on-disk': 'no',
         'framedrop': 'vo',
         'interpolation': 'no',
-        'vd-lavc-threads': 'auto',
+        // mpv expects an integer; 0 selects the available decoder threads.
+        'vd-lavc-threads': '0',
       },
     };
     // API 23–32 devices and Android TV often decode 720p successfully but
@@ -51,7 +52,7 @@ abstract final class NativePlaybackPolicy {
         'deband': 'no',
         'sigmoid-upscaling': 'no',
         'correct-downscaling': 'no',
-        'vd-lavc-threads': 'auto',
+        'vd-lavc-threads': '0',
       });
     }
     return properties;
