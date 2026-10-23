@@ -1,12 +1,22 @@
+import 'package:mbnmovie/core/subtitle_bidi.dart';
+
 class SubtitleBidiCase {
   const SubtitleBidiCase(
     this.id,
     this.text, {
     this.ltr = const [],
     this.rtl = const [],
+    this.legacy = false,
   });
   final String id, text;
   final List<(String, String)> ltr, rtl;
+  final bool legacy;
+  String get canonicalText => normalizePersianSubtitle(
+    text,
+    sourceOrder: legacy
+        ? SubtitleSourceOrder.legacyLtr
+        : SubtitleSourceOrder.automatic,
+  );
 }
 
 /// Map a visible token to its UTF-16 selection offsets, skipping invisible
@@ -72,6 +82,7 @@ const subtitleBidiCases = [
   SubtitleBidiCase(
     'visual-order-mixed-acronym',
     'هم روی صورتت هست KS و نهایتا یه زخم',
+    legacy: true,
     ltr: [('KS', 'و')],
     rtl: [
       ('و', 'نهایتا'),
@@ -88,6 +99,64 @@ const subtitleBidiCases = [
     'reported-persian',
     'آره، بچه های احمق خنگ.',
     rtl: [('آره', '،'), ('،', 'بچه'), ('بچه', 'خنگ'), ('خنگ', '.')],
+  ),
+  // Extracted from the supplied S02E12 MKV, rather than invented word patterns.
+  SubtitleBidiCase(
+    'house-dialogue',
+    'دکتر "وبر" دیگه کیه؟ -\nیه متخصص اعصاب، فکر کنم -',
+    legacy: true,
+    rtl: [('-', 'دکتر'), ('دکتر', 'وبر'), ('وبر', 'دیگه'), ('دیگه', 'کیه')],
+  ),
+  SubtitleBidiCase(
+    'house-wave',
+    '،برجسته است U موج\n(بخش های مختلف منحنی ضربان قلب)',
+    legacy: true,
+    rtl: [('موج', 'U'), ('U', 'برجسته'), ('برجسته', 'است'), ('است', '،')],
+  ),
+  SubtitleBidiCase(
+    'house-multiple-acronyms',
+    '.اسکن ممکن نیست CT و MRI',
+    legacy: true,
+    rtl: [
+      ('MRI', 'و'),
+      ('و', 'CT'),
+      ('CT', 'اسکن'),
+      ('اسکن', 'ممکن'),
+      ('نیست', '.'),
+    ],
+  ),
+  SubtitleBidiCase(
+    'house-number',
+    '،نهایتاً 12 ساعت می مونه LSD بهش گفتم که اثر',
+    legacy: true,
+    rtl: [
+      ('بهش', 'گفتم'),
+      ('گفتم', 'اثر'),
+      ('اثر', 'LSD'),
+      ('LSD', 'نهایتاً'),
+      ('نهایتاً', '12'),
+      ('12', 'ساعت'),
+      ('مونه', '،'),
+    ],
+  ),
+  SubtitleBidiCase(
+    'house-single-latin',
+    '.G نه M ایمنوگلوبولین',
+    legacy: true,
+    rtl: [('ایمنوگلوبولین', 'M'), ('M', 'نه'), ('نه', 'G'), ('G', '.')],
+  ),
+  SubtitleBidiCase(
+    'house-latin-question',
+    '؟MS -',
+    legacy: true,
+    rtl: [('-', 'MS'), ('MS', '؟')],
+    ltr: [('M', 'S')],
+  ),
+  SubtitleBidiCase(
+    'house-quotes',
+    '،آدام"، داری زیادی تند می ری"',
+    legacy: true,
+    rtl: [('آدام', 'داری'), ('داری', 'زیادی'), ('زیادی', 'تند'), ('تند', 'می ری')],
   ),
   SubtitleBidiCase(
     'latin-list',

@@ -21,10 +21,10 @@ const assert=require('node:assert/strict');
       for(const width of [760,260]) for(const rtl of [true,false]) {
         for(let index=0;index<caseCount;index++) {
           await page.evaluate(({index,width,rtl,font})=>mbnSubtitleSet(index,width,rtl,font),{index,width,rtl,font});
-          const handle=await page.waitForFunction(({width,font})=>{
+          const handle=await page.waitForFunction(({index,width,font})=>{
             const state=JSON.parse(mbnSubtitleState());
-            return state.pairs&&Math.abs(state.width-width)<1&&state.font===font&&state;
-          },{width,font},{timeout:5000});
+            return state.pairs&&state.id===mbnSubtitleId(index)&&Math.abs(state.width-width)<1&&state.font===font&&state;
+          },{index,width,font},{timeout:5000});
           const state=await handle.jsonValue();
           for(const pair of state.pairs) {
             const {a,b}=pair;
@@ -35,11 +35,20 @@ const assert=require('node:assert/strict');
         }
       }
     }
-    await page.evaluate(()=>mbnSubtitleSet(0,760,true,'Vazirmatn'));
-    await page.waitForFunction(()=>JSON.parse(mbnSubtitleState()).id==='legacy-two-line-screenshot');
-    if(engine==='chrome') {
-      await page.screenshot({path:'build/subtitle-bidi-chrome.png'});
-      await page.screenshot({path:'build/subtitle-punctuation-verified.png',clip:{x:0,y:370,width:900,height:160}});
+    for(let index=0;index<caseCount;index++) {
+      const id=await page.evaluate(index=>mbnSubtitleId(index),index);
+      if(!['house-dialogue','house-multiple-acronyms','house-number'].includes(id)) continue;
+      // Capture a fresh canvas: the rapid layout matrix can leave the browser
+      // compositor behind the paragraph state even after the layout settles.
+      const shot=await context.newPage();
+      shot.on('pageerror',error=>errors.push(error.message));
+      await shot.goto(process.env.MBN_SUBTITLE_PROBE_URL||'http://127.0.0.1:8771/');
+      await shot.waitForFunction(()=>window.mbnSubtitleState&&JSON.parse(mbnSubtitleState()).pairs,null,{timeout:60000});
+      await shot.evaluate(index=>mbnSubtitleSet(index,760,true,'Vazirmatn'),index);
+      await shot.waitForFunction(id=>JSON.parse(mbnSubtitleState()).id===id,id,{timeout:5000});
+      await shot.waitForTimeout(1500);
+      await shot.screenshot({path:`build/subtitle-${id}-${engine}.png`,clip:{x:0,y:340,width:900,height:220}});
+      await shot.close();
     }
     assert.deepEqual(errors,[]);
     console.log(`${engine}: ${checked} production subtitle layouts PASS (four fonts, RTL/LTR surroundings, wide/wrapped lines, punctuation, numbers and presentation forms)`);

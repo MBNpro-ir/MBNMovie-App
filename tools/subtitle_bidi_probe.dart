@@ -38,6 +38,10 @@ Future<void> main() async {
     subtitleBidiCases.length.toJS,
   );
   globalContext.setProperty(
+    'mbnSubtitleId'.toJS,
+    ((JSNumber index) => subtitleBidiCases[index.toDartInt].id.toJS).toJS,
+  );
+  globalContext.setProperty(
     'mbnSubtitleSet'.toJS,
     ((JSNumber index, JSNumber width, JSBoolean rtl, JSString font) {
       settings.value = (
@@ -52,41 +56,45 @@ Future<void> main() async {
     'mbnSubtitleState'.toJS,
     (() {
       final paragraph = subtitleKey.currentContext?.findRenderObject();
-      if (paragraph is! RenderParagraph) return '{}'.toJS;
+      if (paragraph is! RenderParagraph || !paragraph.hasSize) return '{}'.toJS;
       final sample = subtitleBidiCases[settings.value.index];
       final text = paragraph.text.toPlainText();
-      final expected = subtitleDisplayText([sample.text]);
+      final expected = subtitleDisplayText([
+        sample.canonicalText,
+      ], normalized: true);
       if (text != expected ||
           paragraph.text.style?.fontFamily != settings.value.font) {
         return '{}'.toJS;
       }
-      Map<String, double> box(String token) {
+      Map<String, double>? box(String token) {
         final (start, end) = subtitleTokenRange(text, token);
-        final rect = paragraph
-            .getBoxesForSelection(
-              TextSelection(baseOffset: start, extentOffset: end),
-              boxHeightStyle: ui.BoxHeightStyle.max,
-            )
-            .first
-            .toRect();
+        final boxes = paragraph.getBoxesForSelection(
+          TextSelection(baseOffset: start, extentOffset: end),
+          boxHeightStyle: ui.BoxHeightStyle.max,
+        );
+        if (boxes.isEmpty) return null;
+        final rect = boxes.first.toRect();
         return {'x': rect.center.dx, 'y': rect.top};
       }
 
+      final pairs = [
+        for (final (rtl, pairs) in [(false, sample.ltr), (true, sample.rtl)])
+          for (final (first, second) in pairs)
+            {
+              'first': first,
+              'second': second,
+              'rtl': rtl,
+              'a': box(first),
+              'b': box(second),
+            },
+      ];
+      if (pairs.any((pair) => pair['a'] == null || pair['b'] == null))
+        return '{}'.toJS;
       return jsonEncode({
         'id': sample.id,
         'width': paragraph.size.width,
         'font': settings.value.font,
-        'pairs': [
-          for (final (rtl, pairs) in [(false, sample.ltr), (true, sample.rtl)])
-            for (final (first, second) in pairs)
-              {
-                'first': first,
-                'second': second,
-                'rtl': rtl,
-                'a': box(first),
-                'b': box(second),
-              },
-        ],
+        'pairs': pairs,
       }).toJS;
     }).toJS,
   );
@@ -103,7 +111,8 @@ Future<void> main() async {
                 width: value.width,
                 child: PlayerSubtitleText(
                   key: subtitleKey,
-                  lines: [subtitleBidiCases[value.index].text],
+                  lines: [subtitleBidiCases[value.index].canonicalText],
+                  normalized: true,
                   style: TextStyle(
                     fontFamily: value.font,
                     fontSize: 24,

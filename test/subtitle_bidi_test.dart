@@ -59,24 +59,22 @@ void main() {
   });
 
   test('repairs visual-order Persian chunks around an English acronym', () {
+    String legacy(String source) => normalizePersianSubtitle(
+      source,
+      sourceOrder: SubtitleSourceOrder.legacyLtr,
+    ).replaceAll('\u200E', '');
     const source = 'هم روی صورتت هست KS و نهایتا یه زخم';
     const expected = 'و نهایتا یه زخم KS هم روی صورتت هست';
-    expect(normalizePersianSubtitle(source).replaceAll('\u200E', ''), expected);
+    expect(legacy(source), expected);
     expect(
       normalizePersianSubtitle(expected).replaceAll('\u200E', ''),
       expected,
     );
 
     const ana = '.برای "لوپوس" هم منفی بود ANA تست';
-    expect(
-      normalizePersianSubtitle(ana).replaceAll('\u200E', ''),
-      'تست ANA برای "لوپوس" هم منفی بود.',
-    );
+    expect(legacy(ana), 'تست ANA برای "لوپوس" هم منفی بود.');
     const mri = '.بگیرید MRI از خودش و خواهرش همین الان یه';
-    expect(
-      normalizePersianSubtitle(mri).replaceAll('\u200E', ''),
-      'از خودش و خواهرش همین الان یه MRI بگیرید.',
-    );
+    expect(legacy(mri), 'از خودش و خواهرش همین الان یه MRI بگیرید.');
     const logical = 'این مشکل MRI و بعد حل شد';
     expect(normalizePersianSubtitle(logical).replaceAll('\u200E', ''), logical);
   });
@@ -108,7 +106,8 @@ void main() {
               child: SizedBox(
                 width: width,
                 child: PlayerSubtitleText(
-                  lines: [sample.text],
+                  lines: [sample.canonicalText],
+                  normalized: true,
                   style: const TextStyle(fontFamily: 'Vazirmatn', fontSize: 24),
                 ),
               ),

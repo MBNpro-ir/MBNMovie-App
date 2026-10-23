@@ -9,16 +9,18 @@ class PlayerSubtitleText extends StatelessWidget {
     required this.style,
     this.maxLines,
     this.overflow,
+    this.normalized = false,
   });
 
   final List<String> lines;
   final TextStyle style;
   final int? maxLines;
   final TextOverflow? overflow;
+  final bool normalized;
 
   @override
   Widget build(BuildContext context) {
-    final text = subtitleDisplayText(lines);
+    final text = subtitleDisplayText(lines, normalized: normalized);
     return Text(
       text,
       textDirection: subtitleHasRtlLetters(text)

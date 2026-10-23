@@ -9,14 +9,26 @@ class WebSubtitleCue {
 /// Plain-text SRT, WebVTT and ASS cues for the existing Persian subtitle overlay.
 class WebSubtitleDocument {
   WebSubtitleDocument(List<WebSubtitleCue> source)
-    : cues = List.of(source)..sort((a, b) => a.start.compareTo(b.start)) {
+    : sourceOrder = detectSubtitleSourceOrder(source.map((cue) => cue.text)) {
+    cues =
+        source
+            .map(
+              (cue) => WebSubtitleCue(
+                cue.start,
+                cue.end,
+                normalizePersianSubtitle(cue.text, sourceOrder: sourceOrder),
+              ),
+            )
+            .toList()
+          ..sort((a, b) => a.start.compareTo(b.start));
     var maximum = double.negativeInfinity;
     for (final cue in cues) {
       if (cue.end > maximum) maximum = cue.end;
       _endPrefixes.add(maximum);
     }
   }
-  final List<WebSubtitleCue> cues;
+  final SubtitleSourceOrder sourceOrder;
+  late final List<WebSubtitleCue> cues;
   final List<double> _endPrefixes = [];
   static double _time(String value) {
     final parts = value
@@ -41,17 +53,15 @@ class WebSubtitleDocument {
       offset = tag.end;
     }
     if (!drawing) plain.write(text.substring(offset));
-    return normalizePersianSubtitle(
-      plain
-          .toString()
-          .replaceAll(RegExp(r'\{[^}]*\}|<[^>]*>'), '')
-          .replaceAll(r'\N', '\n')
-          .replaceAll(r'\n', '\n')
-          .replaceAll('&amp;', '&')
-          .replaceAll('&lt;', '<')
-          .replaceAll('&gt;', '>')
-          .trim(),
-    );
+    return plain
+        .toString()
+        .replaceAll(RegExp(r'\{[^}]*\}|<[^>]*>'), '')
+        .replaceAll(r'\N', '\n')
+        .replaceAll(r'\n', '\n')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .trim();
   }
 
   factory WebSubtitleDocument.parse(String source) {
@@ -121,6 +131,6 @@ class WebSubtitleDocument {
       return '${(ms ~/ 3600000).toString().padLeft(2, '0')}:${(ms ~/ 60000 % 60).toString().padLeft(2, '0')}:${(ms ~/ 1000 % 60).toString().padLeft(2, '0')}.${(ms % 1000).toString().padLeft(3, '0')}';
     }
 
-    return 'WEBVTT\n\n${cues.map((c) => '${time(c.start * scale + delay)} --> ${time(c.end * scale + delay)}\n${subtitleDisplayText([c.text])}').join('\n\n')}\n';
+    return 'WEBVTT\n\n${cues.map((c) => '${time(c.start * scale + delay)} --> ${time(c.end * scale + delay)}\n${subtitleDisplayText([c.text], normalized: true)}').join('\n\n')}\n';
   }
 }
