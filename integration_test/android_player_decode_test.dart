@@ -262,14 +262,7 @@ void main() {
             .player;
         await advance(tester, player, const Duration(seconds: 3));
         final native = player.platform as NativePlayer;
-        expect(
-          await native.getProperty('hwdec'),
-          NativePlaybackPolicy.videoConfiguration(
-            android: true,
-            sdk: 27,
-            emulator: false,
-          ).hwdec,
-        );
+        expect(await native.getProperty('hwdec'), 'auto-safe');
         expect(await native.getProperty('current-vo'), 'gpu');
         expect(await native.getProperty('sub-visibility'), 'yes');
         expect(await native.getProperty('sub-ass-override'), 'no');

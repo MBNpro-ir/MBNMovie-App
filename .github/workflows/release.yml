@@ -8,7 +8,7 @@ on:
       release_tag:
         description: Stable release tag matching pubspec.yaml and Persian changelog
         required: true
-        default: v1.0.87
+        default: v1.0.88
         type: string
 
 permissions:
@@ -168,7 +168,23 @@ jobs:
 
   android-compatibility:
     if: github.ref == 'refs/heads/master'
-    name: Test Android 6 runtime
+    name: Test Android API ${{ matrix.sdk }} ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - sdk: 23
+            target: default
+            arch: x86_64
+            tv: false
+          - sdk: 32
+            target: default
+            arch: x86_64
+            tv: false
+          - sdk: 23
+            target: android-tv
+            arch: x86
+            tv: true
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -195,19 +211,22 @@ jobs:
             -profile:v baseline -pix_fmt yuv420p -c:a aac -b:a 64k -movflags +faststart \
             "$RUNNER_TEMP/mbn-media/mbn-compatibility.mp4"
           python3 tools/serve_compatibility_media.py "$RUNNER_TEMP/mbn-media" > "$RUNNER_TEMP/media-server.log" 2>&1 &
-      - name: Test native encryption, files and playback on API 23
+      - name: Test native encryption, files and playback
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 23
-          target: default
-          arch: x86_64
+          api-level: ${{ matrix.sdk }}
+          target: ${{ matrix.target }}
+          arch: ${{ matrix.arch }}
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot-save
-          script: flutter test integration_test/android_compatibility_test.dart -d emulator-5554 --dart-define=MBN_QA_EXPECT_SDK=23
+          script: flutter test integration_test/android_compatibility_test.dart -d emulator-5554 --dart-define=MBN_QA_EXPECT_SDK=${{ matrix.sdk }} --dart-define=MBN_QA_EXPECT_TV=${{ matrix.tv }}
+
+  browser-qa:
+    uses: ./.github/workflows/player-qa.yml
 
   release:
     name: Publish GitHub release
-    needs: [android, windows, android-compatibility]
+    needs: [android, windows, android-compatibility, browser-qa]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -218,6 +237,7 @@ jobs:
         uses: actions/download-artifact@v7
         with:
           path: release-assets
+          pattern: '*-release'
           merge-multiple: true
 
       - name: Publish release
@@ -232,3 +252,34 @@ jobs:
             --title "⭐ MBNMovie ${RELEASE_TAG#v}" \
             --notes-file "changelogs/${RELEASE_TAG#v}.fa.md"
           gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+
+
+  web:
+    name: Publish live web and iOS PWA
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+          pub-cache: true
+      - name: Build production web
+        env:
+          MBN_API_KEY: ${{ secrets.MBN_API_KEY }}
+        run: |
+          flutter pub get
+          flutter build web --release --target lib/main.dart --pwa-strategy none --dart-define="MBN_API_KEY=$MBN_API_KEY"
+          python3 tools/version_web_assets.py
+          tar -czf "$RUNNER_TEMP/web.tar.gz" -C build/web .
+      - name: Deploy and verify the live site
+        env:
+          WEB_DEPLOY_KEY: ${{ secrets.WEB_DEPLOY_KEY }}
+        run: |
+          umask 077
+          printf '%s\n' "$WEB_DEPLOY_KEY" > "$RUNNER_TEMP/web-deploy-key"
+          trap 'rm -f "$RUNNER_TEMP/web-deploy-key"' EXIT
+          ssh -i "$RUNNER_TEMP/web-deploy-key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=.github/web_known_hosts mbn-web-movie@81.30.108.248 < "$RUNNER_TEMP/web.tar.gz"

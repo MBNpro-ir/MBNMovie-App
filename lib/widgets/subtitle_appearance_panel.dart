@@ -1,3 +1,4 @@
+import '../services/device_performance.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -60,7 +61,8 @@ class _SubtitleAppearancePanelState extends State<SubtitleAppearancePanel> {
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('نمایش طراحی اصلی ASS'),
-          content: const Text(
+          content: Text(
+            '${DevicePerformance.androidSdk > 0 && DevicePerformance.androidSdk <= 28 ? 'روی این دستگاه، طراحی اصلی ASS ممکن است پخش را کند کند. برای پخش روان، نمایش ساده را نگه دار.\n\n' : ''}'
             'در این حالت فونت، رنگ، موقعیت و جلوه‌های طراحی‌شده توسط سازندهٔ زیرنویس نمایش داده می‌شود و تنظیمات ظاهری برنامه اعمال نمی‌شود. ادامه می‌دهی؟',
           ),
           actions: [

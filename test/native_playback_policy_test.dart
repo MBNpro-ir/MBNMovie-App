@@ -9,10 +9,12 @@ void main() {
         sdk: sdk,
         emulator: false,
       );
-      expect(config.hwdec, 'mediacodec,mediacodec-copy');
+      expect(
+        config.hwdec,
+        sdk <= 28 ? 'mediacodec' : 'mediacodec,mediacodec-copy',
+      );
       expect(config.enableHardwareAcceleration, isTrue);
-      // Keep GPU compositing: direct-to-display VO cannot render ASS subtitles.
-      expect(config.vo, isNull);
+      expect(config.vo, sdk <= 28 ? 'mediacodec_embed' : null);
     }
   });
 

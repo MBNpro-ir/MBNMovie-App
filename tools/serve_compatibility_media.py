@@ -3,12 +3,14 @@ import http.server
 import pathlib
 import re
 import sys
+import ssl
 from urllib.parse import urlsplit
 
 directory = pathlib.Path(sys.argv[1]).resolve()
 assert directory.is_dir()
 port = int(sys.argv[2]) if len(sys.argv) > 2 else 8765
-fixtures = {"mbn-compatibility.mp4", "mbn-legacy-h264.mkv", "mbn-legacy-fallback.mkv"}
+fixtures = {"mbn-compatibility.mp4", "mbn-1440p30.mp4", "mbn-legacy-h264.mkv",
+            "mbn-main-h264.mkv", "mbn-1080-h264.mkv", "mbn-legacy-fallback.mkv"}
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_HEAD(self):
@@ -56,4 +58,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass
 
-http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
+server = http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler)
+if len(sys.argv) > 4:
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(sys.argv[3], sys.argv[4])
+    server.socket = context.wrap_socket(server.socket, server_side=True)
+server.serve_forever()

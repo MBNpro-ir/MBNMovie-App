@@ -4,6 +4,15 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'network_gate.dart';
 
+/// Browser-native files can keep playing from their HTTPS source when the
+/// user continues without the account server. Container/codec conversion and
+/// extracted tracks still require the bridge.
+bool canPlayDirectWhenOffline(String url) {
+  final uri = Uri.tryParse(url);
+  if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) return false;
+  return RegExp(r'\.(mp4|m4v)$', caseSensitive: false).hasMatch(uri.path);
+}
+
 /// Browser traffic stays on HTTPS and uses the account server's catalog bridge.
 abstract final class WebGateway {
   static String? _token;
@@ -77,6 +86,12 @@ abstract final class WebGateway {
     bool Function()? active,
   }) async {
     if (!kIsWeb || !url.startsWith('http')) return url;
+    if (OfflineMode.active && !externalAudio && canPlayDirectWhenOffline(url)) {
+      if (token == null || active?.call() == false) {
+        throw StateError('جلسه پایان یافت.');
+      }
+      return url;
+    }
     final initialGeneration = _generation;
     final response = await _request('/api/web/media-ticket', {
       'url': url,

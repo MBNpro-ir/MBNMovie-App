@@ -43,6 +43,18 @@ class SubtitleBidiCase {
 
 const subtitleBidiCases = [
   SubtitleBidiCase(
+    'huawei-android-mixed',
+    'تست پخش Android و زیرنویس فارسی',
+    rtl: [
+      ('تست', 'پخش'),
+      ('پخش', 'Android'),
+      ('Android', 'و'),
+      ('و', 'زیرنویس'),
+      ('زیرنویس', 'فارسی'),
+    ],
+    ltr: [('A', 'n'), ('n', 'd'), ('d', 'r'), ('r', 'o'), ('o', 'i')],
+  ),
+  SubtitleBidiCase(
     'legacy-two-line-screenshot',
     '،احتمالش زیاده مرخص بشه\n.باشه، خداحافظ',
     rtl: [('احتمالش', 'بشه'), ('باشه', 'خداحافظ'), ('خداحافظ', '.')],
@@ -156,7 +168,12 @@ const subtitleBidiCases = [
     'house-quotes',
     '،آدام"، داری زیادی تند می ری"',
     legacy: true,
-    rtl: [('آدام', 'داری'), ('داری', 'زیادی'), ('زیادی', 'تند'), ('تند', 'می ری')],
+    rtl: [
+      ('آدام', 'داری'),
+      ('داری', 'زیادی'),
+      ('زیادی', 'تند'),
+      ('تند', 'می ری'),
+    ],
   ),
   SubtitleBidiCase(
     'latin-list',

@@ -5,7 +5,7 @@ const assert=require('node:assert/strict');
 (async()=>{
   const engine=process.env.MBN_BROWSER_ENGINE||'webkit';
   const browser=engine==='chrome'
-    ? await chromium.launch({headless:true,channel:'chrome'})
+    ? await chromium.launch({headless:true,channel:process.env.MBN_QA_CHROME_CHANNEL||'chrome'})
     : await webkit.launch({headless:true,executablePath:process.env.MBN_WEBKIT_EXECUTABLE});
   try {
     const context=await browser.newContext({...devices['iPhone 11 Pro'],viewport:{width:900,height:900}});
@@ -37,7 +37,7 @@ const assert=require('node:assert/strict');
     }
     for(let index=0;index<caseCount;index++) {
       const id=await page.evaluate(index=>mbnSubtitleId(index),index);
-      if(!['house-dialogue','house-multiple-acronyms','house-number'].includes(id)) continue;
+      if(!['huawei-android-mixed','house-dialogue','house-multiple-acronyms','house-number'].includes(id)) continue;
       // Capture a fresh canvas: the rapid layout matrix can leave the browser
       // compositor behind the paragraph state even after the layout settles.
       const shot=await context.newPage();

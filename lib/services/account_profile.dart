@@ -1,3 +1,4 @@
+import 'playback_activity.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
@@ -34,10 +35,12 @@ class AccountProfile {
   }
 
   static Future<Map<String, dynamic>> reload() async {
+    await PlaybackActivity.whenIdle();
     final source = server;
     final owner = _owner;
     if (source == null) return {};
     final body = await source.getJson('/api/me/profile');
+    await PlaybackActivity.whenIdle();
     final result = Map<String, dynamic>.from(body['profile'] as Map);
     if (identical(server, source) && _owner == owner) current.value = result;
     return result;
@@ -91,6 +94,7 @@ class AccountProfile {
   }
 
   static Future<void> flush() async {
+    if (PlaybackActivity.active) return;
     if (_sending || server == null || _owner == null) return;
     _sending = true;
     final key = _queueKey;

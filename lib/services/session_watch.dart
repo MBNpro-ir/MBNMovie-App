@@ -17,9 +17,37 @@ class SessionWatch {
   String _base = '';
   int _generation = 0;
   int _failures = 0;
-  SessionWatch(this.onRevoked, {this.onSync, this.app = 'anime'}) {
+  int? _syncGeneration;
+  bool _syncPending = false;
+  final http.Client Function() _clientFactory;
+  SessionWatch(
+    this.onRevoked, {
+    this.onSync,
+    this.app = 'anime',
+    http.Client Function()? clientFactory,
+  }) : _clientFactory = clientFactory ?? http.Client.new {
     OfflineMode.changes.addListener(_offlineChanged);
   }
+
+  void _queueSync(int generation) {
+    if (onSync == null) return;
+    _syncPending = true;
+    if (_syncGeneration == generation) return;
+    _syncGeneration = generation;
+    unawaited(() async {
+      try {
+        while (generation == _generation && _syncPending) {
+          _syncPending = false;
+          try {
+            await onSync!();
+          } catch (_) {}
+        }
+      } finally {
+        if (_syncGeneration == generation) _syncGeneration = null;
+      }
+    }());
+  }
+
   void _offlineChanged() {
     _generation++;
     _retry?.cancel();
@@ -48,7 +76,7 @@ class SessionWatch {
 
   Future<void> _connect(int generation) async {
     if (OfflineMode.active || _token == null) return;
-    final client = http.Client();
+    final client = _clientFactory();
     final abort = Completer<void>();
     _abort = abort;
     _client = client;
@@ -78,6 +106,8 @@ class SessionWatch {
           _failures = 0;
           final event = jsonDecode(line.substring(6)) as Map;
           if (event['state'] != 'active') {
+            _generation++;
+            _syncPending = false;
             await onRevoked(
               event['message']?.toString() ?? 'نشست شما پایان یافت.',
             );
@@ -86,9 +116,7 @@ class SessionWatch {
           final revision = event['sync_revision'];
           if (revision is String && revision != _syncRevision) {
             _syncRevision = revision;
-            try {
-              await onSync?.call();
-            } catch (_) {}
+            _queueSync(generation);
           }
         }
       }

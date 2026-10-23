@@ -53,15 +53,56 @@ class MbnSync {
   Timer? _pendingProgressPush;
   Timer? _pendingPreferencesPush;
   static const _progressPushInterval = Duration(seconds: 20);
-  bool _syncing = false;
+  int? _syncingGeneration;
+  bool get _syncing => _syncingGeneration == _generation;
   bool _resyncRequested = false;
   int _generation = 0;
   final Set<String> _pendingPushes = {};
   final Map<String, Object?> _baseSnapshots = {};
   Future<void>? _pushing;
 
+  int _playbackHolds = 0;
+  bool _deferredSync = false;
+  Timer? _resumeSync;
+
+  /// Keep bulk account work away from video frames. Checkpoints remain local
+  /// and durable; pause/exit uploads are allowed, but their bulk response is
+  /// reconciled after playback. Releasing a lease is safe more than once.
+  VoidCallback holdPlayback() {
+    _playbackHolds++;
+    _resumeSync?.cancel();
+    var released = false;
+    return () {
+      if (released) return;
+      released = true;
+      _playbackHolds--;
+      if (_playbackHolds != 0 || !_deferredSync) return;
+      _resumeSync = Timer(const Duration(milliseconds: 600), () {
+        _resumeSync = null;
+        if (_playbackHolds != 0) return;
+        _deferredSync = false;
+        unawaited(() async {
+          if (_pendingPushes.isNotEmpty) {
+            await _pushCategories(_pendingPushes.toList());
+          }
+          await syncAll();
+        }());
+      });
+    };
+  }
+
+  bool _deferForPlayback() {
+    if (_playbackHolds == 0) return false;
+    _deferredSync = true;
+    return true;
+  }
+
   void _invalidateNetworkWork() {
     _generation++;
+    _resyncRequested = false;
+    _resumeSync?.cancel();
+    _resumeSync = null;
+    _deferredSync = false;
     _baseSnapshots.clear();
     _pendingProgressPush?.cancel();
     _pendingPreferencesPush?.cancel();
@@ -244,22 +285,25 @@ class MbnSync {
     if (OfflineMode.active) return;
     final auth = _auth;
     if (auth?.token == null) return;
+    if (_deferForPlayback()) return;
     if (_syncing) {
       _resyncRequested = true;
       return;
     }
     final generation = _generation;
     final credential = auth!.token;
-    _syncing = true;
+    _syncingGeneration = generation;
     try {
       if (!await _flushEpisodeResets()) return;
       if (generation != _generation || auth.token != credential) return;
       final server = await auth.getJson('/api/sync', query: {'app': _app});
+      if (_deferForPlayback()) return;
       if (generation != _generation || auth.token != credential) return;
       final lib = LibraryStore();
       final lists = PlaylistStore();
       final changed = <String>{};
       for (final category in _categories) {
+        if (_deferForPlayback()) return;
         if (category == 'preferences' && _settingsChoicePending) continue;
         if (generation != _generation || auth.token != credential) return;
         final row = (server[category] as Map?)?.cast<String, dynamic>();
@@ -287,7 +331,7 @@ class MbnSync {
       _changed(changed);
     } catch (_) {
     } finally {
-      _syncing = false;
+      if (_syncingGeneration == generation) _syncingGeneration = null;
       if (_resyncRequested && generation == _generation) {
         _resyncRequested = false;
         unawaited(syncAll());
@@ -317,20 +361,34 @@ class MbnSync {
     } catch (_) {}
   }
 
-  Future<void> _pushCategories(List<String> targets) {
+  Future<void> _pushCategories(
+    List<String> targets, {
+    bool checkpoint = false,
+  }) {
     if (OfflineMode.active) return Future.value();
     if (_auth?.token == null) return Future.value();
     _pendingPushes.addAll(
       targets.where((c) => c != 'preferences' || !_settingsChoicePending),
     );
     if (_pendingPushes.isEmpty) return Future.value();
+    if (_deferForPlayback() && !checkpoint) return Future.value();
     if (_pushing != null) return _pushing!;
     final generation = _generation;
     Future<void> drain() async {
       while (generation == _generation && _pendingPushes.isNotEmpty) {
-        final batch = _pendingPushes.toList();
-        _pendingPushes.clear();
-        await _sendCategories(batch);
+        final active = _playbackHolds > 0;
+        if (active && !checkpoint) {
+          _deferredSync = true;
+          break;
+        }
+        final batch = active
+            ? _pendingPushes.where((c) => c == 'progress').toList()
+            : _pendingPushes.toList();
+        if (batch.isEmpty) break;
+        _pendingPushes.removeAll(batch);
+        await _sendCategories(batch, checkpoint: checkpoint);
+        // Never drain bulk work or repeat a checkpoint while video is active.
+        if (_playbackHolds > 0) break;
       }
     }
 
@@ -342,7 +400,10 @@ class MbnSync {
     return work;
   }
 
-  Future<void> _sendCategories(List<String> targets) async {
+  Future<void> _sendCategories(
+    List<String> targets, {
+    required bool checkpoint,
+  }) async {
     final auth = _auth;
     if (auth?.token == null) return;
     final generation = _generation;
@@ -363,6 +424,10 @@ class MbnSync {
       if (base != null) bases[category] = base;
     }
     if (data.isEmpty) return;
+    if (_deferForPlayback() && !checkpoint) {
+      _pendingPushes.addAll(targets);
+      return;
+    }
     try {
       if (generation != _generation || auth.token != credential) return;
       final updated = await auth.putJson('/api/sync', {
@@ -371,6 +436,7 @@ class MbnSync {
         if (bases.isNotEmpty) 'bases': bases,
       });
       if (generation != _generation || auth.token != credential) return;
+      if (_deferForPlayback()) return;
       final changed = <String>{};
       for (final category in data.keys) {
         if (generation != _generation || auth.token != credential) return;
@@ -579,7 +645,7 @@ class MbnSync {
     _pendingProgressPush = null;
     _lastProgressPush = DateTime.now();
     await _touchLocal('progress');
-    await _pushCategories(['progress']);
+    await _pushCategories(['progress'], checkpoint: true);
   }
 
   /// Debounced pull used before showing «ادامه تماشا»: at most one full sync
@@ -859,7 +925,7 @@ class MbnSync {
 
     if (targetPayload == null || targetPayload.isEmpty) return false;
 
-    final writes = <Future<bool>>[];
+    final values = <String, Object>{};
     for (final entry in targetPayload.entries) {
       final key = '${entry.key}';
       if (!_isPreferenceKey(key)) continue;
@@ -876,7 +942,7 @@ class MbnSync {
           d = double.tryParse(value);
         }
         if (d != null) {
-          writes.add(prefs.setDouble(key, d));
+          if (prefs.get(key) != d) values[key] = d;
         }
       } else if (_isIntPreferenceKey(key)) {
         int? i;
@@ -886,16 +952,17 @@ class MbnSync {
           i = int.tryParse(value);
         }
         if (i != null) {
-          writes.add(prefs.setInt(key, i));
+          if (prefs.get(key) != i) values[key] = i;
         }
       } else if (value is bool) {
-        writes.add(prefs.setBool(key, value));
+        if (prefs.get(key) != value) values[key] = value;
       } else if (value is String) {
-        writes.add(prefs.setString(key, value));
+        if (prefs.get(key) != value) values[key] = value;
       }
     }
 
-    await Future.wait(writes);
+    if (values.isEmpty) return true;
+    await writePreferenceBatch(prefs, values: values);
     await TitleLanguage.reloadPreference();
     try {
       await AccessibilityService.instance.reloadFromStore();
@@ -919,35 +986,24 @@ class MbnSync {
 
   Future<void> _restoreProgress(Object? payload) async {
     if (payload is! Map) return;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final writes = <Future<bool>>[];
-      final received = payload.keys
-          .map((key) => '$key')
-          .where(_isProgressKey)
-          .toSet();
-      for (final key in prefs.getKeys().where(_isProgressKey).toList()) {
-        if (!received.contains(key)) writes.add(prefs.remove(key));
-      }
-      for (final entry in payload.entries) {
-        final key = '${entry.key}';
-        final value = entry.value;
-        final isWatchKey = _isProgressKey(key);
-        if (!isWatchKey) continue;
-        if (value is int) {
-          writes.add(prefs.setInt(key, value));
-        } else if (value is double) {
-          writes.add(prefs.setDouble(key, value));
-        } else if (value is bool) {
-          writes.add(prefs.setBool(key, value));
-        } else if (value is String) {
-          writes.add(prefs.setString(key, value));
-        } else {
-          continue;
-        }
-      }
-      await Future.wait(writes);
-    } catch (_) {}
+    final prefs = await SharedPreferences.getInstance();
+    final values = <String, Object>{};
+    final received = <String>{};
+    for (final entry in payload.entries) {
+      final key = '${entry.key}';
+      if (!_isProgressKey(key)) continue;
+      received.add(key);
+      final value = entry.value;
+      if (value is! num && value is! bool && value is! String) continue;
+      if (prefs.get(key) != value) values[key] = value as Object;
+    }
+    final remove = prefs
+        .getKeys()
+        .where(_isProgressKey)
+        .where((key) => !received.contains(key))
+        .toList();
+    if (values.isEmpty && remove.isEmpty) return;
+    await writePreferenceBatch(prefs, values: values, remove: remove);
   }
 
   // ---------------------------------------------------------------- codecs -

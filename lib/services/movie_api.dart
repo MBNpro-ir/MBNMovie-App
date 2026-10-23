@@ -1,3 +1,4 @@
+import 'playback_activity.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:async';
 import 'web_gateway.dart';
@@ -512,6 +513,7 @@ class MovieApi implements ContentApi {
     String action, [
     Map<String, String> extra = const {},
   ]) async {
+    await PlaybackActivity.whenIdle();
     final fields = extra.entries.toList()
       ..sort((a, b) => a.key.compareTo(b.key));
     final generation = _sessionGeneration;
@@ -526,6 +528,7 @@ class MovieApi implements ContentApi {
     try {
       final result = await _requests.run(key, () async {
         while (true) {
+          await PlaybackActivity.whenIdle();
           _checkSession(generation);
           final useDirect = _directGuest;
           final changed = Completer<void>();
@@ -560,6 +563,7 @@ class MovieApi implements ContentApi {
           }
         }
       });
+      await PlaybackActivity.whenIdle();
       _checkSession(generation);
       return result;
     } on NetworkQueueException {

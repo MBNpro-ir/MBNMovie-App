@@ -226,7 +226,19 @@ class WatchProgressStore {
     required String contentId,
     required String episodeId,
   }) async {
-    final prefs = await SharedPreferences.getInstance();
+    return readFrom(
+      await SharedPreferences.getInstance(),
+      contentId: contentId,
+      episodeId: episodeId,
+    );
+  }
+
+  /// Reads the in-memory cache once for an entire episode list.
+  SavedWatchProgress? readFrom(
+    SharedPreferences prefs, {
+    required String contentId,
+    required String episodeId,
+  }) {
     final pos = prefs.getInt(_posKey(contentId, episodeId));
     final watched = prefs.getBool(_watchedKey(contentId, episodeId)) ?? false;
     final status = WatchStatus.values

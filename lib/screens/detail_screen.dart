@@ -1,3 +1,5 @@
+import '../services/playback_activity.dart';
+import 'dart:math' as math;
 import '../widgets/player_season_selector.dart';
 import '../core/player_exit.dart';
 import '../core/player_transitions.dart';
@@ -2529,9 +2531,14 @@ class _PlayerScreenState extends State<PlayerScreen>
   int? _webPlayerHandle;
   Duration _positionAtLastError = Duration.zero;
 
+  late final VoidCallback _releasePlaybackWork;
+  late final VoidCallback _releaseBackgroundWork;
+
   @override
   void initState() {
     super.initState();
+    _releaseBackgroundWork = PlaybackActivity.hold();
+    _releasePlaybackWork = MbnSync.instance.holdPlayback();
     MbnSync.instance.changes.addListener(_remotePreferencesChanged);
     if (kIsWeb) {
       BrowserFeatures.setPlayerActive(true);
@@ -2563,6 +2570,43 @@ class _PlayerScreenState extends State<PlayerScreen>
         android: Platform.isAndroid,
         sdk: DevicePerformance.androidSdk,
         emulator: DevicePerformance.emulator,
+        lightweight: DevicePerformance.lightweight,
+        displayWidth: math
+            .max(
+              WidgetsBinding
+                  .instance
+                  .platformDispatcher
+                  .views
+                  .first
+                  .physicalSize
+                  .width,
+              WidgetsBinding
+                  .instance
+                  .platformDispatcher
+                  .views
+                  .first
+                  .physicalSize
+                  .height,
+            )
+            .round(),
+        displayHeight: math
+            .min(
+              WidgetsBinding
+                  .instance
+                  .platformDispatcher
+                  .views
+                  .first
+                  .physicalSize
+                  .width,
+              WidgetsBinding
+                  .instance
+                  .platformDispatcher
+                  .views
+                  .first
+                  .physicalSize
+                  .height,
+            )
+            .round(),
       ),
     );
     _listen();
@@ -2761,6 +2805,10 @@ class _PlayerScreenState extends State<PlayerScreen>
         : await _resolvePlaybackUrl(fileUrl, generation: generation);
     requireCurrent();
     try {
+      if (Platform.isAndroid) {
+        await _video.setNativeSubtitleRendering(false, resetDecoder: true);
+        requireCurrent();
+      }
       await _player.open(
         Media(routed, httpHeaders: kIsWeb ? null : headers),
         play: play,
@@ -2780,7 +2828,12 @@ class _PlayerScreenState extends State<PlayerScreen>
 
   Future<void> _requestPlay() async {
     if (!kIsWeb) {
+      await _video.waitForVideoOutputRecovery();
+      if (_playerTornDown) return;
       await _player.play();
+      // Recovery can begin while the first play command is in flight.
+      await _video.waitForVideoOutputRecovery();
+      if (!_playerTornDown) await _player.play();
       return;
     }
     final generation = _mediaGeneration;
@@ -2892,7 +2945,9 @@ class _PlayerScreenState extends State<PlayerScreen>
     durationSub = _player.stream.duration.listen((value) {
       if (value > Duration.zero) finish();
     });
-    errorSub = _player.stream.error.listen((value) {
+    errorSub = _player.stream.error.listen((value) async {
+      if (NativePlaybackPolicy.isNonFatalDecoderMessage(value)) return;
+      if (Platform.isAndroid && await _video.recoverVideoOutput(value)) return;
       finish(StateError('پخش شروع نشد: $value'));
     });
     // Some HLS servers expose a seekable timeline without a duration.
@@ -3146,7 +3201,9 @@ class _PlayerScreenState extends State<PlayerScreen>
     });
   }
 
-  void _handlePlaybackError(String value) {
+  void _handlePlaybackError(String value) async {
+    if (NativePlaybackPolicy.isNonFatalDecoderMessage(value)) return;
+    if (Platform.isAndroid && await _video.recoverVideoOutput(value)) return;
     if (!mounted || _playerTornDown || _exitingPlayer) return;
     // A long pause freezes the clock, so a transient stall/error signal must
     // never turn into a fullscreen error while paused. The overlay appears
@@ -3510,6 +3567,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   Future<void> _setNativeSubtitleVisibility(bool visible) async {
     final platform = _player.platform;
     if (platform is NativePlayer) {
+      if (Platform.isAndroid) await _video.setNativeSubtitleRendering(visible);
       await setNativePlayerProperty(
         platform,
         'sub-ass-override',
@@ -3860,11 +3918,18 @@ class _PlayerScreenState extends State<PlayerScreen>
     }
   }
 
-  Future<SavedWatchProgress?> _bestProgressForGroup(EpisodeGroup group) async {
+  Future<SavedWatchProgress?> _bestProgressForGroup(EpisodeGroup group) async =>
+      _readProgressForGroup(await SharedPreferences.getInstance(), group);
+
+  SavedWatchProgress? _readProgressForGroup(
+    SharedPreferences prefs,
+    EpisodeGroup group,
+  ) {
     // Canonical record is authoritative once it exists: a stale legacy
     // per-variant position must never override a newer rewind/replay.
     // The watched marker is preserved independently across both.
-    final canonical = await _progressStore.load(
+    final canonical = _progressStore.readFrom(
+      prefs,
       contentId: widget.content.id,
       episodeId: group.id,
     );
@@ -3872,7 +3937,8 @@ class _PlayerScreenState extends State<PlayerScreen>
     SavedWatchProgress? legacyBest;
     for (final variant in group.variants) {
       if (variant.episode.id == group.id) continue;
-      final legacy = await _progressStore.load(
+      final legacy = _progressStore.readFrom(
+        prefs,
         contentId: widget.content.id,
         episodeId: variant.episode.id,
       );
@@ -3906,12 +3972,16 @@ class _PlayerScreenState extends State<PlayerScreen>
     }
     _hideTimer?.cancel();
     final savedEntries = <String, SavedWatchProgress>{};
-    await Future.wait(
-      _episodeCatalog.episodes.map((group) async {
-        final saved = await _bestProgressForGroup(group);
-        if (saved != null) savedEntries[group.id] = saved;
-      }),
-    );
+    final prefs = await SharedPreferences.getInstance();
+    var scanned = 0;
+    for (final group in _episodeCatalog.episodes) {
+      final saved = _readProgressForGroup(prefs, group);
+      if (saved != null) savedEntries[group.id] = saved;
+      if (++scanned % 64 == 0) {
+        await Future<void>.delayed(Duration.zero);
+        if (!mounted) return;
+      }
+    }
     if (!mounted) return;
 
     final currentGroup = _currentEpisodeGroup;
@@ -4654,6 +4724,8 @@ class _PlayerScreenState extends State<PlayerScreen>
 
   @override
   void dispose() {
+    _releasePlaybackWork();
+    _releaseBackgroundWork();
     MbnSync.instance.changes.removeListener(_remotePreferencesChanged);
     if (kIsWeb) {
       WidgetsBinding.instance.removeObserver(this);

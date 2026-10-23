@@ -76,7 +76,6 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
     // Progress can land after this screen opens (login sync still in flight):
     // reload the badges whenever local progress or server sync changes it.
     WatchProgressStore.changes.addListener(_onProgressChanged);
-    MbnSync.instance.changes.addListener(_onSyncChanged);
     if (_catalog.seasons.isEmpty) {
       // Guard the public empty-state contract: quality/season lookup below
       // indexes seasons[0] and would crash before build() shows its empty UI.
@@ -108,7 +107,6 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
   @override
   void dispose() {
     WatchProgressStore.changes.removeListener(_onProgressChanged);
-    MbnSync.instance.changes.removeListener(_onSyncChanged);
     _initialContentTimer?.cancel();
     super.dispose();
   }
@@ -118,20 +116,11 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
     unawaited(_loadSaved());
   }
 
-  void _onSyncChanged() {
-    if (!mounted) return;
-    if (!MbnSync.instance.changedCategories.contains('progress')) return;
-    unawaited(_loadSaved());
-  }
-
-  /// Pulls the newest server progress first (debounced inside sync), so badges
-  /// opened right after login don't freeze on the pre-sync empty state.
+  /// Local badges are available immediately; remote changes update them later.
   Future<void> _refreshFromServer() async {
-    try {
-      await MbnSync.instance.syncProgressIfStale();
-    } catch (_) {}
-    if (!mounted) return;
     await _loadSaved();
+    if (!mounted) return;
+    unawaited(MbnSync.instance.syncProgressIfStale());
   }
 
   Future<void> _loadSaved() async {
@@ -152,12 +141,19 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
 
   Future<void> _loadSavedNow() async {
     final entries = <String, SavedWatchProgress>{};
+    final prefs = await SharedPreferences.getInstance();
+    var scanned = 0;
     for (final group in _catalog.episodes) {
+      if (++scanned % 64 == 0) {
+        await Future<void>.delayed(Duration.zero);
+        if (!mounted) return;
+      }
       // Canonical group record is authoritative once present; legacy
       // per-variant positions only seed it on first migration and are then
       // retired so a stale 20-minute legacy value can never overwrite a
       // newer 2-minute canonical rewind.
-      final canonical = await _progress.load(
+      final canonical = _progress.readFrom(
+        prefs,
         contentId: widget.content.id,
         episodeId: group.id,
       );
@@ -165,7 +161,8 @@ class _EpisodePickerScreenState extends State<EpisodePickerScreen> {
       var legacyWatched = false;
       for (final variant in group.variants) {
         if (variant.episode.id == group.id) continue;
-        final legacy = await _progress.load(
+        final legacy = _progress.readFrom(
+          prefs,
           contentId: widget.content.id,
           episodeId: variant.episode.id,
         );

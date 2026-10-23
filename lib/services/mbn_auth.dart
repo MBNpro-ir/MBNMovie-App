@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'web_gateway.dart';
 import 'dart:async';
 import 'dart:convert';
+import 'account_json.dart';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
@@ -137,7 +138,11 @@ class MbnAuth {
     final generation = _generation;
     final uri = _uri(path, query);
     final headers = _headers(credential, json: body != null);
-    final encoded = body == null ? null : jsonEncode(body);
+    final encoded = body == null
+        ? null
+        : path == '/api/sync'
+        ? await encodeAccountJson(body)
+        : jsonEncode(body);
     try {
       final response = await _requests.run<http.Response>(
         '$method $uri $generation',
@@ -166,7 +171,7 @@ class MbnAuth {
       if (_generation != generation) {
         throw http.ClientException('حساب تغییر کرده است.');
       }
-      return _decode(response);
+      return await _decode(response);
     } on MbnAuthException {
       rethrow;
     } catch (_) {
@@ -192,11 +197,10 @@ class MbnAuth {
   Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> body) =>
       postJson(path, body);
 
-  Map<String, dynamic> _decode(http.Response response) {
+  Future<Map<String, dynamic>> _decode(http.Response response) async {
     Map<String, dynamic> data;
     try {
-      data =
-          jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      data = await decodeAccountJson(response.bodyBytes);
     } catch (_) {
       throw const MbnAuthException('پاسخ سرور نامعتبر است.');
     }

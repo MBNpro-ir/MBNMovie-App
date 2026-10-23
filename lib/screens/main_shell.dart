@@ -1,3 +1,4 @@
+import '../services/playback_activity.dart';
 import '../widgets/account_profile_panel.dart';
 import '../core/title_language.dart';
 import '../services/device_performance.dart';
@@ -281,7 +282,14 @@ class _MainShellState extends State<MainShell> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ValueListenableBuilder<bool>(
+    valueListenable: PlaybackActivity.changes,
+    child: _buildShell(context),
+    builder: (context, active, child) =>
+        TickerMode(enabled: !active, child: child!),
+  );
+
+  Widget _buildShell(BuildContext context) {
     final pages = [
       _HomePage(
         key: _homeKey,
@@ -1187,17 +1195,15 @@ class _HomePageState extends State<_HomePage> {
     }
   }
 
-  Future<void> _reloadContinueWatch() => refreshContinueWatch();
+  Future<void> _reloadContinueWatch() async {
+    final last = await _lastWatchStore.load();
+    if (mounted) setState(() => _lastWatch = last);
+  }
 
   /// Reloads the «ادامه تماشا» shelf (called on tab select + after resume).
   Future<void> refreshContinueWatch() async {
-    // Pull the newest server progress first (debounced inside sync), so a
-    // phone that watched episode 3 updates a Windows shelf stuck on episode 1.
-    try {
-      await MbnSync.instance.syncProgressIfStale();
-    } catch (_) {}
-    final last = await _lastWatchStore.load();
-    if (mounted) setState(() => _lastWatch = last);
+    await _reloadContinueWatch();
+    if (mounted) unawaited(MbnSync.instance.syncProgressIfStale());
   }
 
   void _openSectionAll(HomeSection section) {
@@ -1870,6 +1876,7 @@ class _FeaturedState extends State<_Featured> {
   @override
   void initState() {
     super.initState();
+    PlaybackActivity.changes.addListener(_restartAutoPlay);
     _controller = PageController(viewportFraction: .9);
     _restartAutoPlay();
   }
@@ -1883,14 +1890,22 @@ class _FeaturedState extends State<_Featured> {
 
   @override
   void dispose() {
+    PlaybackActivity.changes.removeListener(_restartAutoPlay);
     _autoPlayTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _restartAutoPlay();
+  }
+
   void _restartAutoPlay() {
     _autoPlayTimer?.cancel();
-    if (_count < 2 ||
+    if (PlaybackActivity.active ||
+        _count < 2 ||
         isAndroidTv ||
         DevicePerformance.lightweight ||
         AccessibilityService.instance.reduceMotion) {

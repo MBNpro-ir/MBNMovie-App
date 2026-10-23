@@ -1,3 +1,4 @@
+import '../services/playback_activity.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -172,6 +173,7 @@ class _ServerStatusGateState extends State<ServerStatusGate> {
   }
 
   Future<void> _pollServer() async {
+    if (PlaybackActivity.active) return;
     if (_polling || !mounted) return;
     final startedOffline = _offlineMode;
     _polling = true;

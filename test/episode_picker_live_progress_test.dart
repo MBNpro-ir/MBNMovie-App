@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -44,6 +45,40 @@ void main() {
   tearDown(() {
     MbnSync.instance.clear();
   });
+  testWidgets(
+    'local badges and episode controls do not await a blocked server',
+    (tester) async {
+      final group = EpisodeCatalog.from(content).episodes.first;
+      SharedPreferences.setMockInitialValues({
+        'watch_pos_audit_${group.id}': 3000000,
+        'watch_dur_audit_${group.id}': 3000000,
+        'watch_done_audit_${group.id}': true,
+      });
+      final response = Completer<http.Response>();
+      final auth = MbnAuth(client: MockClient((_) => response.future))
+        ..token = 'qa';
+      MbnSync.instance.configure(auth: auth);
+      try {
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: ThemeData.dark(),
+            home: EpisodePickerScreen(
+              content: content,
+              onPlay: (_, _) async {},
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(response.isCompleted, false);
+        expect(find.text('تماشا نشده'), findsNothing);
+        expect(find.text('قسمت اول'), findsWidgets);
+      } finally {
+        await tester.pumpWidget(const SizedBox.shrink());
+        response.complete(http.Response('{}', 200));
+        await tester.pumpAndSettle();
+      }
+    },
+  );
   testWidgets('open episode picker reflects a later server watched marker', (
     tester,
   ) async {

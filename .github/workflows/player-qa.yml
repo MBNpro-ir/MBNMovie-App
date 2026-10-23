@@ -1,0 +1,64 @@
+name: Test browser playback and mixed subtitles
+on:
+  workflow_call:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browsers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.32.8'
+          cache: true
+          pub-cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install browser engines and codecs
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg openssl
+          npm install --prefix "$RUNNER_TEMP/mbn-browser-qa" --no-audit --no-fund playwright@1.62.1
+          "$RUNNER_TEMP/mbn-browser-qa/node_modules/.bin/playwright" install --with-deps chromium webkit
+          echo "MBN_PLAYWRIGHT_MODULE=$RUNNER_TEMP/mbn-browser-qa/node_modules/playwright" >> "$GITHUB_ENV"
+          echo "MBN_PLAYWRIGHT_PATH=$RUNNER_TEMP/mbn-browser-qa/node_modules/playwright" >> "$GITHUB_ENV"
+      - name: Prepare isolated 1440p media
+        run: |
+          mkdir -p "$RUNNER_TEMP/mbn-media"
+          ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc2=size=2560x1440:rate=30 \
+            -f lavfi -i sine=frequency=440:sample_rate=48000 -t 60 \
+            -c:v libx264 -preset veryfast -crf 28 -profile:v high -pix_fmt yuv420p \
+            -c:a aac -b:a 96k -movflags +faststart "$RUNNER_TEMP/mbn-media/mbn-compatibility.mp4"
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=localhost \
+            -addext subjectAltName=DNS:localhost,IP:127.0.0.1 \
+            -keyout "$RUNNER_TEMP/qa-key.pem" -out "$RUNNER_TEMP/qa-cert.pem"
+          python3 tools/serve_compatibility_media.py "$RUNNER_TEMP/mbn-media" 8768 \
+            "$RUNNER_TEMP/qa-cert.pem" "$RUNNER_TEMP/qa-key.pem" > "$RUNNER_TEMP/media-server.log" 2>&1 &
+          for _attempt in {1..40}; do
+            if curl -kfsI https://localhost:8768/mbn-compatibility.mp4; then exit 0; fi
+            sleep 0.25
+          done
+          cat "$RUNNER_TEMP/media-server.log"
+          exit 1
+      - name: Test real player with delayed sync and central outage
+        run: |
+          flutter pub get
+          flutter build web --release --pwa-strategy none --target tools/playback_sync_probe.dart --output build/playback-sync-probe
+          MBN_QA_WEB_ROOT=build/playback-sync-probe node tools/verify_playback_sync.cjs
+      - name: Test mixed subtitle glyph order in Chrome and WebKit
+        run: |
+          flutter build web --release --no-pub --pwa-strategy none --target tools/subtitle_bidi_probe.dart --output build/subtitle-bidi-probe
+          python3 -m http.server 8771 --bind 127.0.0.1 --directory build/subtitle-bidi-probe > "$RUNNER_TEMP/subtitle-server.log" 2>&1 &
+          MBN_BROWSER_ENGINE=chrome MBN_QA_CHROME_CHANNEL=chromium node tools/test_subtitle_bidi_browser.cjs
+          MBN_BROWSER_ENGINE=webkit node tools/test_subtitle_bidi_browser.cjs
+      - name: Retain subtitle render evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-subtitle-evidence
+          path: build/subtitle-*.png
+          if-no-files-found: ignore
