@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' show FrameTiming;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -224,6 +225,10 @@ void main() {
                 decoderDrops,
               );
             }
+            if (!sample.original &&
+                const bool.fromEnvironment('MBN_QA_TOUCH_STRESS')) {
+              await touchStress(tester, player, native);
+            }
             await player.pause();
             final position = player.state.position;
             await Future<void>.delayed(const Duration(milliseconds: 500));
@@ -254,5 +259,69 @@ void main() {
       },
       timeout: const Timeout(Duration(minutes: 2)),
     );
+  }
+}
+
+Future<void> touchStress(
+  WidgetTester tester,
+  Player player,
+  NativePlayer native,
+) async {
+  final frames = <FrameTiming>[];
+  void record(List<FrameTiming> timings) => frames.addAll(timings);
+  tester.binding.addTimingsCallback(record);
+  final watch = Stopwatch()..start();
+  final position = player.state.position;
+  final drops = int.parse(await native.getProperty('frame-drop-count'));
+  final decoderDrops = await native.getProperty('decoder-frame-drop-count');
+  final latencies = <int>[];
+  final size = tester.getSize(find.byType(Scaffold).last);
+  final touch = Offset(size.width * .5, size.height * .28);
+  final episodeButton = find.byIcon(Icons.video_library_rounded).hitTestable();
+  final grid = find.byType(GridView).hitTestable();
+  try {
+    for (var i = 0; i < 8; i++) {
+      await tester.tapAt(touch);
+      await tester.pump();
+      await Future<void>.delayed(const Duration(milliseconds: 650));
+    }
+    for (var i = 0; i < 2; i++) {
+      if (episodeButton.evaluate().isEmpty) {
+        await tester.tapAt(touch);
+        await until(tester, () => episodeButton.evaluate().isNotEmpty);
+      }
+      final open = Stopwatch()..start();
+      await tester.tap(episodeButton.first);
+      await until(tester, () => grid.evaluate().isNotEmpty);
+      latencies.add(open.elapsedMilliseconds);
+      await tester.drag(grid.first, const Offset(0, -300));
+      await tester.pump();
+      await Future<void>.delayed(const Duration(milliseconds: 650));
+      await tester.binding.handlePopRoute();
+      await until(tester, () => grid.evaluate().isEmpty);
+      expect(find.byType(PlayerScreen), findsOneWidget);
+      expect(PlaybackActivity.active, isTrue);
+      await Future<void>.delayed(const Duration(milliseconds: 650));
+    }
+    final elapsed = watch.elapsedMilliseconds;
+    final addedDrops =
+        int.parse(await native.getProperty('frame-drop-count')) - drops;
+    final timings =
+        frames.map((f) => f.totalSpan.inMicroseconds / 1000).toList()..sort();
+    final p95 = timings.isEmpty ? 0 : timings[(timings.length * .95).floor()];
+    debugPrint(
+      'MBN_TOUCH_STRESS ${jsonEncode({'elapsedMs': elapsed, 'advancedMs': (player.state.position - position).inMilliseconds, 'outputDrops': addedDrops, 'sheetOpenMs': latencies, 'frames': timings.length, 'frameP95Ms': p95, 'frameMaxMs': timings.isEmpty ? 0 : timings.last, 'framesOver100Ms': timings.where((ms) => ms > 100).length})}',
+    );
+    expect(latencies.every((ms) => ms < 1200), isTrue);
+    expect(
+      (player.state.position - position).inMilliseconds,
+      greaterThan(elapsed * .75),
+    );
+    expect(addedDrops, lessThanOrEqualTo((elapsed * 30 * .03 / 1000).ceil()));
+    expect(await native.getProperty('decoder-frame-drop-count'), decoderDrops);
+    expect(p95, lessThan(67));
+    expect(tester.takeException(), isNull);
+  } finally {
+    tester.binding.removeTimingsCallback(record);
   }
 }
