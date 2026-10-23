@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.88+88
+version: 1.0.89+89
 
 environment:
   sdk: ">=3.8.1 <4.0.0"
@@ -76,6 +76,9 @@ dev_dependencies:
   flutter_lints: ^6.0.0
 
 dependency_overrides:
+  # Tested Windows native core; archive and DLL are pinned with SHA256.
+  media_kit_libs_windows_video:
+    path: packages/media_kit_libs_windows_video
   flutter_secure_storage:
     path: packages/flutter_secure_storage
   # media_kit 1.2.6 plus the upstream hot-restart callback fix (PR #1416).

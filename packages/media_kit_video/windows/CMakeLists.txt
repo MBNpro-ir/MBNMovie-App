@@ -14,7 +14,7 @@ set(PLUGIN_NAME "media_kit_video_plugin")
 
 # This is shipped as part of package:media_kit_libs_*** package(s).
 # Must be built before this target.
-set(LIBMPV_SRC "${CMAKE_BINARY_DIR}/libmpv")
+set(LIBMPV_SRC "${CMAKE_BINARY_DIR}/libmpv-20261021-git-e471496c56")
 set(ANGLE_SRC "${CMAKE_BINARY_DIR}/ANGLE")
 
 # Deal with MSVC incompatiblity

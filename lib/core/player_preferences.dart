@@ -1,4 +1,5 @@
 import 'app_platform.dart';
+import 'video_decode_mode.dart';
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -121,6 +122,18 @@ class SubtitlePreferences {
 }
 
 abstract final class PlaybackPreferenceStore {
+  static Future<VideoDecodeMode> decoderMode() async => VideoDecodeMode.parse(
+    (await SharedPreferences.getInstance()).get(VideoDecodeMode.preferenceKey),
+  );
+
+  static Future<void> setDecoderMode(VideoDecodeMode value) async {
+    await (await SharedPreferences.getInstance()).setString(
+      VideoDecodeMode.preferenceKey,
+      value.name,
+    );
+    await MbnSync.instance.pushPreferences();
+  }
+
   static const askEveryTime = 'ask';
   static const internalPlayer = 'internal';
   static const miracast = 'miracast';

@@ -60,6 +60,13 @@ void main() {
           ),
         ),
       );
+      final prepareDeadline = DateTime.now().add(const Duration(seconds: 10));
+      while (find.byType(Video).evaluate().isEmpty &&
+          DateTime.now().isBefore(prepareDeadline)) {
+        await tester.pump();
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      expect(find.byType(Video), findsOneWidget);
       await tester.pump();
       final player = tester.widget<Video>(find.byType(Video)).controller.player;
       final deadline = DateTime.now().add(const Duration(seconds: 20));

@@ -8,7 +8,7 @@ on:
       release_tag:
         description: Stable release tag matching pubspec.yaml and Persian changelog
         required: true
-        default: v1.0.88
+        default: v1.0.89
         type: string
 
 permissions:
@@ -151,6 +151,7 @@ jobs:
         run: |
           $version = $env:RELEASE_TAG.TrimStart('v')
           $source = 'build\windows\x64\runner\Release'
+          ./tools/Verify-WindowsPlaybackCore.ps1 -Bundle $source
           if (-not (Test-Path -LiteralPath "$source\updater.exe")) { throw 'updater.exe was not bundled' }
           New-Item -ItemType Directory -Path release-assets, staging\MBNMovie -Force | Out-Null
           Copy-Item -Path "$source\*" -Destination staging\MBNMovie -Recurse -Force

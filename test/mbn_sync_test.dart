@@ -41,11 +41,13 @@ void main() {
         await started.future;
         final prefs = await SharedPreferences.getInstance();
         await prefs.setDouble('player_rate', 1.75);
+        await prefs.setString('player_decoder_mode', 'software');
         final pending = List.generate(20, (_) => MbnSync.instance.pushAll());
         release.complete();
         await Future.wait([first, ...pending]);
         expect(bodies.length, 2);
         expect(bodies.last, contains('"player_rate":1.75'));
+        expect(bodies.last, contains('"player_decoder_mode":"software"'));
       } finally {
         if (!release.isCompleted) release.complete();
         MbnSync.instance.clear();

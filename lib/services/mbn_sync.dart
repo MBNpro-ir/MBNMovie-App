@@ -1,4 +1,5 @@
 import '../core/title_language.dart';
+import '../core/video_decode_mode.dart';
 import 'account_profile.dart';
 import 'app_links.dart';
 import '../core/sync_merge.dart';
@@ -191,6 +192,7 @@ class MbnSync {
       key.startsWith('sub_') ||
       key.startsWith('access_') ||
       key == 'player_volume' ||
+      key == VideoDecodeMode.preferenceKey ||
       key == 'player_rate' ||
       key == 'player_fit_cover' ||
       key == 'default_video_player' ||
@@ -933,6 +935,10 @@ class MbnSync {
       if (isCrossPlatformFallback && key == 'access_ui_scale') continue;
       final value = entry.value;
       if (value == null) continue;
+      if (key == VideoDecodeMode.preferenceKey &&
+          !VideoDecodeMode.isValid(value)) {
+        continue;
+      }
 
       if (_isDoublePreferenceKey(key)) {
         double? d;

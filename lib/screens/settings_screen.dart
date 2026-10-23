@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import '../core/video_decode_mode.dart';
 import '../core/app_platform.dart';
 
 import '../services/accessibility_service.dart';
@@ -86,6 +88,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _loading = true;
   bool _syncingFromServer = false;
   bool _syncSettingsEnabled = true;
+  VideoDecodeMode _decoderMode = VideoDecodeMode.hardware;
   double _volume = 100;
   double _rate = 1;
   double _audioDelay = 0;
@@ -144,6 +147,9 @@ class _SettingsScreenState extends State<SettingsScreen>
     final brightness = prefs.getDouble('player_screen_brightness');
     if (!mounted) return;
     setState(() {
+      _decoderMode = VideoDecodeMode.parse(
+        prefs.get(VideoDecodeMode.preferenceKey),
+      );
       _volume = (prefs.getDouble('player_volume') ?? 100).clamp(0, 100);
       _rate = (prefs.getDouble('player_rate') ?? 1).clamp(.5, 4.0);
       _audioDelay =
@@ -194,6 +200,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     final prefs = await SharedPreferences.getInstance();
     final subtitle = SubtitlePreferences.withPlatformDefaults();
     setState(() {
+      _decoderMode = VideoDecodeMode.hardware;
       _volume = 100;
       _rate = 1;
       _audioDelay = 0;
@@ -206,6 +213,10 @@ class _SettingsScreenState extends State<SettingsScreen>
       _syncSettingsEnabled = true;
       _subtitle = subtitle;
     });
+    await prefs.setString(
+      VideoDecodeMode.preferenceKey,
+      VideoDecodeMode.hardware.name,
+    );
     await prefs.setDouble('player_volume', 100);
     await prefs.setDouble('player_rate', 1);
     await PlaybackPreferenceStore.setAudioDelay(0);
@@ -462,6 +473,39 @@ class _SettingsScreenState extends State<SettingsScreen>
                             title: 'پلیر',
                             subtitle: 'تنظیمات صدا، سرعت پخش و رفتار تصویر',
                             children: [
+                              DropdownButtonFormField<VideoDecodeMode>(
+                                key: const Key('player-decoder-mode'),
+                                value: _decoderMode,
+                                isExpanded: true,
+                                decoration: const InputDecoration(
+                                  labelText: 'رمزگشایی ویدیو',
+                                ),
+                                items: const [
+                                  DropdownMenuItem(
+                                    value: VideoDecodeMode.hardware,
+                                    child: Text('سخت‌افزاری (پیش‌فرض)'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: VideoDecodeMode.software,
+                                    child: Text('نرم‌افزاری'),
+                                  ),
+                                ],
+                                onChanged: (value) async {
+                                  if (value == null) return;
+                                  setState(() => _decoderMode = value);
+                                  await PlaybackPreferenceStore.setDecoderMode(
+                                    value,
+                                  );
+                                },
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                kIsWeb
+                                    ? 'این انتخاب با حساب همگام می‌شود؛ در وب، مرورگر روش رمزگشایی را تعیین می‌کند.'
+                                    : 'در ورود بعدی به پلیر اعمال می‌شود. حالت نرم‌افزاری از پردازنده استفاده می‌کند و ممکن است برای ویدیوهای سنگین کندتر باشد. همگام‌سازی مطابق تنظیمات حساب انجام می‌شود.',
+                                style: const TextStyle(fontSize: 11),
+                              ),
+                              const SizedBox(height: 16),
                               _responsiveRow(
                                 first: _slider(
                                   label: 'صدای پیش‌فرض',

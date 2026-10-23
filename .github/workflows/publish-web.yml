@@ -77,7 +77,8 @@ jobs:
           gh release upload "$RELEASE_TAG" "$RUNNER_TEMP/$PRODUCT-Web.json" --clobber --repo "$GITHUB_REPOSITORY"
       - name: Wait for the server to publish this version
         run: |
-          export EXPECTED_WEB_VERSION="$(python3 -c 'import json,os; from pathlib import Path; print(json.loads((Path(os.environ["RUNNER_TEMP"])/(os.environ["PRODUCT"]+"-Web.json")).read_text())["assetVersion"])')"
+          EXPECTED_WEB_VERSION="$(python3 -c 'import json,os; from pathlib import Path; print(json.loads((Path(os.environ["RUNNER_TEMP"])/(os.environ["PRODUCT"]+"-Web.json")).read_text())["assetVersion"])')"
+          export EXPECTED_WEB_VERSION
           python3 - <<'PY'
           import json, os, time, urllib.request
           origin = 'https://' + os.environ['APP'] + '.mbnpro.ir'

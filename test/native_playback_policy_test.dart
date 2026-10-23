@@ -1,7 +1,36 @@
+import 'package:mbnmovie/core/video_decode_mode.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mbnmovie/core/native_playback_policy.dart';
 
 void main() {
+  test(
+    'software mode bypasses MediaCodec surfaces but retains GPU rendering',
+    () {
+      for (final android in [true, false]) {
+        for (final sdk in [0, 23, 26, 28, 29, 32, 35]) {
+          final config = NativePlaybackPolicy.videoConfiguration(
+            android: android,
+            sdk: sdk,
+            emulator: false,
+            decoderMode: VideoDecodeMode.software,
+          );
+          expect(config.hwdec, 'no');
+          expect(config.vo, isNull);
+          expect(config.enableHardwareAcceleration, isTrue);
+          expect(
+            NativePlaybackPolicy.playerProperties(
+              windows: !android,
+              android: android,
+              sdk: sdk,
+              decoderMode: VideoDecodeMode.software,
+            ),
+            isNot(contains('vd-lavc-o')),
+          );
+        }
+      }
+    },
+  );
+
   test('old physical Android prefers the direct decoder with fallback', () {
     for (final sdk in [23, 24, 25, 26, 27, 28, 29, 30, 31, 32]) {
       final config = NativePlaybackPolicy.videoConfiguration(

@@ -129,6 +129,13 @@ void main() {
             home: PlayerScreen(content: content, episode: episodes.first),
           ),
         );
+        final prepareDeadline = DateTime.now().add(const Duration(seconds: 10));
+        while (find.byType(Video).evaluate().isEmpty &&
+            DateTime.now().isBefore(prepareDeadline)) {
+          await tester.pump();
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+        expect(find.byType(Video), findsOneWidget);
         await tester.pump();
         final player = tester
             .widget<Video>(find.byType(Video))
