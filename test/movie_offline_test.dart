@@ -479,6 +479,10 @@ void main() {
         expect(find.textContaining('قابل خواندن نیست'), findsNothing);
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox());
+        // Home shelves schedule staggered entrance animations. Drain their
+        // delayed callbacks after unmounting, including on slower CI hosts.
+        await tester.pump(const Duration(seconds: 2));
+        expect(tester.takeException(), isNull);
       },
     );
   }
