@@ -1,0 +1,106 @@
+name: Publish production web and iOS PWA
+run-name: Publish web ${{ inputs.release_tag }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing published release to deploy
+        required: true
+        default: v1.0.88
+        type: string
+  workflow_call:
+    inputs:
+      release_tag:
+        required: true
+        type: string
+    secrets:
+      MBN_API_KEY:
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-web
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      PRODUCT: MBNMovie
+      APP: movie
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out the published version
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.release_tag }}
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.32.8
+          cache: true
+          pub-cache: true
+      - name: Verify published version
+        run: |
+          test "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = false
+          version="$(sed -nE 's/^version:[[:space:]]*([^+[:space:]]+).*/\1/p' pubspec.yaml)"
+          test "$RELEASE_TAG" = "v$version"
+      - name: Build production web
+        env:
+          MBN_API_KEY: ${{ secrets.MBN_API_KEY }}
+        run: |
+          test -n "$MBN_API_KEY"
+          flutter pub get
+          flutter build web --release --target lib/main.dart --pwa-strategy none --dart-define="MBN_API_KEY=$MBN_API_KEY"
+          python3 tools/version_web_assets.py
+          export WEB_ASSET="$PRODUCT-Web-${RELEASE_TAG#v}.tar.gz"
+          tar -czf "$RUNNER_TEMP/$WEB_ASSET" -C build/web .
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          archive = Path(os.environ['RUNNER_TEMP']) / os.environ['WEB_ASSET']
+          manifest = {
+              'app': os.environ['APP'], 'tag': os.environ['RELEASE_TAG'],
+              'asset': archive.name, 'bytes': archive.stat().st_size,
+              'sha256': hashlib.sha256(archive.read_bytes()).hexdigest(),
+              'assetVersion': json.loads(Path('build/web/mbn-web-version.json').read_text())['version'],
+          }
+          (archive.parent / (os.environ['PRODUCT'] + '-Web.json')).write_text(json.dumps(manifest))
+          PY
+      - name: Publish verified web archive and manifest
+        run: |
+          gh release upload "$RELEASE_TAG" "$RUNNER_TEMP/$PRODUCT-Web-${RELEASE_TAG#v}.tar.gz" --clobber --repo "$GITHUB_REPOSITORY"
+          gh release upload "$RELEASE_TAG" "$RUNNER_TEMP/$PRODUCT-Web.json" --clobber --repo "$GITHUB_REPOSITORY"
+      - name: Wait for the server to publish this version
+        run: |
+          export EXPECTED_WEB_VERSION="$(python3 -c 'import json,os; from pathlib import Path; print(json.loads((Path(os.environ["RUNNER_TEMP"])/(os.environ["PRODUCT"]+"-Web.json")).read_text())["assetVersion"])')"
+          python3 - <<'PY'
+          import json, os, time, urllib.request
+          origin = 'https://' + os.environ['APP'] + '.mbnpro.ir'
+          expected_app = os.environ['RELEASE_TAG'][1:]
+          expected_web = os.environ['EXPECTED_WEB_VERSION']
+          def get(path):
+              request = urllib.request.Request(origin + path + '?qa=' + str(time.time_ns()), headers={'Cache-Control':'no-cache'})
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  return response.read()
+          for attempt in range(40):
+              try:
+                  app = json.loads(get('/version.json'))['version']
+                  web = json.loads(get('/mbn-web-version.json'))['version']
+                  if app == expected_app and web == expected_web:
+                      index = get('/').decode()
+                      assert f'_mbn_web/{web}/web-access.js' in index
+                      assert len(get(f'/_mbn_web/{web}/main.dart.js')) > 100000
+                      print(f'LIVE_WEB {app} {web}', flush=True)
+                      break
+              except Exception as error:
+                  print(type(error).__name__, flush=True)
+              time.sleep(10)
+          else:
+              raise SystemExit('Release uploaded, but live publication was not confirmed')
+          PY
+

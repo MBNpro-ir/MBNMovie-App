@@ -257,29 +257,10 @@ jobs:
   web:
     name: Publish live web and iOS PWA
     needs: release
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v6
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          cache: true
-          pub-cache: true
-      - name: Build production web
-        env:
-          MBN_API_KEY: ${{ secrets.MBN_API_KEY }}
-        run: |
-          flutter pub get
-          flutter build web --release --target lib/main.dart --pwa-strategy none --dart-define="MBN_API_KEY=$MBN_API_KEY"
-          python3 tools/version_web_assets.py
-          tar -czf "$RUNNER_TEMP/web.tar.gz" -C build/web .
-      - name: Deploy and verify the live site
-        env:
-          WEB_DEPLOY_KEY: ${{ secrets.WEB_DEPLOY_KEY }}
-        run: |
-          umask 077
-          printf '%s\n' "$WEB_DEPLOY_KEY" > "$RUNNER_TEMP/web-deploy-key"
-          trap 'rm -f "$RUNNER_TEMP/web-deploy-key"' EXIT
-          ssh -i "$RUNNER_TEMP/web-deploy-key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
-            -o UserKnownHostsFile=.github/web_known_hosts mbn-web-movie@81.30.108.248 < "$RUNNER_TEMP/web.tar.gz"
+    permissions:
+      contents: write
+    uses: ./.github/workflows/publish-web.yml
+    with:
+      release_tag: ${{ inputs.release_tag }}
+    secrets:
+      MBN_API_KEY: ${{ secrets.MBN_API_KEY }}
