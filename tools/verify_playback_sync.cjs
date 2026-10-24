@@ -14,12 +14,13 @@ const mime={'.html':'text/html','.js':'application/javascript','.json':'applicat
    const context=await browser.newContext({ignoreHTTPSErrors:true,...(engine==='webkit'?devices['iPhone 13']:{viewport:{width:1366,height:768},userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36'})});
    if(engine==='chromium')await context.addInitScript(()=>Object.defineProperty(navigator,'userAgentData',{get:()=>({platform:'Windows',brands:[{brand:'Google Chrome',version:'140'}]})}));
    if(engine==='webkit')await context.addInitScript(()=>Object.defineProperty(navigator,'standalone',{get:()=>true}));
-   const page=await context.newPage(),errors=[],apiRequests=[],partyRequests=[];
+   const page=await context.newPage(),errors=[],apiRequests=[],partyRequests=[],partyTimes=[];
    const recordApi=request=>{
     const pathname=new URL(request).pathname;
-    // Party bootstraps once at account configuration through its own bounded
-    // client. It never supplies media bytes or the catalog bridge.
+    // Party uses its own client; offline retries keep the solo cadence even
+    // if a slower browser takes longer to initialize the player.
     (pathname.startsWith('/api/party/')?partyRequests:apiRequests).push(pathname);
+    if(pathname.startsWith('/api/party/'))partyTimes.push(Date.now());
    };
    page.on('pageerror',e=>{errors.push(e.message);console.log(engine,'PAGEERROR',e.message);});
    page.on('console',m=>{if(m.type()==='error')console.log(engine,'CONSOLE',m.text());});
@@ -81,7 +82,8 @@ const mime={'.html':'text/html','.js':'application/javascript','.json':'applicat
    assert.equal(result.sync.remoteApplied,false);
    assert.equal(result.sync.requests,1,'bulk requests stay deferred during playback');
    assert.equal(apiRequests.length,0,'offline MP4 playback never needs the bridge');
-   assert(partyRequests.length<=1,'offline Party bootstrap remains bounded during solo playback');
+   for(let i=1;i<partyTimes.length;i++)assert(partyTimes[i]-partyTimes[i-1]>=44000,
+    'offline Party retries never exceed the solo playback cadence');
    assert(partyRequests.every(p=>p==='/api/party/bootstrap'),'solo playback never sends Party commands');
    assert.equal(errors.length,0,errors.join('\n'));
    assert(episodeSheetMs<2000,'episode sheet stays responsive');

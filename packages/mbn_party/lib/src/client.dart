@@ -189,13 +189,17 @@ class PartyClient extends ChangeNotifier with WidgetsBindingObserver {
   void _schedule() {
     _timer?.cancel();
     if (_disposed || !_foreground || token() == null) return;
-    final seconds = _failures > 0
-        ? (5 * (1 << _failures.clamp(0, 3))).clamp(5, 60)
-        : _viewers > 0
+    final cadence = _viewers > 0
         ? 2
         : soloPlayers > 0
         ? 45
         : 20;
+    // A failed request must never make background traffic more frequent,
+    // especially while independent video playback owns the foreground.
+    final backoff = _failures > 0
+        ? (5 * (1 << _failures.clamp(0, 3))).clamp(5, 60)
+        : 0;
+    final seconds = max(cadence, backoff);
     _timer = Timer(Duration(seconds: seconds), _poll);
   }
 

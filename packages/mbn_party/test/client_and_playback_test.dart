@@ -8,6 +8,70 @@ import 'package:mbn_party/mbn_party.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  testWidgets('Offline solo playback keeps retries at least 45 seconds apart', (
+    tester,
+  ) async {
+    var calls = 0;
+    final client = PartyClient(
+      baseUrl: 'http://test.local',
+      app: 'movie',
+      token: () => 'token',
+      httpClient: MockClient((_) async {
+        calls++;
+        throw http.ClientException('offline');
+      }),
+    );
+    client.setSoloPlayer(true);
+    await client.refresh();
+    expect(calls, 1);
+    for (var attempt = 0; attempt < 4; attempt++) {
+      await tester.pump(const Duration(seconds: 44));
+      expect(calls, attempt + 1);
+      await tester.pump(const Duration(seconds: 1));
+      expect(calls, attempt + 2);
+    }
+    client.dispose();
+    await tester.pump(const Duration(minutes: 2));
+    expect(calls, 5, reason: 'disposed clients must stop retrying');
+  });
+  testWidgets('Offline inbox retries back off and recover to chat cadence', (
+    tester,
+  ) async {
+    var calls = 0;
+    var offline = true;
+    final client = PartyClient(
+      baseUrl: 'http://test.local',
+      app: 'anime',
+      token: () => 'token',
+      httpClient: MockClient((request) async {
+        calls++;
+        if (offline) throw http.ClientException('offline');
+        return http.Response(
+          request.url.path.endsWith('bootstrap')
+              ? '{"me":{"id":1},"cursor":1}'
+              : '{"cursor":1,"events":[]}',
+          200,
+        );
+      }),
+    );
+    final release = client.watch();
+    await tester.pump();
+    expect(calls, 1);
+    await tester.pump(const Duration(seconds: 9));
+    expect(calls, 1);
+    await tester.pump(const Duration(seconds: 1));
+    expect(calls, 2);
+    await tester.pump(const Duration(seconds: 19));
+    expect(calls, 2);
+    offline = false;
+    await tester.pump(const Duration(seconds: 1));
+    expect(calls, 3);
+    expect(client.connected, isTrue);
+    await tester.pump(const Duration(seconds: 2));
+    expect(calls, 4);
+    release();
+    client.dispose();
+  });
   testWidgets('Bootstrap refresh preserves pending message event cursor', (
     tester,
   ) async {
