@@ -1,0 +1,722 @@
+{
+  "schemaVersion": 1,
+  "documentVersion": 1,
+  "evidenceDate": "2026-10-24",
+  "purpose": "Sanitized historical performance evidence. No raw credentials, stream URLs or account data are included.",
+  "rawEvidenceLocation": "Workspace audit/ directory, outside the three repositories. Raw files are not embedded here.",
+  "baseline": {
+    "movie": {
+      "version": "1.0.89+89",
+      "repository": "MBNpro-ir/MBNMovie-App"
+    },
+    "anime": {
+      "version": "2.0.76+76",
+      "repository": "MBNpro-ir/MBNime-App"
+    },
+    "commits": {
+      "delfan_flutter": "37ba1c47dbabb1b19859e8a07ce25637d4fb4f31",
+      "animeon_flutter": "e2cbfe60461f896238921ead9126a7c5b1f2c04a",
+      "server": "7451b0fd34f945cb311bb385de26782d0edcc8b4"
+    },
+    "flutter": "3.32.8",
+    "windowsCore": {
+      "version": "mpv v0.41.0-1227-ge471496c5",
+      "build": "20261021-git-e471496c56",
+      "architecture": "baseline x86_64",
+      "archiveSha256": "efc719eff3dc5954b4a5efc800632808bcec01cc9034940dd14e5eb7fe9ea633",
+      "dllSha256": "04e4d27dc385dc18ddd93fbe69c75e635b864f3c6ec53a9122df54c2f7842f4a"
+    }
+  },
+  "windowsDecoderTraces": [
+    {
+      "evidenceFile": "windows-selected-hardware-30s.json",
+      "app": "movie",
+      "requestedMode": "hardware",
+      "sampleCount": 60,
+      "finalElapsedMs": 30102,
+      "finalPositionMs": 30363,
+      "mpvVersion": "mpv v0.41.0-1227-ge471496c5",
+      "hwdecRequestedProperty": "auto",
+      "hwdecCurrent": "d3d11va",
+      "currentVo": "libmpv",
+      "decoderDropsFirst": 0,
+      "decoderDropsLast": 0,
+      "outputDropsFirst": 1,
+      "outputDropsLast": 1,
+      "bufferingSampleCount": 0,
+      "firstBufferingElapsedMs": null,
+      "lastBufferingElapsedMs": null,
+      "maxAbsoluteAvsyncSeconds": 0.001842,
+      "interpretation": "Sampled counters include startup; not a universal smoothness guarantee."
+    },
+    {
+      "evidenceFile": "windows-selected-software-30s.json",
+      "app": "movie",
+      "requestedMode": "software",
+      "sampleCount": 60,
+      "finalElapsedMs": 30101,
+      "finalPositionMs": 30363,
+      "mpvVersion": "mpv v0.41.0-1227-ge471496c5",
+      "hwdecRequestedProperty": "no",
+      "hwdecCurrent": "no",
+      "currentVo": "libmpv",
+      "decoderDropsFirst": 0,
+      "decoderDropsLast": 0,
+      "outputDropsFirst": 0,
+      "outputDropsLast": 0,
+      "bufferingSampleCount": 0,
+      "firstBufferingElapsedMs": null,
+      "lastBufferingElapsedMs": null,
+      "maxAbsoluteAvsyncSeconds": 0.00184,
+      "interpretation": "Sampled counters include startup; not a universal smoothness guarantee."
+    },
+    {
+      "evidenceFile": "anime-selected-hardware-30s.json",
+      "app": "anime",
+      "requestedMode": "hardware",
+      "sampleCount": 60,
+      "finalElapsedMs": 30096,
+      "finalPositionMs": 30322,
+      "mpvVersion": "mpv v0.41.0-1227-ge471496c5",
+      "hwdecRequestedProperty": "auto",
+      "hwdecCurrent": "d3d11va",
+      "currentVo": "libmpv",
+      "decoderDropsFirst": 0,
+      "decoderDropsLast": 0,
+      "outputDropsFirst": 1,
+      "outputDropsLast": 1,
+      "bufferingSampleCount": 0,
+      "firstBufferingElapsedMs": null,
+      "lastBufferingElapsedMs": null,
+      "maxAbsoluteAvsyncSeconds": 0.004384,
+      "interpretation": "Sampled counters include startup; not a universal smoothness guarantee."
+    },
+    {
+      "evidenceFile": "anime-selected-software-30s.json",
+      "app": "anime",
+      "requestedMode": "software",
+      "sampleCount": 60,
+      "finalElapsedMs": 30102,
+      "finalPositionMs": 30322,
+      "mpvVersion": "mpv v0.41.0-1227-ge471496c5",
+      "hwdecRequestedProperty": "no",
+      "hwdecCurrent": "no",
+      "currentVo": "libmpv",
+      "decoderDropsFirst": 0,
+      "decoderDropsLast": 0,
+      "outputDropsFirst": 1,
+      "outputDropsLast": 1,
+      "bufferingSampleCount": 0,
+      "firstBufferingElapsedMs": null,
+      "lastBufferingElapsedMs": null,
+      "maxAbsoluteAvsyncSeconds": 0.002021,
+      "interpretation": "Sampled counters include startup; not a universal smoothness guarantee."
+    },
+    {
+      "evidenceFile": "windows-modern-selected-hardware-complete180s.json",
+      "app": "movie",
+      "requestedMode": "hardware",
+      "sampleCount": 360,
+      "finalElapsedMs": 180838,
+      "finalPositionMs": 177135,
+      "mpvVersion": "mpv v0.41.0-1227-ge471496c5",
+      "hwdecRequestedProperty": "auto",
+      "hwdecCurrent": "d3d11va",
+      "currentVo": "libmpv",
+      "decoderDropsFirst": 0,
+      "decoderDropsLast": 0,
+      "outputDropsFirst": 1,
+      "outputDropsLast": 1,
+      "bufferingSampleCount": 7,
+      "firstBufferingElapsedMs": 514,
+      "lastBufferingElapsedMs": 3543,
+      "maxAbsoluteAvsyncSeconds": 0.00654,
+      "interpretation": "Sampled counters include startup; not a universal smoothness guarantee."
+    }
+  ],
+  "huaweiTouch": {
+    "device": "Huawei Mate 10 Lite RNE-L21",
+    "api": 26,
+    "media": "H.264 1080p fixture",
+    "interaction": "8 control toggles, 2 episode sheets with 300 episodes, scroll and Back",
+    "movie": {
+      "elapsedMs": 8884,
+      "advancedMs": 8900,
+      "outputDrops": 0,
+      "sheetOpenMs": [
+        295,
+        179
+      ],
+      "frames": 496,
+      "frameP95Ms": 25.005,
+      "frameMaxMs": 111.214,
+      "framesOver100Ms": 1
+    },
+    "anime": {
+      "elapsedMs": 8778,
+      "advancedMs": 8800,
+      "outputDrops": 0,
+      "sheetOpenMs": [
+        235,
+        144
+      ],
+      "frames": 482,
+      "frameP95Ms": 26.677,
+      "frameMaxMs": 66.551,
+      "framesOver100Ms": 0
+    },
+    "limitation": "UI p95 exceeds 16.67ms; original ASS has a separate known performance limit."
+  },
+  "windowsSyncPressure": {
+    "movie": {
+      "resolution": "2560x1440",
+      "historyKeys": 4000,
+      "delayedRemoteKeys": 10000,
+      "requestPaths": [
+        "GET /api/sync",
+        "PUT /api/sync",
+        "PUT /api/sync"
+      ],
+      "episodeCount": 300,
+      "episodeSheetMs": 68,
+      "requests": 3,
+      "maxEventLoopGapMs": 18.56,
+      "frames": 3446,
+      "slowBuildFrames": 0,
+      "slowRasterFrames": 0,
+      "decoderDropsBefore": "0",
+      "decoderDropsAfter": "0",
+      "outputDropsBefore": "1",
+      "outputDropsAfter": "1",
+      "outputDropsAfterPauseResume": "1",
+      "hwdec": "d3d11va-copy",
+      "positionSeconds": 22
+    },
+    "anime": {
+      "resolution": "2560x1440",
+      "historyKeys": 4000,
+      "delayedRemoteKeys": 10000,
+      "requestPaths": [
+        "GET /api/sync",
+        "PUT /api/sync",
+        "PUT /api/sync"
+      ],
+      "episodeCount": 300,
+      "episodeSheetMs": 66,
+      "requests": 3,
+      "maxEventLoopGapMs": 17.374,
+      "frames": 3416,
+      "slowBuildFrames": 0,
+      "slowRasterFrames": 0,
+      "decoderDropsBefore": "0",
+      "decoderDropsAfter": "0",
+      "outputDropsBefore": "1",
+      "outputDropsAfter": "1",
+      "outputDropsAfterPauseResume": "1",
+      "hwdec": "d3d11va-copy",
+      "positionSeconds": 22
+    },
+    "limitation": "Uses earlier d3d11va-copy path. This test alone did not resolve visible startup stutter."
+  },
+  "suiteSnapshot": {
+    "movie": {
+      "passed": 373,
+      "skipped": 1,
+      "evidenceFile": "delfan_flutter-decoder-all.log"
+    },
+    "anime": {
+      "passed": 385,
+      "skipped": 1,
+      "evidenceFile": "animeon_flutter-decoder-all.log"
+    },
+    "backend": {
+      "total": 125,
+      "passed": 124,
+      "skipped": 1,
+      "evidenceFile": "backend-decoder-all.log"
+    },
+    "analysis": "No issues in both app decoder analyze logs.",
+    "note": "Historical runtime results; not rerun for this documentation-only task."
+  },
+  "releases": [
+    {
+      "app": "movie",
+      "version": "1.0.89",
+      "evidenceFile": "movie-decoder-release-run-final.json",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/MBNpro-ir/MBNMovie-App/actions/runs/40042386060",
+      "jobs": [
+        {
+          "name": "Build Windows x64",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Test Android API 23 default",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Build Android",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Test Android API 23 android-tv",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Test Android API 32 default",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "browser-qa / browsers",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Publish GitHub release",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Publish live web and iOS PWA / publish",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "app": "anime",
+      "version": "2.0.76",
+      "evidenceFile": "anime-decoder-release-run-final.json",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/MBNpro-ir/MBNime-App/actions/runs/40042437619",
+      "jobs": [
+        {
+          "name": "Build Android",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "browser-qa / browsers",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Build Windows x64",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Test Android API 23 default",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Test Android API 23 android-tv",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Test Android API 32 default",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Publish GitHub release",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Publish live web and iOS PWA / publish",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    }
+  ],
+  "browserEvidence": {
+    "chrome": {
+      "evidenceFile": "decoder-browser-final2.log",
+      "scope": "First two Chrome PASS results only; later harness failure is not a pass."
+    },
+    "webkit": {
+      "evidenceFile": "decoder-browser-webkit-touch2.log",
+      "scope": "Touch in production accessibility wrapper and PWA emulation for both apps."
+    },
+    "liveAssets": {
+      "evidenceFile": "live-decoder-release-published-final.log",
+      "movieVersion": "1.0.89",
+      "movieAssetId": "57628c70fdc5",
+      "animeVersion": "2.0.76",
+      "animeAssetId": "72abbf17211d",
+      "checks": 4,
+      "scope": "Chrome desktop and WebKit iPhone PWA: correct JS asset, rendered login, no page error."
+    },
+    "limitation": "Not physical iPhone or native IPA validation."
+  },
+  "outageEvidence": {
+    "platforms": [
+      "Windows native",
+      "Android API23 x86_64 emulator"
+    ],
+    "bridgeCatalogCallsAfterContinue": 0,
+    "scope": "Movie direct guest/catalog/cache/playback contract.",
+    "limitation": "Web/iOS direct-guest independence is not implemented; no internet cannot fetch new media."
+  },
+  "knownLimitations": [
+    "Original ASS on tested Huawei: 179 output drops in a specific 8-second test.",
+    "No comprehensive physical Android TV, native iPhone, thermal or battery validation.",
+    "A core A/B improvement does not independently isolate the internal timing defect.",
+    "Worker deployment alone does not prove fresh upstream catalog/media connectivity."
+  ],
+  "evidenceFiles": [
+    {
+      "file": "huawei-movie-production-final8.log",
+      "bytes": 47427,
+      "sha256": "db1bd7085a3654b01f9edc218f06c746fb752171496449e87e26abe5ab682afd"
+    },
+    {
+      "file": "huawei-anime-production-final9.log",
+      "bytes": 42282,
+      "sha256": "ec9259a322f374338e2c2af9df8bc6b46cedae828cc9fd9363eacdc6e68fcc84"
+    },
+    {
+      "file": "huawei-movie-touch-profile1.log",
+      "bytes": 13861,
+      "sha256": "e6b453522becdd84c684b5900ec7e8b3f8c250dc48e6b924df103808e98d02ef"
+    },
+    {
+      "file": "huawei-anime-touch-profile1.log",
+      "bytes": 13958,
+      "sha256": "0c6717968adbee241437cdd84f3bab7334a2b6860f27af0469f491d896f9310a"
+    },
+    {
+      "file": "movie-2k-profile-runtime.log",
+      "bytes": 2222,
+      "sha256": "70da3c7f584135eb236918f326111ae87a3f45afa9ddfc01db0654d89d0135c6"
+    },
+    {
+      "file": "anime-2k-profile-runtime.log",
+      "bytes": 2233,
+      "sha256": "b32533407ce28c2cc1707a787f557bc46237b6cd89b7ed85eee20fba9ddd9395"
+    },
+    {
+      "file": "windows-selected-hardware-30s.json",
+      "bytes": 79625,
+      "sha256": "4fb766c652f718c25239e9c942893315ffbdb8bb35516d45cada7545ea9f2ce2"
+    },
+    {
+      "file": "windows-selected-software-30s.json",
+      "bytes": 79210,
+      "sha256": "51995fdd0e72bccd4c0934e511feaa616174408bdbfbdb11fc772e83a1116129"
+    },
+    {
+      "file": "anime-selected-hardware-30s.json",
+      "bytes": 79632,
+      "sha256": "d3822bacd205a80a0f885e5bedad70379be913de4f5e4a162513f0d9d7dbd86b"
+    },
+    {
+      "file": "anime-selected-software-30s.json",
+      "bytes": 79216,
+      "sha256": "85caab0817506fb673fb7f7c6dded4f927225f8256728a443e1d5221315dc081"
+    },
+    {
+      "file": "windows-modern-selected-hardware-complete180s.json",
+      "bytes": 477994,
+      "sha256": "e4d0ec15d3da3be39054696c1759aa0622641919357ca1686a306f8a31fa951a"
+    },
+    {
+      "file": "windows-modern-selected-hardware-complete180s.stdout.log",
+      "bytes": 27668,
+      "sha256": "cc435e361eed0a89cb2f714d6e4e48a8a842c711e03db2154c459bf96a25cb4d"
+    },
+    {
+      "file": "delfan_flutter-decoder-all.log",
+      "bytes": 61416,
+      "sha256": "43d257e9153939d456e72c80554a8ca720063f6f293012005abdd0e26662576e"
+    },
+    {
+      "file": "animeon_flutter-decoder-all.log",
+      "bytes": 64680,
+      "sha256": "f9126f0813ae840e773126ae69dd04683097ec80978e2a19e4b1f79ad40ca40d"
+    },
+    {
+      "file": "delfan_flutter-decoder-analyze.log",
+      "bytes": 98,
+      "sha256": "2d966bff6ddfe4b0c8e47921f54bac1ccdc392da3157d018059f60bbb2ef1523"
+    },
+    {
+      "file": "animeon_flutter-decoder-analyze.log",
+      "bytes": 98,
+      "sha256": "813928bf205adb142d68c19ebefc427e1f4f04444735376879b3c1e286cec223"
+    },
+    {
+      "file": "backend-decoder-all.log",
+      "bytes": 761,
+      "sha256": "8ae744e79ab613ffb97994e1ab49c218ee98c77c5c3d4c3b9d2d12b7911e2fbd"
+    },
+    {
+      "file": "live-decoder-sync.log",
+      "bytes": 478,
+      "sha256": "5612822b61ebc4ae7eaf03802f0ef492fc4ac268a8c9f4b570f32083ef6d9063"
+    },
+    {
+      "file": "decoder-browser-final2.log",
+      "bytes": 599,
+      "sha256": "1e69e29ac3be4353f17f577845f367af01f57b56f0b691588c0f309d3d3bbbef"
+    },
+    {
+      "file": "decoder-browser-webkit-touch2.log",
+      "bytes": 252,
+      "sha256": "54b738ed71de610bf3f3af73802fbc8f4d1357d5a28c5dc4153aacaea3f81d3a"
+    },
+    {
+      "file": "live-decoder-release-published-final.log",
+      "bytes": 468,
+      "sha256": "93ac39b299e5f90973a21100ff86e64c7e4bb6a2275a3e41b2468315d2c57243"
+    },
+    {
+      "file": "movie-decoder-release-run-final.json",
+      "bytes": 16442,
+      "sha256": "9fff5c5aa65e66be945796a010c4fc34ed6e0c70f1c4b878d8cae8c55554e179"
+    },
+    {
+      "file": "anime-decoder-release-run-final.json",
+      "bytes": 16945,
+      "sha256": "9d4263c98a9c1347315a71eaa757a307858bf62a5f34f35d828dfb5d7ea59b48"
+    },
+    {
+      "file": "movie-offline-windows-20261023.log",
+      "bytes": 3334,
+      "sha256": "3a7340306137a012d2bced9a2438e86adedc4a20126e9b6a50d15773b79bf191"
+    },
+    {
+      "file": "movie-offline-android23-20261023.log",
+      "bytes": 7357,
+      "sha256": "4ea759733e3d491917911fadf21d593a1cdc09984a852bd04541f426c0af20a8"
+    }
+  ],
+  "sourceFiles": [
+    {
+      "repository": "delfan_flutter",
+      "path": "lib/core/native_playback_policy.dart",
+      "sha256": "fad8e7db00511aae315e36045a3180c8687cc1c26ae3e9efbc04b59b424a936a"
+    },
+    {
+      "repository": "delfan_flutter",
+      "path": "lib/core/video_decode_mode.dart",
+      "sha256": "baa7b89de50f066ceac9ea093223e4bba88e9bed715bc317112fde57002ce76c"
+    },
+    {
+      "repository": "delfan_flutter",
+      "path": "lib/core/player_preferences.dart",
+      "sha256": "ac43991521e9375a48651da4ea4336cfb4183010a874c6d5a1ade9538e3daaed"
+    },
+    {
+      "repository": "delfan_flutter",
+      "path": "lib/widgets/decoder_mode_builder.dart",
+      "sha256": "d2d4ce108b4ca19ec3232aec89e20726a636d33a9d811351fcd50f90eab247a8"
+    },
+    {
+      "repository": "delfan_flutter",
+      "path": "lib/services/device_performance.dart",
+      "sha256": "0344b8e9076b53961cbdfc8bb5a39d5f800410f66a814b8f24108a727b7c3fcb"
+    },
+    {
+      "repository": "delfan_flutter",
+      "path": "lib/services/playback_activity.dart",
+      "sha256": "d9a50e1776f0bac289672a115ff26dd6631eb556b11bb774b9de1a1d5bdc579c"
+    },
+    {
+      "repository": "delfan_flutter",
+      "path": "lib/services/mbn_sync.dart",
+      "sha256": "07d0d0cdb5670556a0dc3fb943917185ff1e1f3bfacef091099da995946d5f0d"
+    },
+    {
+      "repository": "delfan_flutter",
+      "path": "lib/services/preference_batch_io.dart",
+      "sha256": "7014d394d1ff1cb0a0f4ed12e120023bc68940ab3f6f4846c0f281829da8db82"
+    },
+    {
+      "repository": "delfan_flutter",
+      "path": "lib/core/watch_progress.dart",
+      "sha256": "0b447d9599c62fd8967409aeda79a673993998008cea3f6a8bdc796c59c4bbc5"
+    },
+    {
+      "repository": "delfan_flutter",
+      "path": "lib/core/subtitle_bidi.dart",
+      "sha256": "52d80a3030ff2906570f50a365039f1615c923d04278bde81bfb9deb123af140"
+    },
+    {
+      "repository": "delfan_flutter",
+      "path": "lib/core/subtitle_order.dart",
+      "sha256": "a1480e449aaa81df7884e421dc09963163946c20db7e26e5af8bac44264c9f28"
+    },
+    {
+      "repository": "delfan_flutter",
+      "path": "lib/screens/detail_screen.dart",
+      "sha256": "f0d87c52a4f375c1734ff380b8d56cec2f81d7c91511298cd0d0357fb1879021"
+    },
+    {
+      "repository": "delfan_flutter",
+      "path": "packages/shared_preferences_windows/lib/shared_preferences_windows.dart",
+      "sha256": "d7bda84fb982c1e679a23503c45c9325d0ebf0e9d837ee11dc34fb9add79b3a0"
+    },
+    {
+      "repository": "delfan_flutter",
+      "path": "packages/media_kit_libs_windows_video/windows/CMakeLists.txt",
+      "sha256": "58e3341b46f8f8d57f3331d7f469465f428080908995255440fa3bb50feb934f"
+    },
+    {
+      "repository": "delfan_flutter",
+      "path": "packages/media_kit_video/windows/CMakeLists.txt",
+      "sha256": "a9ac97b4bcb1e675b53ceb668d408c56ec2932793327534518f5c21250410a8a"
+    },
+    {
+      "repository": "delfan_flutter",
+      "path": "packages/media_kit_video/lib/src/video_controller/android_video_controller/real.dart",
+      "sha256": "d5f437b955935fb7916c0c194a0a0b56c6cbb9c183df22231d2ec12a51cfd4c0"
+    },
+    {
+      "repository": "delfan_flutter",
+      "path": "tools/Verify-WindowsPlaybackCore.ps1",
+      "sha256": "53d0a439fd0ef19712a3dc777789f96fe062b21187a3f09dd8249d87596ee08c"
+    },
+    {
+      "repository": "delfan_flutter",
+      "path": ".github/workflows/release.yml",
+      "sha256": "4c181c9cc845d9ac9c97ef5b3734863703cb865f7268653be54c2500ed130fad"
+    },
+    {
+      "repository": "delfan_flutter",
+      "path": ".github/workflows/player-qa.yml",
+      "sha256": "28ac7a9a2312d4a88304c6bbd05c63dbb81219e23c8b50ef10c509365ea16f55"
+    },
+    {
+      "repository": "delfan_flutter",
+      "path": ".github/workflows/publish-web.yml",
+      "sha256": "332b90c190253b675070ba121b1b5e1cf80c58689435b6626cae30df4cb3867b"
+    },
+    {
+      "repository": "animeon_flutter",
+      "path": "lib/core/native_playback_policy.dart",
+      "sha256": "fad8e7db00511aae315e36045a3180c8687cc1c26ae3e9efbc04b59b424a936a"
+    },
+    {
+      "repository": "animeon_flutter",
+      "path": "lib/core/video_decode_mode.dart",
+      "sha256": "baa7b89de50f066ceac9ea093223e4bba88e9bed715bc317112fde57002ce76c"
+    },
+    {
+      "repository": "animeon_flutter",
+      "path": "lib/core/player_preferences.dart",
+      "sha256": "ac43991521e9375a48651da4ea4336cfb4183010a874c6d5a1ade9538e3daaed"
+    },
+    {
+      "repository": "animeon_flutter",
+      "path": "lib/widgets/decoder_mode_builder.dart",
+      "sha256": "d2d4ce108b4ca19ec3232aec89e20726a636d33a9d811351fcd50f90eab247a8"
+    },
+    {
+      "repository": "animeon_flutter",
+      "path": "lib/services/device_performance.dart",
+      "sha256": "d862f6dd6d77db94d9138be22f7ae2d5e9bf16c978ba98022449ab03945ac4a4"
+    },
+    {
+      "repository": "animeon_flutter",
+      "path": "lib/services/playback_activity.dart",
+      "sha256": "d9a50e1776f0bac289672a115ff26dd6631eb556b11bb774b9de1a1d5bdc579c"
+    },
+    {
+      "repository": "animeon_flutter",
+      "path": "lib/services/mbn_sync.dart",
+      "sha256": "d44f151a86d0e793a66e30cbf752bf01d4790e945b3c52988cde8a7e2484736f"
+    },
+    {
+      "repository": "animeon_flutter",
+      "path": "lib/services/preference_batch_io.dart",
+      "sha256": "7014d394d1ff1cb0a0f4ed12e120023bc68940ab3f6f4846c0f281829da8db82"
+    },
+    {
+      "repository": "animeon_flutter",
+      "path": "lib/core/watch_progress.dart",
+      "sha256": "b9e5353fdcebac01a7e2d2c82b5cdadf541746408ed16059fea2c5e41e310622"
+    },
+    {
+      "repository": "animeon_flutter",
+      "path": "lib/core/subtitle_bidi.dart",
+      "sha256": "52d80a3030ff2906570f50a365039f1615c923d04278bde81bfb9deb123af140"
+    },
+    {
+      "repository": "animeon_flutter",
+      "path": "lib/core/subtitle_order.dart",
+      "sha256": "a1480e449aaa81df7884e421dc09963163946c20db7e26e5af8bac44264c9f28"
+    },
+    {
+      "repository": "animeon_flutter",
+      "path": "lib/screens/detail_screen.dart",
+      "sha256": "071362187027f80c4d3fcc91f8717ff1528f22a301c8478cb734336bb50d5b20"
+    },
+    {
+      "repository": "animeon_flutter",
+      "path": "packages/shared_preferences_windows/lib/shared_preferences_windows.dart",
+      "sha256": "d7bda84fb982c1e679a23503c45c9325d0ebf0e9d837ee11dc34fb9add79b3a0"
+    },
+    {
+      "repository": "animeon_flutter",
+      "path": "packages/media_kit_libs_windows_video/windows/CMakeLists.txt",
+      "sha256": "58e3341b46f8f8d57f3331d7f469465f428080908995255440fa3bb50feb934f"
+    },
+    {
+      "repository": "animeon_flutter",
+      "path": "packages/media_kit_video/windows/CMakeLists.txt",
+      "sha256": "a9ac97b4bcb1e675b53ceb668d408c56ec2932793327534518f5c21250410a8a"
+    },
+    {
+      "repository": "animeon_flutter",
+      "path": "packages/media_kit_video/lib/src/video_controller/android_video_controller/real.dart",
+      "sha256": "d5f437b955935fb7916c0c194a0a0b56c6cbb9c183df22231d2ec12a51cfd4c0"
+    },
+    {
+      "repository": "animeon_flutter",
+      "path": "tools/Verify-WindowsPlaybackCore.ps1",
+      "sha256": "53d0a439fd0ef19712a3dc777789f96fe062b21187a3f09dd8249d87596ee08c"
+    },
+    {
+      "repository": "animeon_flutter",
+      "path": ".github/workflows/release.yml",
+      "sha256": "c721b8a12e6488db8697b89fa3718cb468e57ce8082d166a3f481bdf84819225"
+    },
+    {
+      "repository": "animeon_flutter",
+      "path": ".github/workflows/player-qa.yml",
+      "sha256": "28ac7a9a2312d4a88304c6bbd05c63dbb81219e23c8b50ef10c509365ea16f55"
+    },
+    {
+      "repository": "animeon_flutter",
+      "path": ".github/workflows/publish-web.yml",
+      "sha256": "e2640bfcc8185e6b972302be7a9bf39cc60151e45c7b17618bb952413c7f5356"
+    },
+    {
+      "repository": "server",
+      "path": "backend/db.py",
+      "sha256": "6af252171d2d0e57b1125016d2117382b713cf2e97ea4ac4f162463a1e543a31"
+    },
+    {
+      "repository": "server",
+      "path": "WEB_RELEASE_PUBLISHING_FA.md",
+      "sha256": "2f134ca537760671e5084cb01b734d7bc30d00711de1564cf2c10e121e26506f"
+    },
+    {
+      "repository": "server",
+      "path": "ADULT_ACCESS_FA.md",
+      "sha256": "e4e519a8bf78093debc8e4c02fcafd8029be865011bab9b9258b42f7ed515a4e"
+    }
+  ]
+}

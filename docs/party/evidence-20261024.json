@@ -1,0 +1,304 @@
+{
+  "schema_version": 1,
+  "recorded_at_utc": "2026-10-24T13:17:19.253885+00:00",
+  "status": "local_preview_awaiting_user_approval",
+  "release": {
+    "committed": false,
+    "pushed": false,
+    "actions_dispatched": false,
+    "production_deployed": false,
+    "versions_unchanged": {
+      "movie": "1.0.89+89",
+      "anime": "2.0.76+76"
+    },
+    "current_workflow_targets": [
+      "android_arm_and_arm64_including_tv",
+      "windows_x64",
+      "web_and_ios_pwa"
+    ],
+    "native_ios_ipa_job_added": false
+  },
+  "source_heads": {
+    "delfan_flutter": "37ba1c47dbabb1b19859e8a07ce25637d4fb4f31",
+    "animeon_flutter": "e2cbfe60461f896238921ead9126a7c5b1f2c04a",
+    "server": "7451b0fd34f945cb311bb385de26782d0edcc8b4"
+  },
+  "tests": {
+    "backend_full": {
+      "log": "audit/party-backend-full-final.log",
+      "sha256": "d282018e07dc4e0d9392a52ed1fdd3bf07236a7e6e39f295d5653e2e05ca4c85",
+      "result": "passed",
+      "total": 140,
+      "passed": 139,
+      "skipped": 1
+    },
+    "movie_full": {
+      "log": "audit/party-movie-full-tests.log",
+      "sha256": "852d9ed7f135207889744c2c7d1ff98ccf6c43ac4176bf5e50f920500a34a69c",
+      "result": "passed",
+      "passed": 378,
+      "skipped": 1
+    },
+    "anime_full": {
+      "log": "audit/party-anime-full-tests.log",
+      "sha256": "c63608b7b1430a289969a3bc7dcdd18e9f16d73b67e3ac852a0b792586a3b0d6",
+      "result": "passed",
+      "passed": 390,
+      "skipped": 1
+    },
+    "movie_shared_package": {
+      "log": "audit/party-movie-package-tests-final.log",
+      "sha256": "8ebdb74e350aa0b0931d7c47d948f138ae0dcb6d52f3a3b7fd2850e033f39646",
+      "result": "passed",
+      "passed": 8
+    },
+    "anime_shared_package": {
+      "log": "audit/party-anime-package-tests-final.log",
+      "sha256": "bfcff2528b70fc17b0dec15dad427f160e23ab9e89df387e5c0464b06c8d26da",
+      "result": "passed",
+      "passed": 8
+    }
+  },
+  "analyzers": {
+    "movie_ci": {
+      "log": "audit/party-movie-ci-analyze-final.log",
+      "sha256": "0dcbaeca3de9322e260ee8da03c052b1249e0ee186bdefea5f753327428d80ce",
+      "result": "passed"
+    },
+    "anime_ci": {
+      "log": "audit/party-anime-ci-analyze-final.log",
+      "sha256": "63dd580c213b4feb05960e9f308f06a76769add0e37f7c1dbb9b766fa1f4c916",
+      "result": "passed"
+    },
+    "dashboard_changed_files": {
+      "log": "audit/party-dashboard-final-analyze.log",
+      "sha256": "532c31d820eec2acd961e4c9d33f6455c69435d7589e4591f49a73a93f0be55e",
+      "result": "passed"
+    },
+    "movie_preview_tools": {
+      "log": "audit/party-movie-preview-analyze.log",
+      "sha256": "d058b76593a07f9406e5059f634607c503172505def99bbf047c9b936800e326",
+      "result": "passed"
+    },
+    "anime_preview_tools": {
+      "log": "audit/party-anime-preview-analyze.log",
+      "sha256": "d058b76593a07f9406e5059f634607c503172505def99bbf047c9b936800e326",
+      "result": "passed"
+    }
+  },
+  "builds": {
+    "movie_windows_main": {
+      "log": "audit/party-movie-windows-build.log",
+      "sha256": "4b06cc7baa15a70aaefedd8c4df4bc0652b389c2a87303b05165b1980b884fb3",
+      "result": "passed"
+    },
+    "anime_windows_main": {
+      "log": "audit/party-anime-main-windows-build.log",
+      "sha256": "a6124696a31ef5bb149dafe16eb5869c5c62c0d179a10d442f9b9a57bc9077fd",
+      "result": "passed"
+    },
+    "movie_web_main": {
+      "log": "audit/party-movie-main-web-build.log",
+      "sha256": "2e5c5c31005a126354d6368acb863106af30ac193a676588c7a0b6b1760b33d4",
+      "result": "passed"
+    },
+    "anime_web_main": {
+      "log": "audit/party-anime-main-web-build.log",
+      "sha256": "315463f2bec256eb4fe56500e0d17430eaf7929c340c27b3af70b8880c0be20f",
+      "result": "passed"
+    },
+    "movie_web_preview": {
+      "log": "audit/party-preview/movie-final-web-build.log",
+      "sha256": "fe010d6fc6b61e31e367b5edbcc72a1be25e61c187bd3972ac902cb95a65ec16",
+      "result": "passed"
+    },
+    "anime_web_preview": {
+      "log": "audit/party-preview/anime-final-web-build.log",
+      "sha256": "e1dc6208e15d11034d4cb24be80cb087072cec4f7e2fe86bc8b1c69c337b24f8",
+      "result": "passed"
+    },
+    "dashboard_web_preview": {
+      "log": "audit/party-preview/dashboard-final-web-build.log",
+      "sha256": "e651ab5a8ee651bb68f8af82a615d02389b6856b9b7925665c76520026a797c0",
+      "result": "passed"
+    },
+    "movie_windows_final_preview": {
+      "log": "audit/party-preview/movie-final-windows-build.log",
+      "sha256": "0ad4c5383615863f664e9680710e85505f0ea9a36c54757c6fd578812b342a7b",
+      "result": "passed"
+    }
+  },
+  "runtime_integration": {
+    "movie_windows_external_tracks": {
+      "log": "audit/party-preview/windows-external-drive.log",
+      "sha256": "a21f66a7ea107900245191944e80e67453c578c917c30cf3232d198bdc33f88f",
+      "result": "passed"
+    },
+    "anime_windows_external_tracks": {
+      "log": "audit/party-preview/anime-windows-external-drive.log",
+      "sha256": "2e9f531077d8e70572df067dcc6878916d212e926fe901a098a7d73293ffa91e",
+      "result": "passed"
+    },
+    "movie_android_api23_party": {
+      "log": "audit/party-preview/movie-android-party-e2e.log",
+      "sha256": "9ffae2865a60652ac5652e21e0e266ad43bb2153f1a0f03cc37fe6575e7f7993",
+      "result": "passed"
+    },
+    "anime_android_api23_party": {
+      "log": "audit/party-preview/anime-android-party-e2e.log",
+      "sha256": "80394b10e72b857a67f0eb91642e174c65ea9f38e569e0d4d3a1da3dba5c3b69",
+      "result": "passed"
+    },
+    "movie_android_tv_api23_party": {
+      "log": "audit/party-preview/movie-tv-party-e2e.log",
+      "sha256": "4ad0c43a1c3c1fa051a99cb945acfa3dbe4f32e7218b8bc88b006ee7ed4c0f21",
+      "result": "passed"
+    },
+    "anime_android_tv_api23_party": {
+      "log": "audit/party-preview/anime-tv-party-e2e.log",
+      "sha256": "e3ce3c3d4da47ca9217d7e0bb770274a80970d0995e454559bea362509c3ebec",
+      "result": "passed"
+    }
+  },
+  "coverage_notes": [
+    "Full app suites include external-reference unit tests. Shared-package tests are run separately.",
+    "Backend total includes one skipped test; 139 tests passed.",
+    "Windows uses actual app PlayerScreen, mpv and DropTarget callback; tested SRT and WAV, selection, persistence, missing-file popup and discard/default.",
+    "Windows drag/drop integration invokes the Flutter DropTarget callback; it does not perform an Explorer drag gesture.",
+    "Phone and TV tests use API 23 emulators, actual media_kit video and a second authenticated API client.",
+    "Party emulator scenario enters Persian digits for 20 seconds, waits for peer readiness, starts, pauses with peer name, seeks and closes.",
+    "Main Windows/Web builds succeeded during feature development. Later shared-client syntax changes preserve behavior; preview web builds include final shared client.",
+    "Load and performance capacity of the production server have not been benchmarked.",
+    "Historical performance evidence and its hashes were preserved and not regenerated for this feature."
+  ],
+  "two_browser_observation": {
+    "environment": "two real browser videos on the same Windows machine with loopback synthetic backend",
+    "start_from_seconds": 20,
+    "observed_positions_seconds": [
+      72.374659,
+      72.45941
+    ],
+    "wall_timestamp_difference_ms": 1,
+    "observed_position_difference_ms": 84.751,
+    "peer_pause_positions_seconds": [
+      109.597,
+      109.596849
+    ],
+    "screenshot": "audit/party-preview/paused-by-friend.png",
+    "interpretation": "one observed local run; not a guarantee of frame accuracy, WAN sync or device performance"
+  },
+  "preview": {
+    "synthetic_data_only": true,
+    "bind": "127.0.0.1:18641",
+    "movie": "http://127.0.0.1:18641/preview/movie/",
+    "movie_peer": "http://127.0.0.1:18641/preview/movie/?user=2",
+    "anime": "http://127.0.0.1:18641/preview/anime/",
+    "admin": "http://127.0.0.1:18641/preview/admin/",
+    "screenshots": [
+      "audit/party-preview/anime-chat-final.png",
+      "audit/party-preview/admin-permissions-final.png",
+      "audit/party-preview/paused-by-friend.png",
+      "audit/party-preview/invite-final.png"
+    ],
+    "native_movie_binary": "delfan_flutter/build/windows/x64/runner/Release/mbnmovie.exe",
+    "note": "Preview entrypoints and synthetic identity route are development-only and must never be deployed as production.",
+    "health_verified": true
+  },
+  "unverified_or_manual_acceptance": [
+    "Physical Huawei Mate 10 Lite, physical Android TV and weak-device frame/CPU/memory performance under this feature workload.",
+    "Physical iPhone, Safari-on-iPhone playback/autoplay and iOS compilation/signing (no Mac/Xcode available).",
+    "Windows Explorer physical drag gesture and relinking through the native file chooser.",
+    "TV D-pad-only navigation through every group/chat control.",
+    "Real Internet loss/jitter at production-scale concurrent room/user counts.",
+    "File formats other than tested SRT/WAV depend on mpv/FFmpeg support; arbitrary bytes are not guaranteed to decode."
+  ],
+  "source_sha256": {
+    "animeon_flutter/.github/workflows/release.yml": "fa0c7474000567c88bdfa0a898539d22d165c195106b4aa1111e5d4d633db504",
+    "animeon_flutter/integration_test/party_preview_test.dart": "5c43eae85dd7b8f2f69a84833e49b8b8e530bef6a74245c9d9aef98f56c055e0",
+    "animeon_flutter/integration_test/windows_external_tracks_test.dart": "ee76b918c6398a604cc16dae5e2df5fc4bf87b8f538856499c8e20ac1d09ed04",
+    "animeon_flutter/lib/core/external_media_tracks.dart": "77b7eb0c02d771679b2b21e3aed18ea08af29b935b8ba60a01613519f1783a31",
+    "animeon_flutter/lib/core/native_player_properties_io.dart": "6d2d1593c54dc948d0618abedb7355344c0fd0bce7aa0b24f99eca14d46d934c",
+    "animeon_flutter/lib/core/native_player_properties_stub.dart": "30387dbb6f8f8700325b3ef3632331a0fb7b226bd26095204fba0ff716db7629",
+    "animeon_flutter/lib/screens/detail_screen.dart": "01cd8f3ed4dc24f1b2484283ddfb7548dcb49a20e227d0cf6325b89a510d127a",
+    "animeon_flutter/lib/screens/main_shell.dart": "f72bdc5958528dc6914b58acda7b7317897bb9bf325e1116234755dde160ac0b",
+    "animeon_flutter/lib/services/app_party.dart": "7d8cda83a472ce27a98983ab956b4b2635047cdb0e23dbfe5a3d7b3a29144edf",
+    "animeon_flutter/lib/services/local_player_tracks.dart": "9d823593b5178c896f843123be30f7454c362bab07f977d7d2123b6c59b966b7",
+    "animeon_flutter/lib/services/mbn_sync.dart": "42d626ffbf334b55c804e69f0cf63d7b626de91f9357b819efbb002bfc04d290",
+    "animeon_flutter/lib/widgets/player_file_drop_region.dart": "0d8a57cb22baa73129fa5c81bf468a9dff3716b403357449f3a0c90c71580d56",
+    "animeon_flutter/packages/mbn_party/.gitignore": "6c05225876d832a86e95ece72a732a71eff869330413877c7a947f3eeafa464b",
+    "animeon_flutter/packages/mbn_party/analysis_options.yaml": "c1e9534c05acb3643e72a82ad3d92d56d2ba9b0df2add014c18f7e1d462f24e4",
+    "animeon_flutter/packages/mbn_party/lib/mbn_party.dart": "d47771b476705913d617b44cd66bc2aa45a28befc048ba0adc875c31783ce231",
+    "animeon_flutter/packages/mbn_party/lib/src/client.dart": "813bcadd6afb813cbca4666d17cba4c4e1221230fc17bf02f1d7354b83e331d3",
+    "animeon_flutter/packages/mbn_party/lib/src/party_screen.dart": "eef0fa7d35e3a39fec2b449b0f7a8736a5f021d106efb0e955911bdbb3112997",
+    "animeon_flutter/packages/mbn_party/lib/src/timeline.dart": "3ff2b38fadd3265afd24139dd4eca3c9aa36a46b3372f77590819345087ac65d",
+    "animeon_flutter/packages/mbn_party/lib/src/watch_controller.dart": "8ea41b346f8f03dc21deb04ce330ff10546c0719d19ba44e8cf3896982da47b4",
+    "animeon_flutter/packages/mbn_party/pubspec.yaml": "aa89d190612938e4480cbb8de6c654786ecc49eff3731192fa54531c154b5cb1",
+    "animeon_flutter/packages/mbn_party/test/client_and_playback_test.dart": "a1267012fb968e7241d03ce916ffea0cdca9f79f78bef5811687ff6b1b3358d3",
+    "animeon_flutter/packages/mbn_party/test/timeline_test.dart": "623941857f50519049eb0e41230a97bb21a4eaed773102a989e272c4b71d8af7",
+    "animeon_flutter/pubspec.lock": "31f5fbd932e4fb31b23978253fd8d31d77065160560071c10bb9dfb2d88fcceb",
+    "animeon_flutter/pubspec.yaml": "67d3c0b43985759cdf8d8c8a79345bdeeae7f42851dcab5766d3f82e7fb31834",
+    "animeon_flutter/test/episode_picker_live_progress_test.dart": "28f0a73b5b406c4e30e20273523395312ef91338bfdb0f4f57f5eccb394633b9",
+    "animeon_flutter/test/external_media_tracks_test.dart": "6853a75fec80a73bded65ff0cc3b4ad4ff5bea36414fc6ff24d6304af0a96744",
+    "animeon_flutter/tools/party_preview.dart": "ba0152a01bc1181cbd37c1ee3a7360559e51e1db2b77f5b2355b20e07113cc7e",
+    "animeon_flutter/tools/party_preview_store.dart": "99a00b5b6528490421e1391412274a0198376776a7feb5b326e300958a2d4a9f",
+    "animeon_flutter/tools/party_preview_store_io.dart": "f3545de8fdd13cbf98059e304cbe6011c0b0a775a719a8d2a3e684f052d80c8e",
+    "animeon_flutter/tools/party_preview_store_stub.dart": "ef1cad892191fed707507e2f141ae527663e48e7c1d91249266fe2a874de3241",
+    "animeon_flutter/windows/flutter/generated_plugin_registrant.cc": "005262990ac0dcb817fc1802b55dc649b83f1a192d6cf3b058b974fe6dbdb884",
+    "animeon_flutter/windows/flutter/generated_plugins.cmake": "6744f259b95e8b1e276f38702fa5685410ab74b7b1b8bda8c754bedfd7d082c3",
+    "delfan_flutter/.github/workflows/release.yml": "cdfde091a7ccdf59e9eb17b62884e1f82a43e63d5f74921e1d3aa97501945f92",
+    "delfan_flutter/integration_test/party_preview_test.dart": "5c43eae85dd7b8f2f69a84833e49b8b8e530bef6a74245c9d9aef98f56c055e0",
+    "delfan_flutter/integration_test/windows_external_tracks_test.dart": "e78d16a36af84031bfdbac74063a8ba321200fe641f3ad3007f9efea29324086",
+    "delfan_flutter/lib/core/external_media_tracks.dart": "77b7eb0c02d771679b2b21e3aed18ea08af29b935b8ba60a01613519f1783a31",
+    "delfan_flutter/lib/core/native_player_properties_io.dart": "1504f14b13cceb7fbe62bd672e78ed57d1fe8931a4f912cc393dbdb04ad75ce9",
+    "delfan_flutter/lib/core/native_player_properties_stub.dart": "ec2eefc92db03647fe644be5e624d0fca7daf5596729c80604f2ecc5795401e1",
+    "delfan_flutter/lib/screens/detail_screen.dart": "4f4d836c981510d61a98779c4ae5a7b2f2f78f662001a76afe1344d9dabd8228",
+    "delfan_flutter/lib/screens/main_shell.dart": "319f220312204e18af7f31179d15323207afe6d08ff811387e06475e15cd820c",
+    "delfan_flutter/lib/services/app_party.dart": "17545ca2304ade108d05fac5e56dbab3299ee2768612aa56babeacbb22762789",
+    "delfan_flutter/lib/services/local_player_tracks.dart": "9d823593b5178c896f843123be30f7454c362bab07f977d7d2123b6c59b966b7",
+    "delfan_flutter/lib/services/mbn_sync.dart": "dcbe8823dc1a9ca103d4bcb86b38bd5ee3f1bdfca74d7ff8b6fd0c0ad51a704e",
+    "delfan_flutter/lib/widgets/player_file_drop_region.dart": "0d8a57cb22baa73129fa5c81bf468a9dff3716b403357449f3a0c90c71580d56",
+    "delfan_flutter/packages/mbn_party/.gitignore": "6c05225876d832a86e95ece72a732a71eff869330413877c7a947f3eeafa464b",
+    "delfan_flutter/packages/mbn_party/analysis_options.yaml": "c1e9534c05acb3643e72a82ad3d92d56d2ba9b0df2add014c18f7e1d462f24e4",
+    "delfan_flutter/packages/mbn_party/lib/mbn_party.dart": "d47771b476705913d617b44cd66bc2aa45a28befc048ba0adc875c31783ce231",
+    "delfan_flutter/packages/mbn_party/lib/src/client.dart": "813bcadd6afb813cbca4666d17cba4c4e1221230fc17bf02f1d7354b83e331d3",
+    "delfan_flutter/packages/mbn_party/lib/src/party_screen.dart": "eef0fa7d35e3a39fec2b449b0f7a8736a5f021d106efb0e955911bdbb3112997",
+    "delfan_flutter/packages/mbn_party/lib/src/timeline.dart": "3ff2b38fadd3265afd24139dd4eca3c9aa36a46b3372f77590819345087ac65d",
+    "delfan_flutter/packages/mbn_party/lib/src/watch_controller.dart": "8ea41b346f8f03dc21deb04ce330ff10546c0719d19ba44e8cf3896982da47b4",
+    "delfan_flutter/packages/mbn_party/pubspec.yaml": "aa89d190612938e4480cbb8de6c654786ecc49eff3731192fa54531c154b5cb1",
+    "delfan_flutter/packages/mbn_party/test/client_and_playback_test.dart": "a1267012fb968e7241d03ce916ffea0cdca9f79f78bef5811687ff6b1b3358d3",
+    "delfan_flutter/packages/mbn_party/test/timeline_test.dart": "623941857f50519049eb0e41230a97bb21a4eaed773102a989e272c4b71d8af7",
+    "delfan_flutter/pubspec.lock": "95abb1b5373704b65f60a65f9bf7991138cab5fb2749ab6b129caddd449744a7",
+    "delfan_flutter/pubspec.yaml": "1085e0b4a535429eb59b4fc044d23e7c97b88edf55856d4a74d0a1a02a876942",
+    "delfan_flutter/test/episode_picker_live_progress_test.dart": "897793ff008832617af2eb426767832eaf1a5f0d02cb6ed007acc60455f73246",
+    "delfan_flutter/test/external_media_tracks_test.dart": "dc45e90311bcaed02e37c54492842a484d0fbb6fb1dd5f468d4c9214aebfac0f",
+    "delfan_flutter/tools/party_preview.dart": "495a8b5efb37b62e0fdacf4c7391653c972c23d882d1f0fb048a5877b186eb65",
+    "delfan_flutter/tools/party_preview_store.dart": "107d5f981d9d5089f5d677153c9ed51122b2afde3645140e4cbaaa466ef7463d",
+    "delfan_flutter/tools/party_preview_store_io.dart": "1137c1611093065d8fd2dc952b05355ac601df0ebba2ae0b8cdc09223a742cac",
+    "delfan_flutter/tools/party_preview_store_stub.dart": "6facf8fbc3d26ea2e804ba35125c418549e54dce5c69b77cfb59b55fa2414bef",
+    "delfan_flutter/windows/flutter/generated_plugin_registrant.cc": "005262990ac0dcb817fc1802b55dc649b83f1a192d6cf3b058b974fe6dbdb884",
+    "delfan_flutter/windows/flutter/generated_plugins.cmake": "6744f259b95e8b1e276f38702fa5685410ab74b7b1b8bda8c754bedfd7d082c3",
+    "server/backend/app.py": "c0c25da75193f4c42b69aeecc30b81c3d4a9308df751eb7d741a302148def8aa",
+    "server/backend/db.py": "f604a285b420fba5ce0fc5bca679c84d3829b9ceab2f77ecad29a24d6f684191",
+    "server/backend/party.py": "0845ed992d47648f9684172437b12e3a2c6421a117e2ecc3c0f36c48c6bd1f51",
+    "server/backend/tests/test_party.py": "24946f5defb765b2946a014aad5b78ca92ccc0aaec35d0bab611c679445a25d1",
+    "server/dashboard/lib/api.dart": "775b04e74e97157ec5c80cf4fcb403526a750df6752ff6a6c098a7de490dcbdb",
+    "server/dashboard/lib/screens/panel_screen.dart": "34b9f0f39b0f1dcd423102fe7872602b1fc3358cf69e734253492084fadb1494",
+    "server/dashboard/lib/screens/party_page.dart": "ee656b3eb60bc882217c1154b09fcc177f9a08ff9934e58021be559de387da7d",
+    "server/dashboard/tools/party_preview.dart": "2ef8a256525a348dac4cfa869d27fa491fe9f8b67220b502be1247693911422d",
+    "server/tools/party_preview_server.py": "307e2973932addaeddc54cef6cb9d819d3f1461b4e8a661910992bc07c44d000"
+  },
+  "diff_checks": {
+    "delfan_flutter": {
+      "result": "passed",
+      "log": "audit/party-delfan_flutter-diff-check.log"
+    },
+    "animeon_flutter": {
+      "result": "passed",
+      "log": "audit/party-animeon_flutter-diff-check.log"
+    },
+    "server": {
+      "result": "passed",
+      "log": "audit/party-server-diff-check.log"
+    }
+  }
+}

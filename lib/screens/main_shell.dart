@@ -1,3 +1,5 @@
+import 'package:mbn_party/mbn_party.dart';
+import '../services/app_party.dart';
 import '../services/playback_activity.dart';
 import '../widgets/account_profile_panel.dart';
 import '../core/title_language.dart';
@@ -73,6 +75,7 @@ class _MainShellState extends State<MainShell> {
   @override
   void initState() {
     super.initState();
+    AppParty.bind(widget.api);
     MbnSync.instance.changes.addListener(_onRemoteSync);
     _pageController = PageController();
     TitleLanguage.revision.addListener(_titleLanguageChanged);
@@ -691,7 +694,7 @@ class _TopBar extends StatelessWidget {
     final isCompact = width < 600;
     final reduceMotion = AccessibilityService.instance.reduceMotion;
     // Extra warning button takes more room: hide the wordmark sooner.
-    final hideWordmark = showPhoneWarning ? width < 420 : width < 380;
+    final hideWordmark = showPhoneWarning ? width < 510 : width < 470;
 
     final warningButton = SizedBox(
       width: isCompact ? 36 : 40,
@@ -732,6 +735,7 @@ class _TopBar extends StatelessWidget {
                   iconSize: isCompact ? 26 : 28,
                   buttonSize: isCompact ? 38 : 42,
                 ),
+                const PartyButton(),
                 if (showPhoneWarning) ...[
                   const SizedBox(width: 2),
                   if (reduceMotion)

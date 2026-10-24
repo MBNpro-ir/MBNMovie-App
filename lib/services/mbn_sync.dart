@@ -1,3 +1,4 @@
+import 'package:mbn_party/mbn_party.dart';
 import '../core/title_language.dart';
 import '../core/video_decode_mode.dart';
 import 'account_profile.dart';
@@ -123,6 +124,9 @@ class MbnSync {
     _invalidateNetworkWork();
     _auth = auth;
     AccountProfile.configure(auth);
+    PartyHub.instance.configure(
+      PartyClient(baseUrl: auth.baseUrl, app: 'movie', token: () => auth.token),
+    );
     if (AccountProfile.owner != null) {
       unawaited(
         AccountProfile.reload()
@@ -137,6 +141,7 @@ class MbnSync {
     _settingsChoicePending = false;
     _loginChoice++;
     AccountProfile.configure(null);
+    PartyHub.instance.configure(null);
     _pendingProgressPush?.cancel();
     _pendingPreferencesPush?.cancel();
     _pendingProgressPush = null;

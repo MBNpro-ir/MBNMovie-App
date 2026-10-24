@@ -1,4 +1,9 @@
+import 'package:mbn_party/mbn_party.dart';
+import '../services/app_party.dart';
 import '../services/playback_activity.dart';
+import '../core/external_media_tracks.dart';
+import '../services/local_player_tracks.dart';
+import '../widgets/player_file_drop_region.dart';
 import 'dart:math' as math;
 import '../widgets/player_season_selector.dart';
 import '../core/player_exit.dart';
@@ -179,14 +184,7 @@ class _DetailScreenState extends State<DetailScreen> {
     _selectDetailSection(forward ? _detailSection + 1 : _detailSection - 1);
   }
 
-  Future<void> _share(MovieContent item) async {
-    final imdbUrl = item.imdbId == null
-        ? ''
-        : '\nhttps://www.imdb.com/title/${item.imdbId}/';
-    await SharePlus.instance.share(
-      ShareParams(text: '${item.title}\nدر MBNMovie ببین$imdbUrl'),
-    );
-  }
+  Future<void> _share(MovieContent item) => AppParty.send(context, item);
 
   String? _coverImageUrl(MovieContent item) =>
       widget.content.backdropUrl ??
@@ -542,9 +540,9 @@ class _DetailScreenState extends State<DetailScreen> {
                   Padding(
                     padding: const EdgeInsets.all(7),
                     child: IconButton.filledTonal(
-                      tooltip: 'اشتراک‌گذاری',
+                      tooltip: 'ارسال',
                       onPressed: () => _share(item),
-                      icon: const Icon(Icons.share_rounded),
+                      icon: const Icon(Icons.send_rounded),
                     ),
                   ),
                   Padding(
@@ -2387,11 +2385,13 @@ class PlayerScreen extends StatelessWidget {
     required this.episode,
     this.initialPosition = Duration.zero,
     this.progressEpisodeId,
+    this.partySessionId,
   });
   final MovieContent content;
   final MovieEpisode episode;
   final Duration initialPosition;
   final String? progressEpisodeId;
+  final String? partySessionId;
 
   @override
   Widget build(BuildContext context) => DecoderModeBuilder(
@@ -2400,6 +2400,7 @@ class PlayerScreen extends StatelessWidget {
       episode: episode,
       initialPosition: initialPosition,
       progressEpisodeId: progressEpisodeId,
+      partySessionId: partySessionId,
       decoderMode: mode,
     ),
   );
@@ -2412,6 +2413,7 @@ class _ConfiguredPlayerScreen extends StatefulWidget {
     required this.episode,
     this.initialPosition = Duration.zero,
     this.progressEpisodeId,
+    this.partySessionId,
   });
   final VideoDecodeMode decoderMode;
   final MovieContent content;
@@ -2422,6 +2424,7 @@ class _ConfiguredPlayerScreen extends StatefulWidget {
   /// group id). When set, progress is read/written under this id so offline
   /// playback shares the streaming record instead of forking a raw id.
   final String? progressEpisodeId;
+  final String? partySessionId;
   @override
   State<_ConfiguredPlayerScreen> createState() => _PlayerScreenState();
 }
@@ -2448,6 +2451,87 @@ class _PlayerScreenState extends State<_ConfiguredPlayerScreen>
   }
 
   late final Player _player;
+  LocalPlayerTracks? _localTracks;
+  WatchPartyController? _party;
+  PartyClient? _soloPartyClient;
+
+  Future<void> _attachParty(String id) async {
+    final client = PartyHub.instance.client;
+    if (client == null || !mounted || _playerTornDown) return;
+    final previous = _party;
+    if (previous != null && !previous.closed) await previous.leave();
+    previous?.dispose();
+    final controller = WatchPartyController(
+      client: client,
+      sessionId: id,
+      playback: PartyPlayback(
+        position: () => _player.state.position,
+        duration: () => _player.state.duration,
+        playing: () => _player.state.playing,
+        buffering: () => _player.state.buffering,
+        rate: () => _player.state.rate,
+        seek: _player.seek,
+        play: _requestPlay,
+        pause: _player.pause,
+        setRate: _player.setRate,
+        playingChanges: _player.stream.playing,
+        positionChanges: _player.stream.position,
+        rateChanges: _player.stream.rate,
+      ),
+    );
+    setState(() => _party = controller);
+    await controller.join();
+    if (!mounted || _playerTornDown) return;
+    await controller.ready();
+  }
+
+  Future<void> _partyAction() async {
+    _hideTimer?.cancel();
+    if (_party != null && !_party!.closed) {
+      await showWatchPartyPanel(context, _party!);
+      _showControls();
+      return;
+    }
+    final group = _episodeCatalog.groupFor(_episode);
+    if (group == null) {
+      await openParty(context);
+      return;
+    }
+    final wasPlaying = _player.state.playing;
+    await _player.pause();
+    if (!mounted) return;
+    await sendPartyMedia(
+      context,
+      AppParty.metadata(widget.content, group),
+      currentPositionMs: _position.inMilliseconds,
+      durationMs: _duration.inMilliseconds > 0
+          ? _duration.inMilliseconds
+          : null,
+      openMedia: (_, media, id) async {
+        if (id != null) await _attachParty(id);
+      },
+    );
+    if (mounted &&
+        !_playerTornDown &&
+        (_party == null || _party!.closed) &&
+        wasPlaying) {
+      await _requestPlay();
+    }
+    if (mounted) _showControls();
+  }
+
+  bool _partyEpisodeGuard() {
+    if (_party == null || _party!.closed) return false;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'برای رفتن به قسمت دیگر، ابتدا از پارتی خارج شو و دعوت تازه بفرست.',
+        ),
+      ),
+    );
+    return true;
+  }
+
   late final VideoController _video;
   late final EpisodeCatalog _episodeCatalog;
   final PictureInPictureController _pip = PictureInPictureController();
@@ -2565,6 +2649,8 @@ class _PlayerScreenState extends State<_ConfiguredPlayerScreen>
   @override
   void initState() {
     super.initState();
+    _soloPartyClient = PartyHub.instance.client;
+    _soloPartyClient?.setSoloPlayer(true);
     _releaseBackgroundWork = PlaybackActivity.hold();
     _releasePlaybackWork = MbnSync.instance.holdPlayback();
     MbnSync.instance.changes.addListener(_remotePreferencesChanged);
@@ -2638,6 +2724,20 @@ class _PlayerScreenState extends State<_ConfiguredPlayerScreen>
             .round(),
       ),
     );
+    if (Platform.isWindows) {
+      _localTracks = LocalPlayerTracks(
+        player: _player,
+        context: () => context,
+        alive: () => mounted && !_playerTornDown && !_exitingPlayer,
+        onSubtitleChanged: (track) async {
+          final native = _requiresNativeSubtitle(track);
+          await _setNativeSubtitleVisibility(native);
+          if (mounted && !_playerTornDown) {
+            setState(() => _nativeSubtitleRendering = native);
+          }
+        },
+      );
+    }
     _listen();
     _restoreSubtitlePrefs();
     _restorePlayerPrefs();
@@ -2706,7 +2806,12 @@ class _PlayerScreenState extends State<_ConfiguredPlayerScreen>
       if (!mounted || _playerTornDown) return;
       await prefs.setBool('player_gestures_introduced', true);
     }
-    if (mounted && !_playerTornDown) await _openMedia();
+    if (mounted && !_playerTornDown) {
+      await _openMedia();
+      if (widget.partySessionId != null && mounted && !_playerTornDown) {
+        await _attachParty(widget.partySessionId!);
+      }
+    }
   }
 
   Future<void> _initializePictureInPicture() async {
@@ -2787,6 +2892,8 @@ class _PlayerScreenState extends State<_ConfiguredPlayerScreen>
     required bool play,
     required int generation,
   }) async {
+    _party?.suspendLocalChanges();
+    _localTracks?.invalidate();
     void requireCurrent() {
       if (!_isCurrentMediaOp(generation)) {
         throw StateError('superseded playback operation');
@@ -2854,6 +2961,17 @@ class _PlayerScreenState extends State<_ConfiguredPlayerScreen>
     // arrive later over `stream.error`. Wait for a readiness signal scoped
     // to this operation so route fallback/rollback sees real load failures.
     await _awaitLoadReady(generation: generation);
+    if (_isCurrentMediaOp(generation) && _localTracks != null) {
+      await _localTracks!.restore(
+        owner: '${AccountProfile.owner ?? 'guest'}',
+        contentId: widget.content.id,
+        episodeId:
+            widget.progressEpisodeId ??
+            _episodeCatalog.groupFor(_episode)?.id ??
+            _episode.id,
+        current: () => _isCurrentMediaOp(generation),
+      );
+    }
   }
 
   Future<void> _requestPlay() async {
@@ -2924,7 +3042,7 @@ class _PlayerScreenState extends State<_ConfiguredPlayerScreen>
       await _restorePositionAndPlay(
         resumeAt,
         generation: generation,
-        playing: true,
+        playing: widget.partySessionId == null,
       );
     } catch (error) {
       // A superseded op must propagate; a missed resume seek must not kill
@@ -2933,7 +3051,7 @@ class _PlayerScreenState extends State<_ConfiguredPlayerScreen>
       if ('$error'.contains('superseded')) rethrow;
       if (!_isCurrentMediaOp(generation)) return;
       try {
-        await _requestPlay();
+        if (widget.partySessionId == null) await _requestPlay();
       } catch (playError) {
         _handlePlaybackError('$playError');
         return;
@@ -3501,6 +3619,14 @@ class _PlayerScreenState extends State<_ConfiguredPlayerScreen>
   }
 
   Future<void> _selectAudioTrack(AudioTrack track) async {
+    if (Platform.isWindows &&
+        track.uri &&
+        !RegExp(r'^https?://', caseSensitive: false).hasMatch(track.id)) {
+      await _localTracks?.importFiles([
+        track.id,
+      ], kind: ExternalTrackKind.audio);
+      return;
+    }
     if (kIsWeb) {
       final selection = ++_webAudioSelection;
       final generation = _mediaGeneration;
@@ -3521,6 +3647,7 @@ class _PlayerScreenState extends State<_ConfiguredPlayerScreen>
       }
     } else {
       await _player.setAudioTrack(track);
+      await _localTracks?.rememberSelection(ExternalTrackKind.audio, track.id);
     }
   }
 
@@ -3711,7 +3838,9 @@ class _PlayerScreenState extends State<_ConfiguredPlayerScreen>
   /// the user's previous settings.
   Future<void> _restorePlayerPrefs() async {
     final prefs = await SharedPreferences.getInstance();
-    final rate = prefs.getDouble('player_rate') ?? 1.0;
+    final rate = widget.partySessionId != null
+        ? 1.0
+        : prefs.getDouble('player_rate') ?? 1.0;
     final volume = prefs.getDouble('player_volume') ?? 100.0;
     final fitCover = prefs.getBool('player_fit_cover') ?? false;
     if (!mounted) return;
@@ -3941,6 +4070,7 @@ class _PlayerScreenState extends State<_ConfiguredPlayerScreen>
         );
       }
     } finally {
+      _party?.resumeLocalChanges();
       if (_isCurrentMediaOp(generation) || _switchingQuality) {
         _switchingQuality = false;
         _transitioning = false;
@@ -3994,6 +4124,7 @@ class _PlayerScreenState extends State<_ConfiguredPlayerScreen>
   }
 
   Future<void> _showEpisodePicker() async {
+    if (_partyEpisodeGuard()) return;
     if (_transitioning ||
         _changingEpisode ||
         _switchingQuality ||
@@ -4319,6 +4450,7 @@ class _PlayerScreenState extends State<_ConfiguredPlayerScreen>
   }
 
   Future<void> _switchEpisode(EpisodeGroup group, EpisodeVariant target) async {
+    if (_partyEpisodeGuard()) return;
     if (_transitioning ||
         _changingEpisode ||
         target.episode.fileUrl == _episode.fileUrl) {
@@ -4433,6 +4565,7 @@ class _PlayerScreenState extends State<_ConfiguredPlayerScreen>
       _episodeCatalog.followingSeason(_episode);
 
   Future<void> _playNextEpisode() async {
+    if (_partyEpisodeGuard()) return;
     if (_followingSeason != null && _nextEpisode == null) {
       await _persistProgress(markWatched: true);
       if (mounted) await _exitPlayer();
@@ -4442,6 +4575,10 @@ class _PlayerScreenState extends State<_ConfiguredPlayerScreen>
   }
 
   Future<void> _completeCurrentEpisode() async {
+    if (_party != null && !_party!.closed) {
+      await _party!.control('pause');
+      return;
+    }
     if (_completedMediaGeneration == _mediaGeneration ||
         !isNaturalPlaybackEnd(
           position: _position,
@@ -4533,6 +4670,7 @@ class _PlayerScreenState extends State<_ConfiguredPlayerScreen>
   Future<void> _exitPlayer() async {
     if (_exitingPlayer) return;
     _exitingPlayer = true;
+    if (_party != null) unawaited(_party!.leave().catchError((Object _) {}));
     _saveTimer?.cancel();
     exitPlayerWithoutWaiting(
       // _persistProgress captures the current episode/time synchronously;
@@ -4754,6 +4892,9 @@ class _PlayerScreenState extends State<_ConfiguredPlayerScreen>
 
   @override
   void dispose() {
+    _party?.dispose();
+    _soloPartyClient?.setSoloPlayer(false);
+    _localTracks?.close();
     _releasePlaybackWork();
     _releaseBackgroundWork();
     MbnSync.instance.changes.removeListener(_remotePreferencesChanged);
@@ -4926,6 +5067,10 @@ class _PlayerScreenState extends State<_ConfiguredPlayerScreen>
   }
 
   void _toggle({bool showControls = true}) {
+    if (_party?.waiting == true && !_party!.closed) {
+      unawaited(_partyAction());
+      return;
+    }
     if (kIsWeb) {
       if (_playing && !_webNeedsTap) {
         ++_webPlayAttempt;
@@ -5121,6 +5266,10 @@ class _PlayerScreenState extends State<_ConfiguredPlayerScreen>
               await _selectWebSubtitle(track);
             } else {
               await _player.setSubtitleTrack(track);
+              await _localTracks?.rememberSelection(
+                ExternalTrackKind.subtitle,
+                track.id,
+              );
               final native = _requiresNativeSubtitle(track);
               await _setNativeSubtitleVisibility(native);
               if (mounted) setState(() => _nativeSubtitleRendering = native);
@@ -5135,7 +5284,7 @@ class _PlayerScreenState extends State<_ConfiguredPlayerScreen>
                   : track.id;
               await BrowserFeatures.externalAudio(uri, delay: _audioDelay);
             } else {
-              await _player.setAudioTrack(track);
+              await _selectAudioTrack(track);
             }
           }),
         ),
@@ -5207,6 +5356,14 @@ class _PlayerScreenState extends State<_ConfiguredPlayerScreen>
         (_currentEpisodeGroup?.isTrailer ?? false) &&
         isUnknownQuality(rawQuality);
     return [
+      _PlayerToolControl(
+        icon: Icons.diversity_2_rounded,
+        label: 'پارتی',
+        compact: compact,
+        compactLabel: 'پارتی',
+        onTap: _partyAction,
+      ),
+      const SizedBox(width: 8),
       if ((_currentEpisodeGroup?.variants.length ?? 0) > 1 &&
           !hideQualityButton) ...[
         _PlayerToolControl(
@@ -5262,6 +5419,13 @@ class _PlayerScreenState extends State<_ConfiguredPlayerScreen>
     );
     final file = await openFile(acceptedTypeGroups: const [subtitleFiles]);
     if (file == null) return;
+    if (Platform.isWindows) {
+      await _localTracks?.importFiles([
+        file.path,
+      ], kind: ExternalTrackKind.subtitle);
+      if (mounted) Navigator.pop(context);
+      return;
+    }
     if (kIsWeb) {
       final text = await file.readAsString();
       _webAssSource = isAssDocument(text) ? text : null;
@@ -5486,7 +5650,21 @@ class _PlayerScreenState extends State<_ConfiguredPlayerScreen>
   }
 
   @override
-  Widget build(BuildContext context) => PopScope(
+  Widget build(BuildContext context) {
+    final player = _buildPlayer(context);
+    if (!Platform.isWindows) return player;
+    return PlayerFileDropRegion(
+      enabled:
+          ModalRoute.of(context)?.isCurrent == true &&
+          !_playerTornDown &&
+          !_exitingPlayer,
+      onFiles: (paths) =>
+          _localTracks?.importFiles(paths) ?? Future<void>.value(),
+      child: player,
+    );
+  }
+
+  Widget _buildPlayer(BuildContext context) => PopScope(
     canPop: _allowPlayerPop,
     onPopInvokedWithResult: (didPop, result) {
       if (!didPop) {
@@ -5852,6 +6030,15 @@ class _PlayerScreenState extends State<_ConfiguredPlayerScreen>
                                       );
                                       return Column(
                                         children: [
+                                          if (_party != null)
+                                            Padding(
+                                              padding: const EdgeInsets.only(
+                                                bottom: 8,
+                                              ),
+                                              child: WatchPartyBanner(
+                                                controller: _party!,
+                                              ),
+                                            ),
                                           GestureDetector(
                                             onDoubleTap: () {},
                                             child: _SeekBar(
