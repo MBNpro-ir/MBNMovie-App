@@ -14,7 +14,13 @@ const mime={'.html':'text/html','.js':'application/javascript','.json':'applicat
    const context=await browser.newContext({ignoreHTTPSErrors:true,...(engine==='webkit'?devices['iPhone 13']:{viewport:{width:1366,height:768},userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36'})});
    if(engine==='chromium')await context.addInitScript(()=>Object.defineProperty(navigator,'userAgentData',{get:()=>({platform:'Windows',brands:[{brand:'Google Chrome',version:'140'}]})}));
    if(engine==='webkit')await context.addInitScript(()=>Object.defineProperty(navigator,'standalone',{get:()=>true}));
-   const page=await context.newPage(),errors=[],apiRequests=[];
+   const page=await context.newPage(),errors=[],apiRequests=[],partyRequests=[];
+   const recordApi=request=>{
+    const pathname=new URL(request).pathname;
+    // Party bootstraps once at account configuration through its own bounded
+    // client. It never supplies media bytes or the catalog bridge.
+    (pathname.startsWith('/api/party/')?partyRequests:apiRequests).push(pathname);
+   };
    page.on('pageerror',e=>{errors.push(e.message);console.log(engine,'PAGEERROR',e.message);});
    page.on('console',m=>{if(m.type()==='error')console.log(engine,'CONSOLE',m.text());});
    page.on('crash',()=>console.log(engine,'CRASH'));
@@ -22,7 +28,7 @@ const mime={'.html':'text/html','.js':'application/javascript','.json':'applicat
    await page.route('https://localhost:8768/**',async route=>{
     const url=new URL(route.request().url());
     if(url.pathname==='/mbn-compatibility.mp4')return route.continue();
-    if(url.pathname.startsWith('/api/')){apiRequests.push(url.pathname);return route.abort('connectionrefused');}
+    if(url.pathname.startsWith('/api/')){recordApi(url.href);return route.abort('connectionrefused');}
     const pathname=url.pathname;
     const rel=decodeURIComponent(pathname==='/'?'/index.html':pathname);
     const filename=path.resolve(root,'.'+rel);
@@ -30,7 +36,7 @@ const mime={'.html':'text/html','.js':'application/javascript','.json':'applicat
     if(!fs.existsSync(filename))return route.fulfill({status:404,body:''});
     await route.fulfill({path:filename,contentType:mime[path.extname(filename)]||'application/octet-stream'});
    });
-   await page.route(/https:\/\/[^/]*mbnpro\.ir\/api\//,route=>{apiRequests.push(route.request().url());return route.abort('connectionrefused');});
+   await page.route(/https:\/\/[^/]*mbnpro\.ir\/api\//,route=>{recordApi(route.request().url());return route.abort('connectionrefused');});
    await page.goto('https://localhost:8768/',{waitUntil:'domcontentloaded'});
    console.log(engine,'loaded');
    await page.waitForFunction(()=>typeof window.mbnQaStats==='function',null,{timeout:60000});
@@ -69,12 +75,14 @@ const mime={'.html':'text/html','.js':'application/javascript','.json':'applicat
       rafP99Ms:gaps[Math.floor(gaps.length*.99)],maxRafGapMs:Math.max(...gaps),
       sync:JSON.parse(mbnQaStats())};
    });
-   console.log(JSON.stringify({engine,episodeSheetMs,...result}));
+   console.log(JSON.stringify({engine,episodeSheetMs,apiRequests,partyRequests,...result}));
    assert(result.position>before+4,'video advances while sheet is open');
    assert(result.droppedFrames===undefined||result.droppedFrames<=Math.max(3,result.totalFrames*.03),'no sustained video frame loss');
    assert.equal(result.sync.remoteApplied,false);
    assert.equal(result.sync.requests,1,'bulk requests stay deferred during playback');
    assert.equal(apiRequests.length,0,'offline MP4 playback never needs the bridge');
+   assert(partyRequests.length<=1,'offline Party bootstrap remains bounded during solo playback');
+   assert(partyRequests.every(p=>p==='/api/party/bootstrap'),'solo playback never sends Party commands');
    assert.equal(errors.length,0,errors.join('\n'));
    assert(episodeSheetMs<2000,'episode sheet stays responsive');
    await context.close();
